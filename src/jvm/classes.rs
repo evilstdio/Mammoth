@@ -1410,6 +1410,7 @@ impl<'a> Symbols<'a> {
                 mutable: field.mutable,
                 private: field.private,
                 protected: field.protected,
+                lateinit: field.is_lateinit,
             });
         }
         Ok(fields)
@@ -1838,6 +1839,9 @@ impl<'a> Emitter<'a> {
         let reference = self.field_member(kind, field);
         instruction(&mut method.code, 0xb4, reference); // getfield
         method.max_stack = method.max_stack.max(base + field.kind.slots());
+        if field.lateinit {
+            self.guard_non_null(method, field.kind, base);
+        }
         let result = self
             .symbols
             .types

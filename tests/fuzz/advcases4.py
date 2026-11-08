@@ -1,6 +1,6 @@
 """Adversarial checks for the newer features: interactions, and programs that must be rejected."""
 import os, subprocess, shutil, sys, tempfile
-HERE = tempfile.mkdtemp().replace('\', '/')
+HERE = tempfile.mkdtemp().replace(chr(92), '/')
 COMPILER = os.environ.get('MAMMOTH', 'target/release/mammoth.exe')
 A = 'open class A { fun name(): Text = "A" }\nclass B extends A { fun b(): Int = 1 }\nclass C extends A\n'
 cases = {

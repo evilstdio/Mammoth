@@ -1170,6 +1170,7 @@ fn emit_class<'a>(
                     kind: symbols.types.replace_parameters(field.kind, &map),
                     erased: field.kind,
                     mutable: field.mutable,
+                    lateinit: field.lateinit,
                 },
             );
         }
@@ -1708,6 +1709,7 @@ struct FieldInfo<'a> {
     mutable: bool,
     private: bool,
     protected: bool,
+    lateinit: bool,
 }
 
 /// Whether a Mammoth method also needs a public bridge under its plain name so that
@@ -1767,6 +1769,7 @@ struct FieldRef {
     /// The declared (erased) type that the JVM field descriptor uses.
     erased: Kind,
     mutable: bool,
+    lateinit: bool,
 }
 
 #[derive(Clone)]
@@ -3017,6 +3020,9 @@ impl<'a> Emitter<'a> {
             method.access(0x19, 0);
             instruction(&mut method.code, 0xb4, field.index); // getfield
             method.max_stack = method.max_stack.max(base + field.erased.slots().max(1));
+            if field.lateinit {
+                self.guard_non_null(method, field.erased, base);
+            }
             if field.kind != field.erased {
                 self.cast_top(method, field.erased, field.kind, base);
             }
@@ -3064,6 +3070,20 @@ impl<'a> Emitter<'a> {
         {
             let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
             return self.field_access(method, receiver, name, base);
+        }
+        // A `by lazy` field is read through its method.
+        if let Some(class) = self.current_class
+            && self.symbols.find_method(class, name.text).is_some()
+        {
+            let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(Name {
+                text: "this",
+                offset: name.offset,
+            })));
+            let attempt = method.snapshot();
+            if let Ok(Some(kind)) = self.method_call(method, receiver, name, &[], base) {
+                return Ok(kind);
+            }
+            method.restore(attempt);
         }
         // Inside an interface's default method, a property is a method call.
         if self.current_class.is_none() && !self.in_extension && method.binding(this).is_some() {

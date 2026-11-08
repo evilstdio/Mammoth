@@ -1,0 +1,2 @@
+// error: Give a lazy field a type
+class K { let a by lazy { 1 } }

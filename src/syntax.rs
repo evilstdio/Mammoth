@@ -152,6 +152,8 @@ pub struct Field<'a> {
     pub value: Option<Expr<'a>>,
     pub mutable: bool,
     pub private: bool,
+    /// `lateinit var`: non-null, set later, and checked when it is read.
+    pub is_lateinit: bool,
 }
 
 pub struct Function<'a> {
@@ -484,6 +486,71 @@ pub struct Lambda<'a> {
 pub enum Part<'a> {
     Literal(String),
     Value(Expr<'a>),
+}
+
+/// `let x: T by lazy { ... }` becomes a hidden nullable field and a method
+/// `x()` that computes it on first use. It is not synchronized.
+fn lazy_field<'a>(
+    name: Name<'a>,
+    result: Name<'a>,
+    mut body: Vec<Statement<'a>>,
+    value: Expr<'a>,
+    private: bool,
+) -> (Field<'a>, Function<'a>) {
+    let hidden = Name {
+        text: Box::leak(format!("__lazy_{}", name.text).into_boxed_str()),
+        offset: name.offset,
+    };
+    let nullable = Name {
+        text: Box::leak(format!("{}?", result.text).into_boxed_str()),
+        offset: result.offset,
+    };
+    let field = Field {
+        annotations: Vec::new(),
+        protected: false,
+        name: hidden,
+        annotation: Some(nullable),
+        value: None,
+        mutable: true,
+        private: true,
+        is_lateinit: false,
+    };
+    body.push(Statement::Assign(hidden, value));
+    let unset = Expr::Compare(
+        Box::new(Expr::Variable(hidden)),
+        Comparison::Eq,
+        Box::new(Expr::Null(name.offset)),
+    );
+    let require = Name {
+        text: "requireValue",
+        offset: name.offset,
+    };
+    let getter = Function {
+        annotations: Vec::new(),
+        type_parameters: Vec::new(),
+        bounds: Vec::new(),
+        exported: false,
+        foreign_name: None,
+        name,
+        parameters: Vec::new(),
+        result: Some(result),
+        body: vec![
+            Statement::If(name, unset, body, None),
+            Statement::Return(
+                name,
+                Some(Expr::Call(require, vec![Expr::Variable(hidden)])),
+            ),
+        ],
+        private,
+        protected: false,
+        is_abstract: false,
+        is_override: false,
+        extension_of: None,
+        in_prelude: false,
+        vararg: false,
+        overload_of: None,
+    };
+    (field, getter)
 }
 
 /// Gives a data class `component1()` and so on, and `copy` with every
@@ -1292,6 +1359,7 @@ impl<'a> Parser<'a> {
                         value: Some(Expr::Variable(parameter)),
                         mutable,
                         private,
+                        is_lateinit: false,
                     });
                 }
             }
@@ -1413,7 +1481,15 @@ impl<'a> Parser<'a> {
         let mut static_fields = Vec::new();
         let mut static_methods = constructor_helpers;
         let mut static_initializers = Vec::new();
-        while !self.take("}") {
+        let mut in_companion = false;
+        loop {
+            if self.take("}") {
+                if in_companion {
+                    in_companion = false;
+                    continue;
+                }
+                break;
+            }
             if self.rest().is_empty() {
                 return Err(self.error("Expected '}' to close the class."));
             }
@@ -1424,7 +1500,19 @@ impl<'a> Parser<'a> {
             let mut abstract_member = false;
             let mut is_override = false;
             let mut exported = false;
-            let mut is_static = false;
+            let mut is_static = in_companion;
+            let mut lateinit = false;
+            if member.text == "companion" {
+                if !self.take_word("object") {
+                    return Err(self.error("Expected object after companion."));
+                }
+                if identifier(self.rest_trimmed(), 0).is_some() {
+                    self.name()?;
+                }
+                self.expect("{", "Expected '{' to open the companion object.")?;
+                in_companion = true;
+                continue;
+            }
             loop {
                 match member.text {
                     "static" if !is_static => is_static = true,
@@ -1433,6 +1521,7 @@ impl<'a> Parser<'a> {
                     "abstract" if !abstract_member => abstract_member = true,
                     "override" if !is_override => is_override = true,
                     "export" if !exported => exported = true,
+                    "lateinit" if !lateinit => lateinit = true,
                     "open" => {}
                     _ => break,
                 }
@@ -1486,6 +1575,7 @@ impl<'a> Parser<'a> {
                             value,
                             mutable,
                             private,
+                            is_lateinit: false,
                         });
                     }
                     "init" if !private && annotations.is_empty() => {
@@ -1550,13 +1640,48 @@ impl<'a> Parser<'a> {
                     } else {
                         None
                     };
+                    if self.take_word("by") {
+                        if !self.take_word("lazy") || !self.take("{") {
+                            return Err(self.error("Expected lazy and a block after by."));
+                        }
+                        let Some(result) = annotation else {
+                            return Err(self.error(
+                                "Give a lazy field a type, such as let total: Int by lazy { ... }.",
+                            ));
+                        };
+                        let (body, value) = self.value_body(1)?;
+                        let Some(value) = value else {
+                            return Err(self.error("A lazy block must end with a value."));
+                        };
+                        let (field, getter) = lazy_field(name, result, body, *value, private);
+                        initializers.push(Initializer::Field(fields.len()));
+                        fields.push(field);
+                        methods.push(getter);
+                        continue;
+                    }
                     let value = if self.take_assignment() {
                         Some(self.expression()?)
-                    } else if annotation.is_some_and(|name| name.text.ends_with('?')) {
+                    } else if lateinit || annotation.is_some_and(|name| name.text.ends_with('?')) {
                         None
                     } else {
                         return Err(self.error("Expected '=' before the field's starting value."));
                     };
+                    if lateinit
+                        && (!mutable
+                            || value.is_some()
+                            || annotation.is_none_or(|name| {
+                                name.text.ends_with('?')
+                                    || matches!(
+                                        name.text,
+                                        "Int" | "Long" | "Double" | "Bool" | "Char"
+                                    )
+                            }))
+                    {
+                        return Err(Error {
+                            offset: name.offset,
+                            message: "lateinit needs a var with a non-null object type and no starting value.",
+                        });
+                    }
                     initializers.push(Initializer::Field(fields.len()));
                     fields.push(Field {
                         annotations,
@@ -1566,6 +1691,7 @@ impl<'a> Parser<'a> {
                         value,
                         mutable,
                         private,
+                        is_lateinit: lateinit,
                     });
                 }
                 "init"
@@ -2428,6 +2554,7 @@ impl<'a> Parser<'a> {
             value: Some(Expr::Call(class.name, Vec::new())),
             mutable: false,
             private: false,
+            is_lateinit: false,
         });
         Ok(class)
     }

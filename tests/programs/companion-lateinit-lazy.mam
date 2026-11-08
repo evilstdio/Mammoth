@@ -1,0 +1,63 @@
+// Companion objects, lateinit and by lazy.
+class Temperature(let celsius: Double) {
+    companion object {
+        let FREEZING = 0.0
+        var created = 0
+        fun fromFahrenheit(value: Double): Temperature {
+            created += 1
+            return Temperature((value - 32.0) / 1.8)
+        }
+    }
+    fun isFreezing(): Bool = celsius <= FREEZING
+}
+print(Temperature.fromFahrenheit(212.0).celsius)
+print(Temperature.FREEZING)
+print(Temperature.created)
+print(Temperature(-1.0).isFreezing())
+
+class Named {
+    companion object Factory {
+        fun make(): Named = Named()
+    }
+    fun hello(): Text = "hi"
+}
+print(Named.make().hello())
+
+class Service {
+    lateinit var name: Text
+    fun configure(value: Text) { name = value }
+    fun describe(): Text = "service " + name
+}
+let service = Service()
+service.configure("a")
+print(service.describe())
+print(service.name.length)
+service.name = "bb"
+print(service.name)
+try {
+    print(Service().describe())
+} catch (e: NullPointerException) {
+    print("not set")
+}
+try {
+    print(Service().name.length)
+} catch (e: NullPointerException) {
+    print("not set outside")
+}
+
+var computed = 0
+class Report(let rows: Int) {
+    let total: Int by lazy {
+        computed += 1
+        rows * 10
+    }
+    let title: Text by lazy { "report {rows}" }
+    fun twice(): Int = total + total
+}
+let report = Report(3)
+print(computed)
+print(report.twice())
+print(computed)
+print(report.total)
+print(computed)
+print(report.title)

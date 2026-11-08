@@ -1,0 +1,2 @@
+// error: lateinit needs
+class K { lateinit let a: Text }
