@@ -195,6 +195,27 @@ impl<'a> Emitter<'a> {
         expected: Option<Kind>,
         base: u16,
     ) -> Result<Kind, Error> {
+        // Inside `x.apply { ... }`, the receiver's members are in scope.
+        let outer_extension = self.in_extension;
+        if lambda
+            .parameters
+            .iter()
+            .any(|(name, _)| name.text == "this")
+        {
+            self.in_extension = true;
+        }
+        let result = self.lambda_scoped(method, lambda, expected, base);
+        self.in_extension = outer_extension;
+        result
+    }
+
+    fn lambda_scoped(
+        &mut self,
+        method: &mut Method<'a>,
+        lambda: &'a Lambda<'a>,
+        expected: Option<Kind>,
+        base: u16,
+    ) -> Result<Kind, Error> {
         // A lambda body runs later, when every field has its value.
         let pending = (
             std::mem::take(&mut self.pending_fields),

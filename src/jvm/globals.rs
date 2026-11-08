@@ -209,7 +209,10 @@ fn collect_bound<'a>(statements: &'a [Statement<'a>], bound: &mut HashSet<&'a st
                 bound.insert(name.text);
                 collect_bound(body, bound);
             }
-            Statement::While(_, _, body) => collect_bound(body, bound),
+            Statement::While(_, _, body) | Statement::DoWhile(_, body, _) => {
+                collect_bound(body, bound)
+            }
+            Statement::Labeled(_, inner) => collect_bound(std::slice::from_ref(inner), bound),
             Statement::If(_, _, then, otherwise) => {
                 collect_bound(then, bound);
                 collect_bound(otherwise.as_deref().unwrap_or_default(), bound);
@@ -267,9 +270,12 @@ pub(super) fn collect_statements<'a>(statements: &'a [Statement<'a>], used: &mut
                 collect_expr(values, used);
                 collect_statements(body, used);
             }
-            Statement::While(_, condition, body) => {
+            Statement::While(_, condition, body) | Statement::DoWhile(_, body, condition) => {
                 collect_expr(condition, used);
                 collect_statements(body, used);
+            }
+            Statement::Labeled(_, inner) => {
+                collect_statements(std::slice::from_ref(inner), used);
             }
             Statement::If(_, condition, then, otherwise) => {
                 collect_expr(condition, used);
@@ -307,7 +313,7 @@ fn collect_branches<'a>(branches: &'a [super::WhenBranch<'a>], used: &mut HashSe
                     collect_expr(start, used);
                     collect_expr(end, used);
                 }
-                super::WhenCondition::Is(_) => {}
+                super::WhenCondition::Is(_) | super::WhenCondition::Not(_) => {}
             }
         }
         collect_statements(&branch.body, used);
@@ -362,9 +368,10 @@ fn assigns(statements: &[Statement<'_>], name: &str) -> bool {
 fn statement_assigns(statement: &Statement<'_>, name: &str) -> bool {
     match statement {
         Statement::Assign(target, value) => target.text == name || expr_assigns(value, name),
-        Statement::For(_, values, body) | Statement::While(_, values, body) => {
-            expr_assigns(values, name) || assigns(body, name)
-        }
+        Statement::Labeled(_, inner) => statement_assigns(inner, name),
+        Statement::For(_, values, body)
+        | Statement::While(_, values, body)
+        | Statement::DoWhile(_, body, values) => expr_assigns(values, name) || assigns(body, name),
         Statement::If(_, condition, then, otherwise) => {
             expr_assigns(condition, name)
                 || assigns(then, name)
@@ -438,7 +445,8 @@ fn lambda_statement<'a>(statement: &'a Statement<'a>, used: &mut dyn FnMut(&'a L
             exprs.push(values);
             blocks.push(body);
         }
-        Statement::While(_, condition, body) => {
+        Statement::Labeled(_, inner) => lambda_statement(inner, used),
+        Statement::While(_, condition, body) | Statement::DoWhile(_, body, condition) => {
             exprs.push(condition);
             blocks.push(body);
         }
@@ -468,7 +476,7 @@ fn lambda_statement<'a>(statement: &'a Statement<'a>, used: &mut dyn FnMut(&'a L
                     match condition {
                         super::WhenCondition::Value(expr) => exprs.push(expr),
                         super::WhenCondition::In(start, end, _) => exprs.extend([start, end]),
-                        super::WhenCondition::Is(_) => {}
+                        super::WhenCondition::Is(_) | super::WhenCondition::Not(_) => {}
                     }
                 }
             }
@@ -545,6 +553,11 @@ fn lambda_expr<'a>(expr: &'a Expr<'a>, used: &mut dyn FnMut(&'a Lambda<'a>)) {
 pub(super) fn collect_expr<'a>(expr: &'a Expr<'a>, used: &mut HashSet<&'a str>) {
     match expr {
         Expr::Named(_, value) | Expr::Spread(value) => collect_expr(value, used),
+        Expr::TryValue(name, value, statement) => {
+            used.insert(name.text);
+            collect_expr(value, used);
+            collect_statements(std::slice::from_ref(statement), used);
+        }
         Expr::Progression(start, end, _, _, step) => {
             collect_expr(start, used);
             collect_expr(end, used);

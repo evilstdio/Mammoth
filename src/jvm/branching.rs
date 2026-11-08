@@ -70,6 +70,7 @@ impl<'a> Emitter<'a> {
         };
         let base = method.stack.len() as u16;
         match condition {
+            WhenCondition::Not(inner) => self.when_test(method, Some(subject), inner, !when),
             WhenCondition::Value(Expr::Null(_)) => {
                 if !subject.kind.is_reference() {
                     return Err(Error {
@@ -470,6 +471,16 @@ impl<'a> Emitter<'a> {
                 "A when used as a value needs an else branch, unless it covers every constant of an enum or every subclass of a sealed type.",
             ));
         }
+        // `if c { 1 } else { null }` is an Int? even with no destination.
+        let expected = match expected {
+            None if branches
+                .iter()
+                .any(|branch| matches!(branch.value.as_deref(), Some(Expr::Null(_)))) =>
+            {
+                self.branch_type_with_null(method, branches)
+            }
+            other => other,
+        };
         let mut result: Option<Option<Kind>> = expected.map(Some);
         let mut ends = Vec::new();
         for (index, branch) in branches.iter().enumerate() {
@@ -667,6 +678,32 @@ impl<'a> Emitter<'a> {
     }
 
     /// The fallback of an elvis expression is evaluated only for a null value.
+    /// The nullable type of the first branch whose value is not `null`.
+    fn branch_type_with_null(
+        &mut self,
+        method: &mut Method<'a>,
+        branches: &'a [WhenBranch<'a>],
+    ) -> Option<Kind> {
+        for branch in branches {
+            let Some(value) = branch.value.as_deref() else {
+                continue;
+            };
+            if matches!(value, Expr::Null(_) | Expr::Jump(_)) {
+                continue;
+            }
+            let saved = method.snapshot();
+            let variables = method.variables.len();
+            let base = method.stack.len() as u16;
+            let kind = self
+                .block(method, &branch.body)
+                .and_then(|_| self.expression(method, value, base));
+            method.truncate_variables(variables);
+            method.restore(saved);
+            return kind.ok().and_then(Kind::nullable);
+        }
+        None
+    }
+
     /// Emits a `return`, `throw`, `break` or `continue` used as a value.
     pub(super) fn jump_value(
         &mut self,

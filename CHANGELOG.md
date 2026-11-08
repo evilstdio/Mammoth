@@ -1,5 +1,13 @@
 # Changelog
 
+## Everyday syntax and library, 2026-11-08
+
+- `!!`, `!is`, `!in`, `++`, `--`, bit operations (`shl`, `shr`, `ushr`, `&`, `|`, `^`), hex, binary and underscore literals, `do`/`while`, labeled `break`/`continue`, `try` as a value, block comments, semicolons, `val`, `const`, `where`, `Unit` and `Nothing` result types.
+- Single-statement `if (x) y` and value `if (x) a else b`, and `for (i in range)`.
+- Local functions, companion objects, `lateinit`, `by lazy`, computed properties with `get()`.
+- `with`, `apply`, `run`, `buildString`, `use`, `require`, `check`, `TODO`, `println`, `Triple`.
+- `'a' + 1`, `text[i]`, loops over text, `Char` tests, and more collection operations: `count`, `getOrNull`, `single`, `maxOf`, `minOf`, `onEach`, `mapNotNull`, `flatten`, `chunked`, `windowed`, `associate`, `associateWith`, `indexOfFirst`, `+`, `-`, `+=`, `intersect`, `union`, and map `keys`, `entries`, `map`, `filter`, `toList`.
+
 ## Overloading, nesting and shorthand, 2026-11-08
 
 - Function and method overloading, nested types, `listOf`/`setOf`/`mapOf` and `to`, varargs, function references, type aliases, covariant overrides, property-style reads, interface properties, and `let`/`also`/`takeIf`.

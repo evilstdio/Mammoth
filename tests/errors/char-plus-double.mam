@@ -1,0 +1,2 @@
+// error: A Char can only
+print('a' + 1.5)

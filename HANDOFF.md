@@ -16,9 +16,11 @@ The goal is closing the feature gap with Kotlin. Work is on branch `compiler-cor
 - **Property reads** fall back in `field_on` to `name()`, `getName()` and extensions. **Interface properties** are abstract methods; a class field of that name gets a generated getter (`property_getters`).
 - Real programs: `examples/json.mam`, `algorithms.mam`, `library.mam`.
 
-**Known limits.** No coroutines, local functions, `lateinit`, `by lazy`, or companion objects. Implicit receiver members work in a lambda inside an extension only through `this`. A constructor default cannot mention the class's type parameters. Overloaded names are hidden from Java. Overloads with a generic parameter type may not line up with an override written with concrete types. Prelude errors are reported as "in the built-in library". `a to b` works only in call arguments.
+**Known limits.** No coroutines. Local functions that use outer variables cannot call themselves. Implicit receiver members work in a lambda inside an extension only through `this`. A constructor default cannot mention the class's type parameters. Overloaded names are hidden from Java. Overloads with a generic parameter type may not line up with an override written with concrete types. Prelude errors are reported as "in the built-in library". `a to b` works only in call arguments.
 
-**Next.** Local functions, `lateinit`, `by lazy`, companion objects, then more real programs.
+**Probe.** `tests/fuzz/kotlin_probe.py` runs 171 everyday constructs; 142 passed at last count. Remaining: setters, secondary constructors, `inner` classes, overriding properties, class-level `out`/`in`, `MutableList<*>`, runtime-sized arrays, `Nothing` in expressions, unary operator methods, sequences, and coroutines. The `:` inheritance spelling is intentionally not adopted.
+
+**Next.** Re-run the fuzzers against this compiler, then the remaining probe items.
 
 # Session summary: session 3, 2026-11-08 (read this first)
 

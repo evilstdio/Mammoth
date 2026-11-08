@@ -1,0 +1,2 @@
+// error: shift distance must be an Int
+print(1 shl 2L)

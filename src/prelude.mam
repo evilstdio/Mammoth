@@ -531,3 +531,297 @@ fun Iterable<__T>.lastIndex<__T>(): Int {
     for item in this { index += 1 }
     return index
 }
+fun __T.apply<__T>(block: (__T) -> Unit): __T {
+    block(this)
+    return this
+}
+fun __T.run<__T, __R>(block: (__T) -> __R): __R = block(this)
+fun with<__T, __R>(receiver: __T, block: (__T) -> __R): __R = block(receiver)
+fun buildString(block: (StringBuilder) -> Unit): Text {
+    let text = StringBuilder()
+    block(text)
+    return text.toString()
+}
+fun println(value: Any? = "") { print(value) }
+fun require(condition: Bool, message: Text = "Failed requirement.") {
+    if not condition { throw IllegalArgumentException(message) }
+}
+fun check(condition: Bool, message: Text = "Check failed.") {
+    if not condition { throw IllegalStateException(message) }
+}
+fun TODO(reason: Text = "An operation is not implemented."): Int = throw UnsupportedOperationException(reason)
+
+data class Triple<__A, __B, __C>(let first: __A, let second: __B, let third: __C)
+
+fun Char.isDigit(): Bool = Character.isDigit(this)
+fun Char.isLetter(): Bool = Character.isLetter(this)
+fun Char.isLetterOrDigit(): Bool = Character.isLetterOrDigit(this)
+fun Char.isWhitespace(): Bool = Character.isWhitespace(this)
+fun Char.isUpperCase(): Bool = Character.isUpperCase(this)
+fun Char.isLowerCase(): Bool = Character.isLowerCase(this)
+fun Char.uppercaseChar(): Char = Character.toUpperCase(this)
+fun Char.lowercaseChar(): Char = Character.toLowerCase(this)
+fun Char.digitToInt(): Int = Character.getNumericValue(this)
+
+fun Text.toMutableList(): MutableList<Char> {
+    let out = MutableList<Char>()
+    for ch in this { out.add(ch) }
+    return out
+}
+fun Text.map<__R>(transform: (Char) -> __R): MutableList<__R> {
+    let out = MutableList<__R>()
+    for ch in this { out.add(transform(ch)) }
+    return out
+}
+fun Text.filter(predicate: (Char) -> Bool): Text {
+    let out = StringBuilder()
+    for ch in this {
+        if predicate(ch) { out.append(ch) }
+    }
+    return out.toString()
+}
+fun Text.count(predicate: (Char) -> Bool): Int {
+    var total = 0
+    for ch in this {
+        if predicate(ch) { total += 1 }
+    }
+    return total
+}
+fun Text.any(predicate: (Char) -> Bool): Bool {
+    for ch in this {
+        if predicate(ch) { return true }
+    }
+    return false
+}
+fun Text.all(predicate: (Char) -> Bool): Bool {
+    for ch in this {
+        if not predicate(ch) { return false }
+    }
+    return true
+}
+fun Text.first(): Char = this.charAt(0)
+fun Text.last(): Char = this.charAt(this.length() - 1)
+fun Text.forEach(action: (Char) -> Unit) {
+    for ch in this { action(ch) }
+}
+
+fun Iterable<__T>.count<__T>(): Int {
+    var total = 0
+    for item in this { total += 1 }
+    return total
+}
+fun Iterable<__T>.count<__T>(predicate: (__T) -> Bool): Int {
+    var total = 0
+    for item in this {
+        if predicate(item) { total += 1 }
+    }
+    return total
+}
+fun Iterable<__T>.getOrNull<__T>(index: Int): __T? {
+    var position = 0
+    for item in this {
+        if position == index { return item }
+        position += 1
+    }
+    return null
+}
+fun Iterable<__T>.single<__T>(): __T {
+    var seen = 0
+    var result: __T? = null
+    for item in this {
+        result = item
+        seen += 1
+    }
+    if seen != 1 { throw IllegalArgumentException("Expected exactly one element.") }
+    return requireValue(result)
+}
+fun Iterable<__T>.maxOf<__T, __R: Comparable<__R>>(selector: (__T) -> __R): __R {
+    var best: __R? = null
+    for item in this {
+        let value = selector(item)
+        if best == null or value.compareTo(requireValue(best)) > 0 { best = value }
+    }
+    return requireValue(best)
+}
+fun Iterable<__T>.minOf<__T, __R: Comparable<__R>>(selector: (__T) -> __R): __R {
+    var best: __R? = null
+    for item in this {
+        let value = selector(item)
+        if best == null or value.compareTo(requireValue(best)) < 0 { best = value }
+    }
+    return requireValue(best)
+}
+fun Iterable<__T>.onEach<__T>(action: (__T) -> Unit): MutableList<__T> {
+    let out = MutableList<__T>()
+    for item in this {
+        action(item)
+        out.add(item)
+    }
+    return out
+}
+fun Iterable<__T>.mapNotNull<__T, __R>(transform: (__T) -> __R?): MutableList<__R> {
+    let out = MutableList<__R>()
+    for item in this {
+        let value = transform(item)
+        if value != null { out.add(requireValue(value)) }
+    }
+    return out
+}
+fun MutableList<__T?>.filterNotNull<__T>(): MutableList<__T> {
+    let out = MutableList<__T>()
+    for item in this {
+        if item != null { out.add(requireValue(item)) }
+    }
+    return out
+}
+fun Iterable<MutableList<__T>>.flatten<__T>(): MutableList<__T> {
+    let out = MutableList<__T>()
+    for inner in this {
+        for item in inner { out.add(item) }
+    }
+    return out
+}
+fun Iterable<__T>.chunked<__T>(size: Int): MutableList<MutableList<__T>> {
+    let out = MutableList<MutableList<__T>>()
+    var current = MutableList<__T>()
+    for item in this {
+        current.add(item)
+        if current.size() == size {
+            out.add(current)
+            current = MutableList<__T>()
+        }
+    }
+    if current.size() > 0 { out.add(current) }
+    return out
+}
+fun Iterable<__T>.windowed<__T>(size: Int): MutableList<MutableList<__T>> {
+    let items = MutableList<__T>()
+    for item in this { items.add(item) }
+    let out = MutableList<MutableList<__T>>()
+    var start = 0
+    while start + size <= items.size() {
+        let window = MutableList<__T>()
+        var index = start
+        while index < start + size {
+            window.add(items[index])
+            index += 1
+        }
+        out.add(window)
+        start += 1
+    }
+    return out
+}
+fun Iterable<__T>.associate<__T, __K, __V>(transform: (__T) -> Pair<__K, __V>): __LinkedHashMap<__K, __V> {
+    let out = __LinkedHashMap<__K, __V>()
+    for item in this {
+        let pair = transform(item)
+        out.put(pair.first, pair.second)
+    }
+    return out
+}
+fun Iterable<__T>.associateWith<__T, __V>(transform: (__T) -> __V): __LinkedHashMap<__T, __V> {
+    let out = __LinkedHashMap<__T, __V>()
+    for item in this { out.put(item, transform(item)) }
+    return out
+}
+fun Iterable<__T>.indexOfFirst<__T>(predicate: (__T) -> Bool): Int {
+    var index = 0
+    for item in this {
+        if predicate(item) { return index }
+        index += 1
+    }
+    return -1
+}
+fun Iterable<__T>.toList<__T>(): MutableList<__T> {
+    let out = MutableList<__T>()
+    for item in this { out.add(item) }
+    return out
+}
+fun Iterable<__T>.plus<__T>(other: Iterable<__T>): MutableList<__T> {
+    let out = MutableList<__T>()
+    for item in this { out.add(item) }
+    for item in other { out.add(item) }
+    return out
+}
+fun Iterable<__T>.plus<__T>(element: __T): MutableList<__T> {
+    let out = MutableList<__T>()
+    for item in this { out.add(item) }
+    out.add(element)
+    return out
+}
+fun Iterable<__T>.minus<__T>(other: MutableList<__T>): MutableList<__T> {
+    let out = MutableList<__T>()
+    for item in this {
+        if not other.contains(item) { out.add(item) }
+    }
+    return out
+}
+fun Iterable<__T>.intersect<__T>(other: Iterable<__T>): __LinkedHashSet<__T> {
+    let wanted = __LinkedHashSet<__T>()
+    for item in other { wanted.add(item) }
+    let out = __LinkedHashSet<__T>()
+    for item in this {
+        if wanted.contains(item) { out.add(item) }
+    }
+    return out
+}
+fun Iterable<__T>.union<__T>(other: Iterable<__T>): __LinkedHashSet<__T> {
+    let out = __LinkedHashSet<__T>()
+    for item in this { out.add(item) }
+    for item in other { out.add(item) }
+    return out
+}
+fun __Map<__K, __V>.keys<__K, __V>(): MutableList<__K> {
+    let out = MutableList<__K>()
+    for key in this.keySet() { out.add(key) }
+    return out
+}
+fun __Map<__K, __V>.entries<__K, __V>(): MutableList<__Entry<__K, __V>> {
+    let out = MutableList<__Entry<__K, __V>>()
+    for entry in this.entrySet() { out.add(entry) }
+    return out
+}
+fun __Map<__K, __V>.getOrElse<__K, __V>(key: __K, make: () -> __V): __V {
+    let existing: __V? = this.get(key)
+    if existing != null { return requireValue(existing) }
+    return make()
+}
+fun __Map<__K, __V>.map<__K, __V, __R>(transform: (__Entry<__K, __V>) -> __R): MutableList<__R> {
+    let out = MutableList<__R>()
+    for entry in this.entrySet() { out.add(transform(entry)) }
+    return out
+}
+fun __Map<__K, __V>.filter<__K, __V>(predicate: (__Entry<__K, __V>) -> Bool): __LinkedHashMap<__K, __V> {
+    let out = __LinkedHashMap<__K, __V>()
+    for entry in this.entrySet() {
+        if predicate(entry) { out.put(entry.getKey(), entry.getValue()) }
+    }
+    return out
+}
+fun __Map<__K, __V>.toList<__K, __V>(): MutableList<Pair<__K, __V>> {
+    let out = MutableList<Pair<__K, __V>>()
+    for entry in this.entrySet() { out.add(Pair(entry.getKey(), entry.getValue())) }
+    return out
+}
+fun Iterable<__T>.sortedWith<__T>(compare: (__T, __T) -> Int): MutableList<__T> {
+    let out = MutableList<__T>()
+    for item in this { out.add(item) }
+    return __mergeSort(out, compare)
+}
+fun Iterable<__T>.asReversed<__T>(): MutableList<__T> {
+    let items = MutableList<__T>()
+    for item in this { items.add(0, item) }
+    return items
+}
+fun Int.inv(): Int = this ^ -1
+fun Text.lastOrNull(): Char? = if this.length() == 0 { null } else { this.charAt(this.length() - 1) }
+fun __T.use<__T: AutoCloseable, __R>(block: (__T) -> __R): __R {
+    try {
+        return block(this)
+    } finally {
+        this.close()
+    }
+}
+fun Int.xor(other: Int): Int = this ^ other
+fun Int.shl(bits: Int): Int = this shl bits
+fun Int.shr(bits: Int): Int = this shr bits

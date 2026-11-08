@@ -1,0 +1,136 @@
+// Small syntax that everyday programs rely on.
+let a: Text? = "x"
+print(a!!.length)
+let any: Any = 1
+print(any !is Text)
+print(1 !in listOf(2))
+var i = 0
+i++
+i++
+i--
+print(i)
+class Box2(var n: Int)
+let box = Box2(1)
+box.n++
+print(box.n)
+let numbers = [1, 2]
+numbers[0]++
+print(numbers[0])
+print(1 shl 3)
+print(-8 ushr 28)
+print(5 & 3)
+print(5 | 2)
+print(5 ^ 1)
+print(5L shl 1)
+print(0xFF + 0b101 + 1_000)
+print(0x7FFFFFFFFF)
+var n = 0
+do { n += 1 } while n < 3
+print(n)
+outer@ for x in 0..2 {
+    for y in 0..2 {
+        if y == 1 { continue@outer }
+        if x == 2 { break@outer }
+        print("{x}{y}")
+    }
+}
+var w = 0
+loop@ while true {
+    w += 1
+    do {
+        if w > 2 { break@loop }
+    } while false
+}
+print(w)
+let parsed = try { Integer.parseInt("x") } catch (e: NumberFormatException) { -1 }
+print(parsed)
+let good = try { Integer.parseInt("5") } catch (e: NumberFormatException) { -1 } finally { print("done") }
+print(good)
+fun safe(text: Text): Int {
+    let value = try { Integer.parseInt(text) } catch (e: NumberFormatException) { return 0 }
+    return value * 2
+}
+print(safe("4"))
+print(safe("q"))
+/* a /* nested */ comment */
+let semi = 1; print(semi)
+val fixed = 2
+print(fixed)
+class Holder(val v: Int) { val w = v + 1 }
+print(Holder(1).w)
+if (fixed > 1) print("single")
+if (fixed > 5) print("no") else print("else")
+print(if (fixed > 1) "y" else "n")
+for (k in 0..1) print(k)
+fun unit(): Unit { print("u") }
+unit()
+fun nothing(): Nothing = throw IllegalStateException("x")
+try { nothing() } catch (e: IllegalStateException) { print(e.message) }
+fun bounded<T>(x: T): T where T: Comparable<T> = x
+print(bounded(1))
+print('a' + 1)
+print('c' - 'a')
+print('b' - 1)
+print("abc"[1])
+for ch in "hi" { print(ch) }
+print('5'.isDigit())
+print("abc".map { it.uppercaseChar() }.joinToString(""))
+print("a1b2".filter { it.isDigit() })
+print("aab".count { it == 'a' })
+print("abc".first())
+
+// Local functions.
+fun outerSum(limit: Int): Int {
+    fun fact(n: Int): Int = if n <= 1 { 1 } else { n * fact(n - 1) }
+    fun addLimit(x: Int): Int { return x + limit }
+    return addLimit(fact(3))
+}
+print(outerSum(10))
+
+// Receivers.
+let built = StringBuilder().apply { append("a") }
+print(built)
+print("abc".run { length })
+print(with("xy") { length + 1 })
+print(buildString {
+    append("p")
+    append(1)
+})
+class Conn { var closed = false
+    fun close() { closed = true } }
+println("printed")
+println()
+require(true)
+check(1 > 0)
+try { require(false, "bad") } catch (e: IllegalArgumentException) { print(e.message) }
+print(Triple(1, "a", 2.5).third)
+
+// Collection operations.
+let list = listOf(1, 2, 3, 4)
+print(list.count())
+print(list.count { it > 2 })
+print(list.getOrNull(9))
+print(listOf(5).single())
+print(list.maxOf { it * 2 })
+print(list.minOf { it + 1 })
+print(list.mapNotNull { if it > 2 { it } else { null } })
+print(listOf(listOf(1), listOf(2, 3)).flatten())
+print(list.chunked(3))
+print(list.windowed(3))
+print(list.associateWith { it * it }.get(3))
+print(list.associate { it to "v{it}" }.get(2))
+print(list.indexOfFirst { it == 3 })
+print(list + listOf(5))
+print(list + 5)
+print(list - listOf(1, 2))
+list += 9
+print(list.last())
+print(setOf(1, 2).intersect(setOf(2)))
+print(setOf(1).union(setOf(2)).size)
+let table = mapOf("a" to 1, "b" to 2)
+print(table.keys)
+print(table.entries.size)
+print(table.map { it.key + it.value })
+print(table.filter { it.value > 1 }.size)
+print(table.toList())
+print(table.getOrElse("z") { 7 })

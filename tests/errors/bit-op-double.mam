@@ -1,0 +1,2 @@
+// error: Bit operations need
+print(1.5 shl 1)

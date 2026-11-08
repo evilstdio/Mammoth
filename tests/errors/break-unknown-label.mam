@@ -1,0 +1,2 @@
+// error: No enclosing loop has this label
+while true { break@nope }

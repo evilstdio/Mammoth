@@ -1,0 +1,5 @@
+// error: A local function that uses outer variables cannot call itself
+fun f(a: Int): Int {
+    fun g(n: Int): Int = if n > a { n } else { g(n + 1) }
+    return g(0)
+}

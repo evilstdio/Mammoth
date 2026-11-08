@@ -1013,6 +1013,24 @@ Functions and methods can share a name when their parameter types differ. The ca
 
 `list.size`, `text.length` and a Java bean's `person.name` read like fields: Mammoth calls `size()` or `getName()` when there is no such field. An interface can declare `let name: Text`. A class answers it with a field of that name. `value.let { ... }`, `also`, `takeIf` and `takeUnless` work on any value, including with `?.`. `list.indices` and `list.lastIndex` give positions.
 
+### Small syntax
+
+`value!!` is `requireValue(value)`. `x !is Text`, `x !in list`, `i++` and `i--` work as in Kotlin. `shl`, `shr`, `ushr`, `&`, `|` and `^` work on `Int` and `Long`. Numbers can be written `0xFF`, `0b101` and `1_000_000`. `do { } while cond` runs its body first. `outer@ for ...` with `break@outer` or `continue@outer` leaves named loops. `/* */` comments nest. `val` means `let`. `if (ready) start()` and `if (a) 1 else 2` work without braces.
+
+`let x = try { parse() } catch (e: Exception) { 0 }` uses `try` as a value, on its own line.
+
+### Functions inside functions
+
+A `fun` can be declared inside another. If it uses nothing from around it, it can call itself. If it uses outer variables it cannot, yet, and it cannot have default arguments.
+
+### Class members
+
+`companion object { ... }` holds static members. `lateinit var name: Text` starts unset and throws if read before it is set. `let total: Int by lazy { compute() }` computes on first read and is not synchronized. `let area: Int get() = w * h` is computed on every read.
+
+### Receivers in lambdas
+
+`x.apply { ... }`, `x.run { ... }`, `with(x) { ... }` and `buildString { ... }` make the receiver's members available by name inside the block.
+
 ## Using Java
 
 Mammoth reads the JDK and the JARs on your `CLASSPATH` directly, so you can use Java classes without writing any declarations. Classes in `java.lang`, such as `Math`, `System`, `StringBuilder`, and `Thread`, are always available. Import other classes by their full name, or import a whole package with `*`.

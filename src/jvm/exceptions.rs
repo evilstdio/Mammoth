@@ -66,8 +66,8 @@ impl<'a> Emitter<'a> {
     }
 
     /// The number of `try` statements a `break` or `continue` stays inside.
-    pub(super) fn loop_try_depth(&self, method: &Method<'a>) -> usize {
-        let loops = method.loops.len();
+    /// How many active `try` blocks enclose the innermost `loops` loops.
+    pub(super) fn try_depth_for(&self, method: &Method<'a>, loops: usize) -> usize {
         method
             .tries
             .iter()

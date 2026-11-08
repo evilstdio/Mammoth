@@ -1945,11 +1945,22 @@ impl<'a> Emitter<'a> {
                     if method.loops.is_empty() {
                         return Err(at(*name, "Use break and continue only inside a loop."));
                     }
-                    let depth = self.loop_try_depth(method);
+                    // `break@outer` leaves the loop with that label.
+                    let target = match name.text.split_once('@') {
+                        Some((_, label)) => method
+                            .loop_labels
+                            .iter()
+                            .rev()
+                            .find(|(_, text)| *text == label)
+                            .map(|&(index, _)| index)
+                            .ok_or_else(|| at(*name, "No enclosing loop has this label."))?,
+                        None => method.loops.len() - 1,
+                    };
+                    let depth = self.try_depth_for(method, target + 1);
                     let exiting = self.exit_tries(method, depth)?;
                     let jump = method.jump();
                     self.resume_tries(method, exiting);
-                    let frame = method.loops.last_mut().unwrap();
+                    let frame = &mut method.loops[target];
                     if is_break {
                         frame.breaks.push(jump);
                     } else if let Some(target) = frame.continue_target {
@@ -2109,6 +2120,32 @@ impl<'a> Emitter<'a> {
                     } else {
                         return Err(at(*name, "This variable has not been defined here."));
                     };
+                    // `items += value` adds to a list held by a read-only name.
+                    if !mutable
+                        && let Expr::Arithmetic(left, rest) = expr
+                        && let (Expr::Variable(variable), [(Arithmetic::Add, value)]) =
+                            (left.as_ref(), rest.as_slice())
+                        && variable.text == name.text
+                        && (matches!(expected, Kind::MutableList(_))
+                            || matches!(expected, Kind::Java(_)))
+                    {
+                        let add = Name {
+                            text: "add",
+                            offset: name.offset,
+                        };
+                        let receiver: &'a Expr<'a> = left;
+                        let result = self.method_call(
+                            method,
+                            receiver,
+                            add,
+                            std::slice::from_ref(value),
+                            0,
+                        )?;
+                        if let Some(kind) = result {
+                            method.code.push(kind.pop_opcode());
+                        }
+                        continue;
+                    }
                     if !mutable {
                         return Err(at(
                             *name,
@@ -2149,6 +2186,35 @@ impl<'a> Emitter<'a> {
                         method.stack.pop();
                     } else if let Some(binding) = local {
                         method.access(expected.store(), binding.slot);
+                    }
+                }
+                Statement::Labeled(label, inner) => {
+                    method.loop_labels.push((method.loops.len(), label.text));
+                    let result = self.block(method, std::slice::from_ref(inner));
+                    method.loop_labels.pop();
+                    falls_through = result?;
+                }
+                Statement::DoWhile(name, body, condition) => {
+                    let header = method.code.len();
+                    method.frame(method.locals.len());
+                    method.loops.push(LoopFrame::new(None));
+                    let continues = self.scoped_block(method, body, &[]);
+                    let frame = method.loops.pop().unwrap();
+                    let reaches_test = continues? || !frame.continues.is_empty();
+                    if reaches_test {
+                        method.patch_branches(&frame.continues, name.offset)?;
+                        if !frame.continues.is_empty() {
+                            method.frame(method.locals.len());
+                        }
+                        for jump in self.branch_when(method, condition, true)? {
+                            method.patch_branch(jump, header, name.offset)?;
+                        }
+                    }
+                    if !frame.breaks.is_empty() {
+                        method.patch_branches(&frame.breaks, name.offset)?;
+                        method.frame(method.locals.len());
+                    } else if !reaches_test {
+                        falls_through = false;
                     }
                 }
                 Statement::While(name, condition, body) => {
@@ -3422,6 +3488,22 @@ impl<'a> Emitter<'a> {
                 let (list, mutable) = match kind {
                     Kind::List(list) => (list, false),
                     Kind::MutableList(list) => (list, true),
+                    Kind::Text => {
+                        let char_at = Name {
+                            text: "charAt",
+                            offset: receiver.offset(),
+                        };
+                        return self
+                            .call_method_on(
+                                method,
+                                kind,
+                                char_at,
+                                std::slice::from_ref(index.as_ref()),
+                                base,
+                                false,
+                            )?
+                            .ok_or_else(|| at(char_at, "charAt must give a value."));
+                    }
                     Kind::Object(_)
                     | Kind::Applied(_)
                     | Kind::Java(_)
@@ -3527,6 +3609,52 @@ impl<'a> Emitter<'a> {
                 };
                 let check: &'a Expr<'a> = Box::leak(Box::new(check));
                 self.expression(method, check, base)
+            }
+            Expr::TryValue(holder, probe, statement) => {
+                if !method.stack.is_empty() {
+                    return Err(at(
+                        *holder,
+                        "A try used as a value must be on its own line, as in let x = try { ... }.",
+                    ));
+                }
+                let crate::syntax::Statement::Try(_, body, ..) = statement.as_ref() else {
+                    unreachable!("the parser builds a try statement")
+                };
+                // The first value shows the type; its code is thrown away.
+                let saved = method.snapshot();
+                let variables = method.variables.len();
+                let kind = self
+                    .block(method, body.split_last().map_or(&[][..], |(_, rest)| rest))
+                    .and_then(|_| self.expression(method, probe, 0));
+                method.truncate_variables(variables);
+                method.restore(saved);
+                let kind = kind?;
+                if kind == Kind::Null {
+                    return Err(at(
+                        *holder,
+                        "Give this value a type, such as `let name: Text? = ...`.",
+                    ));
+                }
+                let slot = method.local(self.local_type(kind));
+                match kind {
+                    Kind::Long => method.code.push(0x09),
+                    Kind::Double => method.code.push(0x0e),
+                    kind if kind.is_reference() => method.code.push(0x01),
+                    _ => method.code.push(0x03),
+                }
+                method.access(kind.store(), slot);
+                method.max_stack = method.max_stack.max(base + kind.slots());
+                method.variables.push(Binding {
+                    name: holder.text,
+                    slot,
+                    kind,
+                    mutable: true,
+                });
+                let result = self.block(method, std::slice::from_ref(statement.as_ref()));
+                method.pop_variable();
+                result?;
+                method.access(kind.load(), slot);
+                Ok(kind)
             }
             Expr::Spread(inner) => Err(Error {
                 offset: inner.offset(),
@@ -3707,6 +3835,7 @@ impl<'a> Emitter<'a> {
                 | Kind::Java(_)
                 | Kind::Interface(_)
                 | Kind::AppliedInterface(_)
+                | Kind::MutableList(_)
         ) && !rest.is_empty()
         {
             // `a + b` calls `a.plus(b)` on an object.
@@ -3729,11 +3858,28 @@ impl<'a> Emitter<'a> {
                         (Arithmetic::Mul, true) => "multiply",
                         (Arithmetic::Div, true) => "divide",
                         (Arithmetic::Rem, true) => "remainder",
+                        (Arithmetic::Shl, _) => "shl",
+                        (Arithmetic::Shr, _) => "shr",
+                        (Arithmetic::Ushr, _) => "ushr",
+                        (Arithmetic::BitAnd, _) => "and",
+                        (Arithmetic::BitOr, _) => "or",
+                        (Arithmetic::BitXor, _) => "xor",
                     },
                     offset: right.offset(),
                 };
+                let argument = std::slice::from_ref(right);
+                if self.symbols.extensions.contains_key(name.text) {
+                    let attempt = method.snapshot();
+                    if let Ok(Some(Some(result))) =
+                        self.extension_on_stack(method, kind, name, argument, base, None)
+                    {
+                        kind = result;
+                        continue;
+                    }
+                    method.restore(attempt);
+                }
                 kind = self
-                    .call_method_on(method, kind, name, std::slice::from_ref(right), base, false)
+                    .call_method_on(method, kind, name, argument, base, false)
                     .map_err(|error| {
                         if error.message.contains("no method") {
                             Error {
@@ -3747,6 +3893,39 @@ impl<'a> Emitter<'a> {
                     .ok_or_else(|| at(name, "This operator method does not give a value."))?;
             }
             return Ok(kind);
+        }
+        if kind == Kind::Char
+            && let Some((&(operator, right), others)) = rest.split_first()
+        {
+            // `'a' + 1` is a Char and `'c' - 'a'` is an Int.
+            method.push_stack(Local::Int);
+            let rhs = self.expression(method, right, base + 1)?;
+            method.pop_stack();
+            let result = match (operator, rhs) {
+                (Arithmetic::Add, Kind::Int) => {
+                    method.code.extend([0x60, 0x92]); // iadd, i2c
+                    Kind::Char
+                }
+                (Arithmetic::Sub, Kind::Int) => {
+                    method.code.extend([0x64, 0x92]); // isub, i2c
+                    Kind::Char
+                }
+                (Arithmetic::Sub, Kind::Char) => {
+                    method.code.push(0x64); // isub
+                    Kind::Int
+                }
+                _ => {
+                    return Err(Error {
+                        offset: right.offset(),
+                        message: "A Char can only add or subtract an Int, or subtract a Char.",
+                    });
+                }
+            };
+            method.max_stack = method.max_stack.max(base + 2);
+            if others.is_empty() {
+                return Ok(result);
+            }
+            return self.arithmetic_tail(method, left, result, others, base);
         }
         if !kind.is_numeric() {
             let joins_text = matches!(rest.first(), Some((Arithmetic::Add, Expr::Text(..))));
@@ -3773,8 +3952,45 @@ impl<'a> Emitter<'a> {
                     },
                 });
             }
+            if matches!(
+                operator,
+                Arithmetic::Shl
+                    | Arithmetic::Shr
+                    | Arithmetic::Ushr
+                    | Arithmetic::BitAnd
+                    | Arithmetic::BitOr
+                    | Arithmetic::BitXor
+            ) && (kind == Kind::Double || rhs == Kind::Double)
+            {
+                return Err(Error {
+                    offset: right.offset(),
+                    message: "Bit operations need an Int or a Long.",
+                });
+            }
+            if matches!(
+                operator,
+                Arithmetic::Shl | Arithmetic::Shr | Arithmetic::Ushr
+            ) {
+                if rhs != Kind::Int {
+                    return Err(Error {
+                        offset: right.offset(),
+                        message: "The shift distance must be an Int.",
+                    });
+                }
+                let opcode: u8 = match operator {
+                    Arithmetic::Shl => 0x78,
+                    Arithmetic::Shr => 0x7a,
+                    _ => 0x7c,
+                };
+                method.code.push(opcode + u8::from(kind == Kind::Long));
+                continue;
+            }
             kind = self.widen_pair(method, kind, rhs, base);
             let opcode = match operator {
+                Arithmetic::Shl | Arithmetic::Shr | Arithmetic::Ushr => unreachable!(),
+                Arithmetic::BitAnd => 0x7e,
+                Arithmetic::BitOr => 0x80,
+                Arithmetic::BitXor => 0x82,
                 Arithmetic::Add => 0x60,
                 Arithmetic::Sub => 0x64,
                 Arithmetic::Mul => 0x68,
@@ -4265,6 +4481,16 @@ impl<'a> Emitter<'a> {
             );
         }
         let mut kind = self.expression(method, values, 0)?;
+        if kind == Kind::Text {
+            // Looping over text visits its characters.
+            let chars = Name {
+                text: "toCharArray",
+                offset: name.offset,
+            };
+            kind = self
+                .call_method_on(method, kind, chars, &[], 0, false)?
+                .expect("toCharArray returns a list");
+        }
         if self.is_java_map(kind) {
             // Looping over a map visits its entries.
             let entries = Name {
@@ -5112,6 +5338,8 @@ struct Method<'a> {
     captured: Vec<&'a str>,
     non_null_slots: Vec<u16>,
     loops: Vec<LoopFrame>,
+    /// Labels of enclosing loops, with the index each loop will have.
+    loop_labels: Vec<(usize, &'a str)>,
     tries: Vec<exceptions::TryContext<'a>>,
     /// Exception table entries: start, end, handler, catch type.
     exceptions: Vec<[u16; 4]>,
@@ -5151,6 +5379,7 @@ impl<'a> Method<'a> {
             captured: Vec::new(),
             non_null_slots: Vec::new(),
             loops: Vec::new(),
+            loop_labels: Vec::new(),
             tries: Vec::new(),
             exceptions: Vec::new(),
             frames: Vec::new(),

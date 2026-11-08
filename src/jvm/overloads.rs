@@ -5,6 +5,10 @@
 
 use super::{Emitter, Error, Expr, Kind, Method, Name, Signature, at};
 
+/// Stand-ins for a lambda's parameter count when none is written.
+const IMPLICIT_ONE: usize = usize::MAX;
+const IMPLICIT_ZERO: usize = usize::MAX - 1;
+
 impl<'a> Emitter<'a> {
     fn overloads_of(&self, name: &str) -> Option<&'a Vec<&'a str>> {
         let plain = name.split('<').next().unwrap_or(name);
@@ -25,7 +29,22 @@ impl<'a> Emitter<'a> {
                     other => (None, other),
                 };
                 if let Expr::Lambda(lambda) = value {
-                    return (label, None, Some(lambda.parameters.len()));
+                    // Without a written list, `{ ... }` takes one `it` or none.
+                    let arity = if lambda.explicit {
+                        lambda.parameters.len()
+                    } else {
+                        let mut names = std::collections::HashSet::new();
+                        super::globals::collect_statements(&lambda.body, &mut names);
+                        if let Some(value) = &lambda.value {
+                            super::globals::collect_expr(value, &mut names);
+                        }
+                        if names.contains("it") {
+                            IMPLICIT_ONE
+                        } else {
+                            IMPLICIT_ZERO
+                        }
+                    };
+                    return (label, None, Some(arity));
                 }
                 let saved = method.snapshot();
                 let allow_null = std::mem::take(&mut self.allow_null);
@@ -48,7 +67,16 @@ impl<'a> Emitter<'a> {
             return matches!(parameter, Kind::Nullable(_)).then_some(1);
         }
         if types.contains_parameter(parameter) {
-            return Some(4);
+            if matches!(parameter.non_null(), Kind::TypeParameter(_)) {
+                return Some(6);
+            }
+            // A generic shape like `Iterable<T>` must really match.
+            let mut map = std::collections::HashMap::new();
+            self.symbols.infer_from(parameter, actual, &mut map);
+            let target = types.replace_parameters(parameter, &map);
+            return (!types.contains_parameter(target)
+                && (types.same_kind(actual, target) || self.symbols.fits(actual, target)))
+            .then_some(3);
         }
         match (actual, parameter) {
             (Kind::Int, Kind::Long) | (Kind::Long, Kind::Double) => return Some(1),
@@ -79,8 +107,14 @@ impl<'a> Emitter<'a> {
             if let Some(arity) = lambda {
                 if let Kind::Function(function) = parameter.non_null() {
                     let wanted = self.symbols.types.function_type(function);
-                    if wanted.parameters.len() != *arity {
-                        return None;
+                    match *arity {
+                        IMPLICIT_ONE if wanted.parameters.len() != 1 => return None,
+                        IMPLICIT_ZERO if wanted.parameters.len() > 1 => return None,
+                        // A `{ ... }` ignoring its input can still take one.
+                        IMPLICIT_ZERO => total += wanted.parameters.len() as u32,
+                        IMPLICIT_ONE => {}
+                        written if written != wanted.parameters.len() => return None,
+                        _ => {}
                     }
                 } else if !self.symbols.types.contains_parameter(parameter)
                     && !matches!(parameter.non_null(), Kind::Java(_))

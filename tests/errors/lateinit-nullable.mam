@@ -1,0 +1,2 @@
+// error: lateinit needs
+class K { lateinit var a: Text? }

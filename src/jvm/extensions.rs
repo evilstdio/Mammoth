@@ -66,7 +66,17 @@ impl<'a> Emitter<'a> {
         let (plain, explicit) = super::native_generics::call_name(name);
         if !matches!(
             plain.text,
-            "listOf" | "mutableListOf" | "setOf" | "mapOf" | "mutableMapOf"
+            "listOf"
+                | "mutableListOf"
+                | "setOf"
+                | "mapOf"
+                | "mutableMapOf"
+                | "arrayOf"
+                | "intArrayOf"
+                | "longArrayOf"
+                | "doubleArrayOf"
+                | "charArrayOf"
+                | "booleanArrayOf"
         ) || self.symbols.functions.contains_key(plain.text)
             || method.binding(plain).is_some()
         {
@@ -77,6 +87,12 @@ impl<'a> Emitter<'a> {
             offset: name.offset,
         };
         let list = || Expr::List(name.offset, args.to_vec());
+        if plain.text.ends_with("rrayOf") {
+            let literal: &'a Expr<'a> = Box::leak(Box::new(list()));
+            return self
+                .expression_as(method, literal, base, expected)
+                .map(Some);
+        }
         let is_map = matches!(plain.text, "mapOf" | "mutableMapOf");
         let call = if args.is_empty() {
             let written = name.text.get(plain.text.len()..).unwrap_or("");
@@ -189,6 +205,10 @@ impl<'a> Emitter<'a> {
             Ok(result) => return Ok(result),
             Err(error) => error,
         };
+        // A member that exists but cannot be used here must not be replaced.
+        if member_error.message.contains("protected") || member_error.message.contains("private") {
+            return Err(member_error);
+        }
         method.restore(snapshot);
         self.allow_null = false;
         // Learn the receiver's type without keeping the code.

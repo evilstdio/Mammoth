@@ -1427,7 +1427,11 @@ impl<'a> Symbols<'a> {
         Some(match expr {
             Expr::Named(_, value) => return self.static_kind(value, scope),
             Expr::Temp(kind, _) => *kind,
-            Expr::StaticHelper(..) | Expr::Jump(_) | Expr::Progression(..) | Expr::Spread(_) => {
+            Expr::StaticHelper(..)
+            | Expr::Jump(_)
+            | Expr::Progression(..)
+            | Expr::Spread(_)
+            | Expr::TryValue(..) => {
                 return None;
             }
             Expr::InRange(..) => Kind::Bool,
