@@ -1,0 +1,9 @@
+// error: must handle every subclass
+sealed class S
+class A extends S
+class B extends S
+fun f(s: S) {
+    when s {
+        is A -> { print(1) }
+    }
+}

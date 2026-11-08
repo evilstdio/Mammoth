@@ -24,6 +24,7 @@ mod classes;
 mod collections;
 mod defaults;
 mod exceptions;
+mod extensions;
 mod function_types;
 mod generic_methods;
 mod generics;
@@ -1106,6 +1107,7 @@ fn new_emitter<'a>(
         bridge_offset: None,
         candidate_depth: 0,
         explicit_java_arguments: Vec::new(),
+        in_extension: false,
         pending_fields: Vec::new(),
         pending_statics: Vec::new(),
     }
@@ -1347,7 +1349,15 @@ fn emit_class<'a>(
         (symbols.globals.len(), program.functions.as_slice(), 0x0008) // package-private static
     };
     let mut bridge_count = 0;
+    let program_lines = emitter.line_starts;
     for function in functions {
+        // The built-in library has no lines in this program's source.
+        emitter.line_starts = if function.in_prelude {
+            &[]
+        } else {
+            program_lines
+        };
+        emitter.in_extension = function.extension_of.is_some();
         emitter.bridge_offset = Some(function.name.offset);
         let signature = &symbols.functions_for(owner)[function.name.text];
         let plain_entry = owner.is_some_and(|index| {
@@ -1645,6 +1655,8 @@ struct References {
 struct Symbols<'a> {
     types: Types<'a>,
     functions: HashMap<&'a str, Signature<'a>>,
+    /// For each extension function name, the hidden functions declared for it.
+    extensions: HashMap<&'a str, Vec<&'a str>>,
     methods: Rc<Vec<HashMap<&'a str, Signature<'a>>>>,
     constructors: Rc<Vec<Signature<'a>>>,
     interfaces: Rc<Vec<HashMap<&'a str, Signature<'a>>>>,
@@ -1807,6 +1819,8 @@ struct Emitter<'a> {
     /// Type arguments written at the Java call being resolved, as in
     /// `Collections.emptyList<Text>()`.
     explicit_java_arguments: Vec<Kind>,
+    /// Whether the function being compiled is an extension function.
+    in_extension: bool,
     /// Instance fields whose starting values have not run yet, while a
     /// constructor runs field initializers and init blocks.
     pending_fields: Vec<&'a str>,
@@ -2338,6 +2352,17 @@ impl<'a> Emitter<'a> {
                     .java_construct(method, kind, name, args, base)
                     .map(Some);
             }
+            // Inside an extension function, the receiver's members are in scope.
+            if self.in_extension {
+                let this = Name {
+                    text: "this",
+                    offset: name.offset,
+                };
+                if method.binding(this).is_some() {
+                    let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
+                    return self.method_call_expected(method, receiver, name, args, base, expected);
+                }
+            }
             return Err(at(name, "This function or class has not been defined."));
         };
         let args = self.complete_args(
@@ -2440,6 +2465,26 @@ impl<'a> Emitter<'a> {
         {
             return self.super_call_expected(method, *variable, name, args, base, expected);
         }
+        if self
+            .symbols
+            .extensions
+            .contains_key(name.text.split('<').next().unwrap_or(name.text))
+        {
+            return self.member_or_extension(method, receiver, name, args, base, expected);
+        }
+        self.member_call(method, receiver, name, args, base, expected)
+    }
+
+    /// A call on a receiver, looking only at the receiver's own members.
+    fn member_call(
+        &mut self,
+        method: &mut Method<'a>,
+        receiver: &'a Expr<'a>,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+        expected: Option<Kind>,
+    ) -> Result<Option<Kind>, Error> {
         let allow_null = std::mem::take(&mut self.allow_null);
         if let Some(class) = self.static_class(method, receiver)
             && let Some(result) = self.static_call(method, class, name, args, base)?
@@ -2986,6 +3031,15 @@ impl<'a> Emitter<'a> {
         {
             return Ok(kind);
         }
+        // Inside an extension function, the receiver's fields are in scope.
+        let this = Name {
+            text: "this",
+            offset: name.offset,
+        };
+        if self.in_extension && method.binding(this).is_some() {
+            let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
+            return self.field_access(method, receiver, name, base);
+        }
         Err(at(name, "This variable has not been defined here."))
     }
 
@@ -3011,6 +3065,19 @@ impl<'a> Emitter<'a> {
     }
 
     fn expression_as(
+        &mut self,
+        method: &mut Method<'a>,
+        expr: &'a Expr<'a>,
+        base: u16,
+        expected: Option<Kind>,
+    ) -> Result<Kind, Error> {
+        let live = method.locals.len();
+        let result = self.value_as(method, expr, base, expected);
+        method.locals.truncate(live);
+        result
+    }
+
+    fn value_as(
         &mut self,
         method: &mut Method<'a>,
         expr: &'a Expr<'a>,
@@ -3245,6 +3312,20 @@ impl<'a> Emitter<'a> {
         base: u16,
     ) -> Result<Kind, Error> {
         debug_assert_eq!(base as usize, method.stack.len());
+        // Locals made while computing a value end with it, so a branch that
+        // made some still joins cleanly with one that did not.
+        let live = method.locals.len();
+        let result = self.value(method, expr, base);
+        method.locals.truncate(live);
+        result
+    }
+
+    fn value(
+        &mut self,
+        method: &mut Method<'a>,
+        expr: &'a Expr<'a>,
+        base: u16,
+    ) -> Result<Kind, Error> {
         // Only a call or field read can use permission to return null.
         let allow_null = std::mem::take(&mut self.allow_null);
         if matches!(
@@ -3324,6 +3405,10 @@ impl<'a> Emitter<'a> {
                 method.code.push(0x01); // aconst_null
                 Ok(Kind::Null)
             }
+            Expr::Jump(statement) => Err(Error {
+                offset: statement.offset(),
+                message: "This jump cannot be used as a value here. Use it after ?: or in a when or if branch.",
+            }),
             Expr::Named(label, _) => Err(at(
                 *label,
                 "Named arguments work only in calls to functions written in Mammoth.",
@@ -3960,7 +4045,17 @@ impl<'a> Emitter<'a> {
         if let Expr::Range(start, end, inclusive) = values {
             return self.loop_range(method, name, start, end, *inclusive, body);
         }
-        let kind = self.expression(method, values, 0)?;
+        let mut kind = self.expression(method, values, 0)?;
+        if self.is_java_map(kind) {
+            // Looping over a map visits its entries.
+            let entries = Name {
+                text: "entrySet",
+                offset: name.offset,
+            };
+            kind = self
+                .call_method_on(method, kind, entries, &[], 0, false)?
+                .expect("entrySet returns a set");
+        }
         if matches!(kind, Kind::Java(_)) || self.symbols.types.native_class(kind).is_some() {
             let types = &self.symbols.types;
             let view = self

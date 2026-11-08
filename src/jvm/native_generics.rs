@@ -476,6 +476,8 @@ impl<'a> Emitter<'a> {
             }
         }
         if let (Some(pattern), Some(actual)) = (signature.result, expected) {
+            // `Bad<T>` for an `Outcome<Int>` destination is seen as `Outcome<T>`.
+            let pattern = self.symbols.supertype_view(actual, pattern);
             self.symbols
                 .types
                 .infer_parameters(pattern, actual, &mut map);

@@ -100,7 +100,7 @@ fn collect_program<'a>(program: &'a Program<'a>, mut used: HashSet<&'a str>) -> 
 }
 
 /// Present in a name set to record the names of calls too.
-const RECORD_CALLS: &str = "\0record-calls";
+pub(super) const RECORD_CALLS: &str = "\0record-calls";
 
 /// Present in a name set while walking only the code that runs immediately,
 /// since a lambda's body runs later, when it is called.
@@ -534,6 +534,7 @@ fn lambda_expr<'a>(expr: &'a Expr<'a>, used: &mut dyn FnMut(&'a Lambda<'a>)) {
 pub(super) fn collect_expr<'a>(expr: &'a Expr<'a>, used: &mut HashSet<&'a str>) {
     match expr {
         Expr::Named(_, value) => collect_expr(value, used),
+        Expr::Jump(statement) => collect_statements(std::slice::from_ref(statement), used),
         Expr::Temp(..) => {}
         Expr::StaticHelper(_, _, args) => {
             for arg in args {

@@ -1,0 +1,6 @@
+// error: break and continue cannot leave the middle of a call
+fun f(a: Int, b: Int) { }
+let missing: Int? = null
+while true {
+    f(1, missing ?: break)
+}

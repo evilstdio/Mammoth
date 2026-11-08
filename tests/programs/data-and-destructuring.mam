@@ -1,0 +1,73 @@
+// Single-expression functions, data class copy and destructuring.
+import java.util.HashMap
+import java.util.LinkedHashMap
+
+fun twice(x: Int): Int = x * 2
+fun greeting(name: Text = "you"): Text = "hi {name}"
+fun choose(flag: Bool): Int = if flag { 1 } else { 2 }
+class Box(let n: Int) {
+    fun doubled(): Int = n * 2
+    static fun unit(): Int = 1
+}
+fun Text.excited(): Text = this + "!"
+print(twice(4))
+print(greeting())
+print(choose(false))
+print(Box(4).doubled() + Box.unit())
+print("a".excited())
+
+data class Person(let name: Text, let age: Int, var city: Text = "none")
+let ann = Person("ann", 30)
+print(ann)
+print(ann.copy(age = 31))
+print(ann.copy(name = "bo", city = "oslo"))
+print(ann.copy() == ann)
+print(ann)
+
+let (who, years) = ann
+print("{who} {years}")
+let (_, howOld, place) = ann
+print("{howOld} {place}")
+var (first, second) = Person("x", 1)
+first = first + "y"
+second += 1
+print("{first} {second}")
+
+fun split(): Person = Person("made", 9)
+let (madeName, madeAge) = split()
+print(madeName.length() + madeAge)
+
+data class Tagged<T>(let tag: Text, let value: T)
+let tagged = Tagged("t", 5)
+let (tagName, tagValue) = tagged
+print("{tagName} {tagValue + 1}")
+print(tagged.copy(value = 6).value + 1)
+
+let people = MutableList<Person>()
+people.add(ann)
+people.add(Person("cy", 5))
+for (name, age) in people { print("{name}:{age}") }
+
+// Looping over a map, with and without destructuring.
+let scores = LinkedHashMap<Text, Int>()
+scores.put("a", 1)
+scores.put("b", 2)
+for (key, value) in scores { print("{key}={value + 1}") }
+for entry in scores { print(entry.getKey()) }
+let counts = HashMap<Int, Text>()
+counts.put(3, "three")
+for (key, value) in counts { print(value.length() + key) }
+
+// Pair, withIndex, zip and partition.
+let pair = Pair("left", 2)
+print(pair)
+print(pair.first.length() + pair.second)
+let (l, r) = pair
+print("{l} {r}")
+for (index, word) in ["x", "y"].withIndex() { print("{index}{word}") }
+let zipped = ["a", "b", "c"].zip([1, 2].toMutableList())
+print(zipped.size())
+for (letter, digit) in zipped { print("{letter}{digit + 1}") }
+let (even, odd) = [1, 2, 3, 4, 5].partition { it % 2 == 0 }
+print(even)
+print(odd)

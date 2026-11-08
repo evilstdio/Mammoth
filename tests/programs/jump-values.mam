@@ -1,0 +1,80 @@
+// return, throw, break and continue can stand where a value is expected.
+fun length(text: Text?): Int {
+    let present = text ?: return -1
+    return present.length()
+}
+print(length("abc"))
+print(length(null))
+
+fun must(text: Text?): Text {
+    return text ?: throw IllegalArgumentException("missing")
+}
+print(must("ok"))
+try {
+    print(must(null))
+} catch (e: IllegalArgumentException) {
+    print(e.getMessage())
+}
+
+let items = ["a", "skip", "b", "stop", "c"]
+fun nullable(text: Text): Text? {
+    if text == "skip" or text == "stop" { return null }
+    return text
+}
+for item in items {
+    let value = nullable(item) ?: continue
+    print(value)
+}
+var index = 0
+while index < items.size() {
+    let value = nullable(items[index]) ?: break
+    print(value)
+    index += 1
+}
+print(index)
+
+// Numbers stay usable after the check.
+fun doubled(value: Int?): Int {
+    let number = value ?: return 0
+    return number * 2
+}
+print(doubled(4))
+print(doubled(null))
+
+// In when and if branches.
+fun classify(n: Int): Text {
+    let word = when {
+        n < 0 -> throw IllegalArgumentException("negative")
+        n == 0 -> return "zero"
+        else -> "positive"
+    }
+    return word + "!"
+}
+print(classify(0))
+print(classify(1))
+try {
+    print(classify(-1))
+} catch (e: IllegalArgumentException) {
+    print(e.getMessage())
+}
+
+// Inside a call argument, return and throw still work.
+fun add(a: Int, b: Int): Int { return a + b }
+fun sumOrNegative(a: Int?, b: Int?): Int {
+    return add(a ?: return -1, b ?: return -2)
+}
+print(sumOrNegative(1, 2))
+print(sumOrNegative(null, 2))
+print(sumOrNegative(1, null))
+
+// Through finally.
+fun withFinally(text: Text?): Int {
+    try {
+        let value = text ?: return 0
+        return value.length()
+    } finally {
+        print("finally")
+    }
+}
+print(withFinally("xy"))
+print(withFinally(null))

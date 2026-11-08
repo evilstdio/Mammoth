@@ -1,0 +1,9 @@
+// error: every subclass
+sealed class S
+class A extends S
+class B extends S
+fun f(s: S): Int {
+    return when s {
+        is A -> 1
+    }
+}

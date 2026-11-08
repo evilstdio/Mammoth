@@ -282,14 +282,21 @@ impl<'a> Emitter<'a> {
         }
 
         // Variables from the enclosing method that the body uses.
-        let mut used = HashSet::new();
+        // Calling a captured function value is a use of it too.
+        let mut used = HashSet::from([globals::RECORD_CALLS]);
+        if self.in_extension {
+            used.insert("this");
+        }
         globals::collect_statements(&lambda.body, &mut used);
         if let Some(value) = &lambda.value {
             globals::collect_expr(value, &mut used);
         }
         let mut captures: Vec<Binding<'a>> = used
             .into_iter()
-            .filter(|name| *name != "this" && !parameters.iter().any(|(param, _)| param == name))
+            .filter(|name| {
+                (self.in_extension || *name != "this")
+                    && !parameters.iter().any(|(param, _)| param == name)
+            })
             .filter_map(|name| {
                 let mut binding = method.binding(Name {
                     text: name,

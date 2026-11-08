@@ -1,4 +1,4 @@
-// error: unless it names every constant of an enum
+// error: every constant of an enum
 // null matches no constant, so a nullable subject still needs else.
 enum Light { RED, GREEN }
 let maybe: Light? = Light.RED

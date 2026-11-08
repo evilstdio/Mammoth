@@ -12,3 +12,4 @@ export fun pairUp<T>(value: T, count: Int = 2): MutableList<T> {
 class Shape(let width: Int = 2, let height: Int = 3) {
     fun area(scale: Int = 1): Int { return width * height * scale }
 }
+export fun Text.exclaim(times: Int = 2): Text { return this + "!".repeat(times) }

@@ -1,0 +1,4 @@
+// error: Check for null
+fun Text.shout(): Text { return this }
+let x: Text? = null
+print(x.shout())

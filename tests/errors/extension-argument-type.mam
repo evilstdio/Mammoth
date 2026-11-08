@@ -1,0 +1,3 @@
+// error: Expected Text here
+fun Text.join2(other: Text): Text { return this + other }
+print("a".join2(1))

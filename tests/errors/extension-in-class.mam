@@ -1,0 +1,4 @@
+// error: Extension functions must be declared at the top level
+class K {
+    fun Text.f(): Int { return 1 }
+}

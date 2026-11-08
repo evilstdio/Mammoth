@@ -249,13 +249,139 @@ impl<'a> Emitter<'a> {
                 method.frame(method.locals.len());
             }
         }
-        let falls_through = !ends.is_empty() || !has_else;
+        let covered =
+            !has_else && subject.is_some_and(|subject| self.exhaustive(subject.kind, branches));
+        if !has_else
+            && !covered
+            && subject.is_some_and(|subject| self.sealed_type(subject.kind.non_null()).is_some())
+        {
+            return Err(at(
+                keyword,
+                "This when must handle every subclass of the sealed type, or have an else branch.",
+            ));
+        }
+        if covered {
+            self.throw_unmatched(method, method.stack.len() as u16);
+        }
+        let falls_through = !ends.is_empty() || !(has_else || covered);
         if !ends.is_empty() {
             method.patch_branches(&ends, keyword.offset)?;
             method.frame(method.locals.len());
         }
         method.locals.truncate(locals);
         Ok(falls_through)
+    }
+
+    /// Reached only if a subclass or constant was added after compiling.
+    fn throw_unmatched(&mut self, method: &mut Method<'a>, base: u16) {
+        let error = self.pool_class("java/lang/IncompatibleClassChangeError");
+        instruction(&mut method.code, 0xbb, error); // new
+        method.code.push(0x59); // dup
+        let init = self.pool.member_for(10, error, "<init>", "()V");
+        instruction(&mut method.code, 0xb7, init); // invokespecial
+        method.code.push(0xbf); // athrow
+        method.max_stack = method.max_stack.max(base + 2);
+    }
+
+    /// Whether the branches cover every value of a subject of type `kind`.
+    /// A nullable subject also needs a `null` branch.
+    fn exhaustive(&self, kind: Kind, branches: &[WhenBranch<'_>]) -> bool {
+        if matches!(kind, Kind::Nullable(_))
+            && !branches
+                .iter()
+                .flat_map(|branch| &branch.conditions)
+                .any(|condition| matches!(condition, WhenCondition::Value(Expr::Null(_))))
+        {
+            return false;
+        }
+        let kind = kind.non_null();
+        self.covers_enum(kind, branches) || self.covers_sealed(kind, branches)
+    }
+
+    /// The class or interface of a sealed type, as `(is_interface, index)`.
+    fn sealed_type(&self, kind: Kind) -> Option<(bool, usize)> {
+        let symbols = self.symbols;
+        if let Some(class) = symbols.types.native_class(kind) {
+            return symbols.class_declarations[class]
+                .is_sealed
+                .then_some((false, class));
+        }
+        let interface = symbols.types.interface_root(kind)?;
+        symbols.interface_declarations[interface]
+            .is_sealed
+            .then_some((true, interface))
+    }
+
+    fn covers_sealed(&self, kind: Kind, branches: &[WhenBranch<'_>]) -> bool {
+        let Some(root) = self.sealed_type(kind) else {
+            return false;
+        };
+        let types = &self.symbols.types;
+        let named: Vec<(bool, usize)> = branches
+            .iter()
+            .flat_map(|branch| &branch.conditions)
+            .filter_map(|condition| match condition {
+                WhenCondition::Is(annotation) => resolve_type(&self.type_scope, *annotation).ok(),
+                _ => None,
+            })
+            .filter_map(|kind| {
+                let kind = kind.non_null();
+                types
+                    .native_class(kind)
+                    .map(|class| (false, class))
+                    .or_else(|| {
+                        types
+                            .interface_root(kind)
+                            .map(|interface| (true, interface))
+                    })
+            })
+            .collect();
+        self.sealed_covered(root, &named)
+    }
+
+    fn sealed_covered(&self, target: (bool, usize), named: &[(bool, usize)]) -> bool {
+        if named.contains(&target) {
+            return true;
+        }
+        let symbols = self.symbols;
+        let sealed = match target {
+            (false, class) => symbols.class_declarations[class].is_sealed,
+            (true, interface) => symbols.interface_declarations[interface].is_sealed,
+        };
+        if !sealed {
+            return false;
+        }
+        let mut children = Vec::new();
+        match target {
+            (false, class) => {
+                for (child, parent) in symbols.superclasses.iter().enumerate() {
+                    if *parent == Some(class) {
+                        children.push((false, child));
+                    }
+                }
+            }
+            (true, interface) => {
+                let extends = |kinds: &[Kind]| {
+                    kinds
+                        .iter()
+                        .any(|&kind| symbols.types.interface_root(kind) == Some(interface))
+                };
+                for (child, kinds) in symbols.implementations.iter().enumerate() {
+                    if extends(kinds) {
+                        children.push((false, child));
+                    }
+                }
+                for (child, kinds) in symbols.interface_parents.iter().enumerate() {
+                    if extends(kinds) {
+                        children.push((true, child));
+                    }
+                }
+            }
+        }
+        !children.is_empty()
+            && children
+                .iter()
+                .all(|&child| self.sealed_covered(child, named))
     }
 
     /// Whether the branches name every constant of the enum type `kind`, a
@@ -328,10 +454,10 @@ impl<'a> Emitter<'a> {
         let locals = method.locals.len();
         let subject = self.when_subject(method, subject)?;
         // Branches naming every constant of an enum subject need no else.
-        if !has_else && !subject.is_some_and(|subject| self.covers_enum(subject.kind, branches)) {
+        if !has_else && !subject.is_some_and(|subject| self.exhaustive(subject.kind, branches)) {
             return Err(at(
                 location,
-                "A when used as a value needs an else branch, unless it names every constant of an enum.",
+                "A when used as a value needs an else branch, unless it covers every constant of an enum or every subclass of a sealed type.",
             ));
         }
         let mut result: Option<Option<Kind>> = expected.map(Some);
@@ -352,6 +478,12 @@ impl<'a> Emitter<'a> {
                         location,
                         "Each branch of this when must end with a value.",
                     )),
+                    Some(value) if matches!(value.as_ref(), Expr::Jump(_)) => {
+                        let Expr::Jump(statement) = value.as_ref() else {
+                            unreachable!()
+                        };
+                        self.jump_value(method, statement, offset).map(|()| None)
+                    }
                     Some(value) => match result {
                         Some(Some(kind)) => self
                             .expression_as(method, value, base, Some(kind))
@@ -394,14 +526,7 @@ impl<'a> Emitter<'a> {
             }
         }
         if !has_else {
-            // Unreachable unless the enum gained a constant after compiling.
-            let error = self.pool_class("java/lang/IncompatibleClassChangeError");
-            instruction(&mut method.code, 0xbb, error); // new
-            method.code.push(0x59); // dup
-            let init = self.pool.member_for(10, error, "<init>", "()V");
-            instruction(&mut method.code, 0xb7, init); // invokespecial
-            method.code.push(0xbf); // athrow
-            method.max_stack = method.max_stack.max(base + 2);
+            self.throw_unmatched(method, base);
         }
         method.locals.truncate(locals);
         let result = result.flatten();
@@ -421,6 +546,31 @@ impl<'a> Emitter<'a> {
     }
 
     /// `receiver?.member` produces a nullable value when the receiver is null.
+    fn safe_member(
+        &mut self,
+        method: &mut Method<'a>,
+        receiver: Kind,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+        expected: Option<Kind>,
+    ) -> Result<Option<Kind>, Error> {
+        if let Some(result) = self.generic_method(
+            method,
+            super::generic_methods::MemberCall {
+                receiver,
+                name,
+                args,
+                base,
+                expected,
+                special: false,
+            },
+        )? {
+            return Ok(result);
+        }
+        self.call_method_on_expected(method, receiver, name, args, base, true, expected)
+    }
+
     pub(super) fn safe_access_expected(
         &mut self,
         method: &mut Method<'a>,
@@ -449,35 +599,26 @@ impl<'a> Emitter<'a> {
         if !present_kind.is_reference() {
             self.unbox_element(method, present_kind, base);
         }
+        let live = method.locals.len();
         let result = match inner {
             Expr::MethodCall(_, name, args) => {
-                if let Some(result) = self.generic_method(
-                    method,
-                    super::generic_methods::MemberCall {
-                        receiver: present_kind,
-                        name: *name,
-                        args,
-                        base,
-                        expected: expected.map(Kind::non_null),
-                        special: false,
-                    },
-                )? {
-                    result
-                } else {
-                    self.call_method_on_expected(
-                        method,
-                        present_kind,
-                        *name,
-                        args,
-                        base,
-                        true,
-                        expected.map(Kind::non_null),
-                    )?
+                let expected = expected.map(Kind::non_null);
+                let attempt = method.snapshot();
+                match self.safe_member(method, present_kind, *name, args, base, expected) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        method.restore(attempt);
+                        self.extension_on_stack(method, present_kind, *name, args, base, expected)
+                            .map_err(|_| error)?
+                            .ok_or(error)?
+                    }
                 }
             }
             Expr::Field(_, name) => Some(self.field_on(method, present_kind, *name, base, true)?),
             _ => unreachable!(),
         };
+        // The null path joins here without any local this call made.
+        method.locals.truncate(live);
         let nullable = result.map(|kind| kind.nullable().unwrap_or(kind));
         if let Some(kind) = result
             && !kind.is_reference()
@@ -516,6 +657,31 @@ impl<'a> Emitter<'a> {
     }
 
     /// The fallback of an elvis expression is evaluated only for a null value.
+    /// Emits a `return`, `throw`, `break` or `continue` used as a value.
+    pub(super) fn jump_value(
+        &mut self,
+        method: &mut Method<'a>,
+        statement: &'a crate::syntax::Statement<'a>,
+        offset: usize,
+    ) -> Result<(), Error> {
+        use crate::syntax::Statement;
+        if matches!(statement, Statement::Break(_) | Statement::Continue(_))
+            && !method.stack.is_empty()
+        {
+            return Err(Error {
+                offset,
+                message: "break and continue cannot leave the middle of a call. Move this to its own line.",
+            });
+        }
+        // The jump leaves operands behind, which return and throw discard.
+        let operands = std::mem::take(&mut method.stack);
+        let live = method.locals.len();
+        let result = self.block(method, std::slice::from_ref(statement));
+        method.locals.truncate(live);
+        method.stack = operands;
+        result.map(|_| ())
+    }
+
     pub(super) fn elvis(
         &mut self,
         method: &mut Method<'a>,
@@ -537,6 +703,18 @@ impl<'a> Emitter<'a> {
         let present = method.code.len();
         instruction(&mut method.code, 0xc7, 0); // ifnonnull
         method.code.push(0x57);
+        if let Expr::Jump(statement) = fallback {
+            // Only a present value continues past this point.
+            self.jump_value(method, statement, value.offset())?;
+            method.patch_branch(present, method.code.len(), value.offset())?;
+            method.push_stack(self.local_type(kind));
+            method.frame(method.locals.len());
+            method.pop_stack();
+            if !target.is_reference() {
+                self.unbox_element(method, target, base);
+            }
+            return Ok(target);
+        }
         let actual = self.expression_as(method, fallback, base, Some(target))?;
         let result = if actual == Kind::Null || actual == kind {
             kind

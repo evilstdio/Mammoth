@@ -14,6 +14,7 @@ struct Scope<'a> {
     classes: Vec<usize>,
     interfaces: Vec<usize>,
     functions: HashMap<&'a str, Signature<'a>>,
+    extensions: HashMap<&'a str, Vec<&'a str>>,
     imports: HashMap<&'a str, JavaTarget<'a>>,
     java: HashMap<&'a str, JavaTarget<'a>>,
     java_fields: HashMap<&'a str, (Kind, JavaTarget<'a>)>,
@@ -88,6 +89,7 @@ pub(super) fn resolve<'a>(
             classes: own_classes,
             interfaces: own_interfaces,
             functions: HashMap::new(),
+            extensions: HashMap::new(),
             imports: HashMap::new(),
             java: HashMap::new(),
             java_fields: HashMap::new(),
@@ -172,11 +174,11 @@ pub(super) fn resolve<'a>(
                 if let Some(kind) = kind {
                     declare_type(&mut scopes[owner].types, import.local, kind)
                         .map_err(|error| (owner, error))?;
-                } else if !programs[source]
-                    .functions
-                    .iter()
-                    .any(|function| function.exported && function.name.text == import.name.text)
-                {
+                } else if !programs[source].functions.iter().any(|function| {
+                    function.exported
+                        && (function.name.text == import.name.text
+                            || function.extension_of == Some(import.name.text))
+                }) {
                     return Err((
                         owner,
                         at(
@@ -284,6 +286,15 @@ pub(super) fn resolve<'a>(
                     .chain(program.java.iter().map(|binding| &binding.function))
             };
             scope.functions = resolve_functions(top_level(), 255, &scope.types, false)?;
+            for function in &program.functions {
+                if let Some(plain) = function.extension_of {
+                    scope
+                        .extensions
+                        .entry(plain)
+                        .or_default()
+                        .push(function.name.text);
+                }
+            }
             for function in top_level() {
                 if scope.types.names.contains_key(function.name.text) {
                     return Err(at(
@@ -373,6 +384,48 @@ pub(super) fn resolve<'a>(
             let Some(&source) = modules.get(import.module.as_str()) else {
                 continue;
             };
+            let extensions: Vec<_> = programs[source]
+                .functions
+                .iter()
+                .filter(|function| {
+                    function.exported && function.extension_of == Some(import.name.text)
+                })
+                .collect();
+            for function in &extensions {
+                let signature = scopes[source].functions[function.name.text].clone();
+                scopes[owner]
+                    .functions
+                    .insert(function.name.text, signature);
+                scopes[owner].imports.insert(
+                    function.name.text,
+                    JavaTarget {
+                        class: import.module.clone(),
+                        member: function.name.text,
+                    },
+                );
+                scopes[owner]
+                    .extensions
+                    .entry(import.local.text)
+                    .or_default()
+                    .push(function.name.text);
+                let prefix = format!("{}$default$", function.name.text);
+                for helper in &programs[source].functions {
+                    if helper.name.text.starts_with(prefix.as_str()) {
+                        let signature = scopes[source].functions[helper.name.text].clone();
+                        scopes[owner].functions.insert(helper.name.text, signature);
+                        scopes[owner].imports.insert(
+                            helper.name.text,
+                            JavaTarget {
+                                class: import.module.clone(),
+                                member: helper.name.text,
+                            },
+                        );
+                    }
+                }
+            }
+            if !extensions.is_empty() {
+                continue;
+            }
             let Some(function) = programs[source]
                 .functions
                 .iter()
@@ -744,10 +797,12 @@ pub(super) fn resolve<'a>(
         interface_declarations: Rc::new(interfaces),
         own_classes: Vec::new(),
         own_interfaces: Vec::new(),
+        extensions: HashMap::new(),
     };
     for (owner, (scope, program)) in scopes.iter().zip(programs).enumerate() {
         template.types = scope.types.clone();
         template.own_classes = scope.classes.clone();
+        template.own_interfaces = scope.interfaces.clone();
         template
             .check_interfaces(&scope.interfaces)
             .map_err(|error| (owner, error))?;
@@ -828,6 +883,7 @@ pub(super) fn resolve<'a>(
         .map(|scope| Symbols {
             types: scope.types,
             functions: scope.functions,
+            extensions: scope.extensions,
             java: scope.java,
             imports: scope.imports,
             java_fields: scope.java_fields,

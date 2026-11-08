@@ -11,6 +11,9 @@ impl Error {
 }
 
 pub fn diagnostic(path: &str, source: &str, offset: usize, message: &str) -> String {
+    if offset > source.len() || !source.is_char_boundary(offset) {
+        return format!("{path}: in the built-in library: {message}");
+    }
     let before = &source[..offset];
     let line = before.bytes().filter(|&byte| byte == b'\n').count() + 1;
     let start = before.rfind('\n').map_or(0, |index| index + 1);
@@ -99,6 +102,8 @@ pub struct Interface<'a> {
     /// The interfaces this interface extends, such as `Source<T>`.
     pub extends: Vec<Name<'a>>,
     pub methods: Vec<Function<'a>>,
+    /// `sealed interface`: implementations must be in the same file.
+    pub is_sealed: bool,
 }
 
 pub struct Class<'a> {
@@ -111,6 +116,8 @@ pub struct Class<'a> {
     /// The superclass and the arguments passed to its constructor.
     pub extends: Option<(Name<'a>, Vec<Expr<'a>>)>,
     pub is_abstract: bool,
+    /// `sealed class`: subclasses must be declared in the same file.
+    pub is_sealed: bool,
     pub fields: Vec<Field<'a>>,
     pub methods: Vec<Function<'a>>,
     /// `static var`/`static let` fields, initialized once in declaration order.
@@ -158,6 +165,11 @@ pub struct Function<'a> {
     pub protected: bool,
     pub is_abstract: bool,
     pub is_override: bool,
+    /// For `fun Text.shout()`, the written name `shout`. The function's own
+    /// name is then a hidden one, and `this` is its first parameter.
+    pub extension_of: Option<&'a str>,
+    /// Whether this came from the built-in library rather than the program.
+    pub in_prelude: bool,
 }
 
 pub struct Annotation<'a> {
@@ -390,6 +402,9 @@ pub enum Expr<'a> {
     Range(Box<Expr<'a>>, Box<Expr<'a>>, bool),
     /// `parameter = value` in a call.
     Named(Name<'a>, Box<Expr<'a>>),
+    /// `return`, `throw`, `break` or `continue` where a value could go, such
+    /// as `value ?: return 0`. It never produces a value.
+    Jump(Box<Statement<'a>>),
     /// A value the compiler stored in a local while rewriting a call.
     Temp(Kind, u16),
     /// A compiler-made call to a hidden static method of a class.
@@ -410,6 +425,7 @@ impl Expr<'_> {
             | Self::Null(offset) => *offset,
             Self::Named(name, _) | Self::StaticHelper(_, name, _) => name.offset,
             Self::Temp(..) => 0,
+            Self::Jump(statement) => statement.offset(),
             Self::Variable(name) | Self::Call(name, _) => name.offset,
             Self::MethodCall(receiver, _, _)
             | Self::Index(receiver, _)
@@ -447,13 +463,178 @@ pub enum Part<'a> {
     Value(Expr<'a>),
 }
 
+/// Gives a data class `component1()` and so on, and `copy` with every
+/// property optional, unless the class declares those itself.
+fn add_data_members<'a>(class: &mut Class<'a>) {
+    let properties: Vec<(Name<'a>, Name<'a>)> = class
+        .parameters
+        .iter()
+        .filter(|(parameter, _)| {
+            class
+                .fields
+                .iter()
+                .any(|field| field.name.text == parameter.text)
+        })
+        .copied()
+        .collect();
+    let offset = class.name.offset;
+    let name_at = |text: &'a str| Name { text, offset };
+    let this = || Expr::Variable(name_at("this"));
+    let method = |name: Name<'a>,
+                  parameters: Vec<(Name<'a>, Name<'a>)>,
+                  result: Name<'a>,
+                  value: Expr<'a>| Function {
+        annotations: Vec::new(),
+        type_parameters: Vec::new(),
+        bounds: Vec::new(),
+        exported: false,
+        foreign_name: None,
+        name,
+        parameters,
+        result: Some(result),
+        body: vec![Statement::Return(name, Some(value))],
+        private: false,
+        protected: false,
+        is_abstract: false,
+        is_override: false,
+        extension_of: None,
+        in_prelude: false,
+    };
+    let declared = |methods: &[Function<'a>], name: &str| {
+        methods.iter().any(|method| method.name.text == name)
+    };
+    for (index, (property, annotation)) in properties.iter().enumerate() {
+        let text: &'a str = Box::leak(format!("component{}", index + 1).into_boxed_str());
+        if !declared(&class.methods, text) {
+            let value = Expr::Field(Box::new(this()), *property);
+            class
+                .methods
+                .push(method(name_at(text), Vec::new(), *annotation, value));
+        }
+    }
+    // A constructor parameter that is not a property cannot be copied.
+    if properties.len() != class.parameters.len() || declared(&class.methods, "copy") {
+        return;
+    }
+    let result: &'a str = if class.type_parameters.is_empty() {
+        class.name.text
+    } else {
+        let arguments: Vec<&str> = class.type_parameters.iter().map(|name| name.text).collect();
+        Box::leak(format!("{}<{}>", class.name.text, arguments.join(", ")).into_boxed_str())
+    };
+    let arguments = properties
+        .iter()
+        .map(|(name, _)| Expr::Variable(*name))
+        .collect();
+    let call = Expr::Call(class.name, arguments);
+    class.methods.push(method(
+        name_at("copy"),
+        properties.clone(),
+        name_at(result),
+        call,
+    ));
+    for (index, (property, annotation)) in properties.iter().enumerate() {
+        let text: &'a str = Box::leak(format!("copy$default${index}").into_boxed_str());
+        let value = Expr::Field(Box::new(this()), *property);
+        class
+            .methods
+            .push(method(name_at(text), Vec::new(), *annotation, value));
+    }
+}
+
+/// The built-in library. Only the functions a program mentions are kept.
+const PRELUDE: &str = include_str!("prelude.mam");
+
+/// Whether `source` calls a member named `name`, as `.name(` or `.name {`.
+fn calls_member(source: &str, name: &str) -> bool {
+    source.match_indices(name).any(|(at, _)| {
+        let after = source[at + name.len()..].chars().next();
+        source[..at].ends_with('.') && !after.is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
+    })
+}
+
+fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
+    let parsed = parse_source(PRELUDE).expect("the built-in library parses");
+    let extensions: Vec<&str> = parsed
+        .functions
+        .iter()
+        .filter_map(|function| function.extension_of)
+        .collect();
+    let destructuring = ["let (", "var (", "for ("]
+        .iter()
+        .any(|text| source.contains(text));
+    if !destructuring
+        && !source.contains("Pair(")
+        && !extensions.iter().any(|name| calls_member(source, name))
+    {
+        return;
+    }
+    let declared: Vec<&str> = program.functions.iter().map(|f| f.name.text).collect();
+    let user_pair = program
+        .classes
+        .iter()
+        .any(|class| class.name.text == "Pair");
+    let destructures = ["let (", "var (", "for ("]
+        .iter()
+        .any(|text| source.contains(text));
+    let wanted: Vec<&str> = parsed
+        .functions
+        .iter()
+        .filter(|function| {
+            function.extension_of.is_some_and(|name| {
+                let needs_pair = matches!(name, "zip" | "partition");
+                name == "toMutableList"
+                    || (destructures && name.starts_with("component"))
+                    || (calls_member(source, name) && !(needs_pair && user_pair))
+            })
+        })
+        .map(|function| function.name.text)
+        .collect();
+    let needs_pair = !user_pair
+        && (calls_member(source, "zip")
+            || calls_member(source, "partition")
+            || source.contains("Pair("));
+    let needs_indexed = calls_member(source, "withIndex");
+    for class in parsed.classes {
+        if (class.name.text == "Pair" && needs_pair)
+            || (class.name.text == "__Indexed" && needs_indexed)
+        {
+            program.classes.push(class);
+        }
+    }
+    let keep = |name: &str| {
+        name.starts_with("__")
+            || wanted.iter().any(|wanted| {
+                name == *wanted
+                    || name
+                        .strip_prefix(wanted)
+                        .is_some_and(|rest| rest.starts_with("$default$"))
+            })
+    };
+    for mut function in parsed.functions {
+        if keep(function.name.text) && !declared.contains(&function.name.text) {
+            function.in_prelude = true;
+            program.functions.push(function);
+        }
+    }
+    program.imports.extend(parsed.imports);
+}
+
 pub fn parse(source: &str) -> Result<Program<'_>, Error> {
+    let mut program = parse_source(source)?;
+    add_prelude(&mut program, source);
+    Ok(program)
+}
+
+fn parse_source(source: &str) -> Result<Program<'_>, Error> {
     let mut parser = Parser {
         source,
         offset: 0,
         in_header: false,
         pending_defaults: Vec::new(),
         finished_helpers: Vec::new(),
+        top_level_function: false,
+        extra_statements: Vec::new(),
     };
     let mut program = Program {
         source_name: String::new(),
@@ -491,7 +672,9 @@ pub fn parse(source: &str) -> Result<Program<'_>, Error> {
         } else if name.text == "import" && identifier(parser.rest(), parser.offset).is_some() {
             program.imports.push(parser.import()?);
         } else if name.text == "export" && parser.take_word("fun") {
+            parser.top_level_function = true;
             let mut function = parser.function(true)?;
+            parser.top_level_function = false;
             function.exported = true;
             program.functions.push(function);
             for mut helper in parser.finished_helpers.drain(..) {
@@ -515,23 +698,35 @@ pub fn parse(source: &str) -> Result<Program<'_>, Error> {
         } else if name.text == "java" && parser.take_word("interface") {
             program.java_classes.push(parser.java_class(true)?);
         } else if name.text == "fun" {
+            parser.top_level_function = true;
             program.functions.push(parser.function(true)?);
+            parser.top_level_function = false;
             program.functions.append(&mut parser.finished_helpers);
         } else if name.text == "class" {
             program.classes.push(parser.class(false, false, false)?);
         } else if name.text == "abstract" && parser.take_word("class") {
             program.classes.push(parser.class(true, false, false)?);
+        } else if name.text == "sealed" && parser.take_word("class") {
+            let mut class = parser.class(true, false, false)?;
+            class.is_sealed = true;
+            program.classes.push(class);
+        } else if name.text == "sealed" && parser.take_word("interface") {
+            let mut interface = parser.interface()?;
+            interface.is_sealed = true;
+            program.interfaces.push(interface);
         } else if name.text == "open" && parser.take_word("class") {
             program.classes.push(parser.class(false, false, false)?);
         } else if name.text == "data" && parser.take_word("class") {
-            program.classes.push(parser.class(false, true, false)?);
+            let mut class = parser.class(false, true, false)?;
+            add_data_members(&mut class);
+            program.classes.push(class);
         } else if name.text == "enum" && identifier(parser.rest(), parser.offset).is_some() {
             parser.take_word("class");
             program.classes.push(parser.class(false, false, true)?);
         } else if name.text == "interface" {
             program.interfaces.push(parser.interface()?);
         } else {
-            program.body.push(parser.statement(name, 0)?);
+            program.body.append(&mut parser.statement_list(name, 0)?);
         }
         if !annotations.is_empty() {
             if program.classes.len() > previous.0 {
@@ -563,6 +758,10 @@ struct Parser<'a> {
     pending_defaults: Vec<(usize, Expr<'a>, usize, usize)>,
     /// Helpers for the function just parsed, for its caller to file.
     finished_helpers: Vec<Function<'a>>,
+    /// Whether the function being parsed may be an extension function.
+    top_level_function: bool,
+    /// Statements that follow the one just parsed, from destructuring.
+    extra_statements: Vec<Statement<'a>>,
 }
 
 impl<'a> Parser<'a> {
@@ -794,9 +993,10 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        self.expect("{", "Expected '{' after the interface name.")?;
+        // An interface without members can leave out its braces.
+        let has_body = self.take("{");
         let mut methods = Vec::new();
-        while !self.take("}") {
+        while has_body && !self.take("}") {
             let annotations = self.annotations()?;
             let is_override = self.take_word("override");
             if !self.take_word("fun") {
@@ -823,6 +1023,7 @@ impl<'a> Parser<'a> {
             name,
             extends,
             methods,
+            is_sealed: false,
         })
     }
 
@@ -959,6 +1160,7 @@ impl<'a> Parser<'a> {
                 implements,
                 extends,
                 is_abstract,
+                is_sealed: false,
                 fields,
                 methods: Vec::new(),
                 static_fields: Vec::new(),
@@ -1196,6 +1398,7 @@ impl<'a> Parser<'a> {
             implements,
             extends,
             is_abstract,
+            is_sealed: false,
             fields,
             methods,
             static_fields,
@@ -1208,7 +1411,40 @@ impl<'a> Parser<'a> {
     }
 
     fn function(&mut self, has_body: bool) -> Result<Function<'a>, Error> {
+        self.skip_space();
+        let start = self.offset;
+        let receiver = match self.annotation() {
+            Ok(annotation) if self.rest().starts_with('.') => {
+                self.offset += 1;
+                Some(annotation)
+            }
+            _ => {
+                self.offset = start;
+                None
+            }
+        };
+        if receiver.is_some() && !self.top_level_function {
+            return Err(self.error("Extension functions must be declared at the top level."));
+        }
         let name = self.name()?;
+        let (name, extension_of) = match receiver {
+            Some(receiver) => {
+                let label: String = receiver
+                    .text
+                    .chars()
+                    .map(|ch| if ch.is_alphanumeric() { ch } else { '_' })
+                    .collect();
+                let hidden = Box::leak(format!("{label}$ext${}", name.text).into_boxed_str());
+                (
+                    Name {
+                        text: hidden,
+                        offset: name.offset,
+                    },
+                    Some(name.text),
+                )
+            }
+            None => (name, None),
+        };
         let mut type_parameters = Vec::new();
         let mut bounds = Vec::new();
         if self.take("<") {
@@ -1222,7 +1458,23 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect("(", "Expected '(' after the function name.")?;
-        let parameters = self.parameters()?;
+        let mut parameters = self.parameters()?;
+        if let Some(receiver) = receiver {
+            parameters.insert(
+                0,
+                (
+                    Name {
+                        text: "this",
+                        offset: name.offset,
+                    },
+                    receiver,
+                ),
+            );
+            // Default values count the receiver as parameter zero.
+            for default in &mut self.pending_defaults {
+                default.0 += 1;
+            }
+        }
         let result = if self.take(":") {
             Some(self.annotation()?)
         } else {
@@ -1230,6 +1482,18 @@ impl<'a> Parser<'a> {
         };
         let helpers = self.default_helpers(name.text, &parameters, &type_parameters, &bounds);
         self.finished_helpers.extend(helpers);
+        let body = if has_body && self.take_assignment() {
+            if result.is_none() {
+                return Err(self.error(
+                    "Give this function a result type, such as fun twice(x: Int): Int = x * 2.",
+                ));
+            }
+            vec![Statement::Return(name, Some(self.expression()?))]
+        } else if has_body {
+            self.block(0)?
+        } else {
+            Vec::new()
+        };
         Ok(Function {
             annotations: Vec::new(),
             type_parameters,
@@ -1239,11 +1503,13 @@ impl<'a> Parser<'a> {
             name,
             parameters,
             result,
-            body: if has_body { self.block(0)? } else { Vec::new() },
+            body,
             private: false,
             protected: false,
             is_abstract: false,
             is_override: false,
+            extension_of,
+            in_prelude: false,
         })
     }
 
@@ -1284,6 +1550,8 @@ impl<'a> Parser<'a> {
                         protected: false,
                         is_abstract: false,
                         is_override: false,
+                        extension_of: None,
+                        in_prelude: false,
                     });
                 }
                 "new" => {
@@ -1429,6 +1697,8 @@ impl<'a> Parser<'a> {
                     protected: false,
                     is_abstract: false,
                     is_override: false,
+                    extension_of: None,
+                    in_prelude: false,
                 }
             })
             .collect()
@@ -1570,7 +1840,7 @@ impl<'a> Parser<'a> {
                 return Err(self.error("Expected '}' to close the block."));
             }
             let name = self.name()?;
-            body.push(self.statement(name, depth)?);
+            body.append(&mut self.statement_list(name, depth)?);
         }
         Ok(body)
     }
@@ -1636,6 +1906,15 @@ impl<'a> Parser<'a> {
         if depth == 64 && matches!(name.text, "for" | "if" | "while") {
             return Err(self.error("Blocks can be nested up to 64 levels."));
         }
+        if matches!(name.text, "let" | "var") && self.take("(") {
+            let mutable = name.text == "var";
+            let names = self.destructured_names()?;
+            if !self.take_assignment() {
+                return Err(self.error("Expected '=' after the names."));
+            }
+            let value = self.expression()?;
+            return Ok(self.destructure(name, names, value, mutable));
+        }
         if matches!(name.text, "let" | "var") {
             let variable = self.binding()?;
             let annotation = if self.take(":") {
@@ -1672,7 +1951,7 @@ impl<'a> Parser<'a> {
                     if depth + 1 >= 64 {
                         return Err(self.error("Blocks can be nested up to 64 levels."));
                     }
-                    Some(vec![self.statement(keyword, depth + 1)?])
+                    Some(self.statement_list(keyword, depth + 1)?)
                 } else {
                     Some(self.block(depth + 1)?)
                 }
@@ -1689,7 +1968,18 @@ impl<'a> Parser<'a> {
             ));
         }
         if name.text == "for" {
-            let variable = self.binding()?;
+            let names = if self.take("(") {
+                Some(self.destructured_names()?)
+            } else {
+                None
+            };
+            let variable = match &names {
+                Some(_) => Name {
+                    text: Box::leak(format!("__item{}", name.offset).into_boxed_str()),
+                    offset: name.offset,
+                },
+                None => self.binding()?,
+            };
             let keyword = self.name()?;
             if keyword.text != "in" {
                 return Err(Error {
@@ -1703,7 +1993,12 @@ impl<'a> Parser<'a> {
             } else if self.take_word("until") {
                 values = Expr::Range(Box::new(values), Box::new(self.header_expression()?), false);
             }
-            return Ok(Statement::For(variable, values, self.block(depth + 1)?));
+            let mut body = self.block(depth + 1)?;
+            if let Some(names) = names {
+                let prefix = self.component_bindings(variable, &names, false);
+                body.splice(0..0, prefix);
+            }
+            return Ok(Statement::For(variable, values, body));
         }
         if let Some(operator) = self.compound_operator() {
             let value = self.expression()?;
@@ -1766,6 +2061,62 @@ impl<'a> Parser<'a> {
             Expr::Index(list, index) => Statement::SetIndex(*list, *index, operator, value),
             _ => unreachable!("only members are assigned here"),
         })
+    }
+
+    /// The names in `(first, _, third)`, after its opening parenthesis.
+    fn destructured_names(&mut self) -> Result<Vec<Name<'a>>, Error> {
+        self.list(")", Self::binding)
+    }
+
+    fn component_bindings(
+        &self,
+        holder: Name<'a>,
+        names: &[Name<'a>],
+        mutable: bool,
+    ) -> Vec<Statement<'a>> {
+        names
+            .iter()
+            .enumerate()
+            .filter(|(_, name)| name.text != "_")
+            .map(|(index, name)| {
+                let component = Name {
+                    text: Box::leak(format!("component{}", index + 1).into_boxed_str()),
+                    offset: name.offset,
+                };
+                let call =
+                    Expr::MethodCall(Box::new(Expr::Variable(holder)), component, Vec::new());
+                Statement::Binding(*name, call, mutable, None)
+            })
+            .collect()
+    }
+
+    /// `let (a, b) = value` becomes a hidden binding and one per name.
+    fn destructure(
+        &mut self,
+        keyword: Name<'a>,
+        names: Vec<Name<'a>>,
+        value: Expr<'a>,
+        mutable: bool,
+    ) -> Statement<'a> {
+        let holder = Name {
+            text: Box::leak(format!("__pair{}", keyword.offset).into_boxed_str()),
+            offset: keyword.offset,
+        };
+        let bindings = self.component_bindings(holder, &names, mutable);
+        self.extra_statements.extend(bindings);
+        Statement::Binding(holder, value, false, None)
+    }
+
+    /// Reads one statement and any others it expands into.
+    fn statement_list(
+        &mut self,
+        name: Name<'a>,
+        depth: usize,
+    ) -> Result<Vec<Statement<'a>>, Error> {
+        let first = self.statement(name, depth)?;
+        let mut statements = vec![first];
+        statements.append(&mut self.extra_statements);
+        Ok(statements)
     }
 
     fn compound_operator(&mut self) -> Option<Arithmetic> {
@@ -1887,7 +2238,7 @@ impl<'a> Parser<'a> {
                 (self.block(depth + 1)?, None)
             } else {
                 let name = self.name()?;
-                (vec![self.statement(name, depth + 1)?], None)
+                (self.statement_list(name, depth + 1)?, None)
             };
             branches.push(WhenBranch {
                 conditions,
@@ -1968,7 +2319,7 @@ impl<'a> Parser<'a> {
             }
             self.offset = start;
             let name = self.name()?;
-            body.push(self.statement(name, depth + 1)?);
+            body.append(&mut self.statement_list(name, depth + 1)?);
         }
         self.in_header = outer;
         Ok((body, value))
@@ -2416,6 +2767,9 @@ impl<'a> Parser<'a> {
                 let (subject, branches) = self.when_parts(depth + 1, true)?;
                 return Ok(Expr::When(offset, subject.map(Box::new), branches));
             }
+            if matches!(name.text, "return" | "throw" | "break" | "continue") {
+                return Ok(Expr::Jump(Box::new(self.statement(name, depth + 1)?)));
+            }
             if !matches!(name.text, "true" | "false" | "null")
                 && !self.newline_ahead()
                 && self.take("(")
@@ -2538,6 +2892,8 @@ impl<'a> Parser<'a> {
             in_header: false,
             pending_defaults: Vec::new(),
             finished_helpers: Vec::new(),
+            top_level_function: false,
+            extra_statements: Vec::new(),
         };
         let expr = inner.logical(0, 1).ok()?;
         inner.skip_space();

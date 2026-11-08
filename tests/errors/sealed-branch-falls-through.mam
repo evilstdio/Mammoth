@@ -1,0 +1,10 @@
+// error: must return a value on every path
+sealed class S
+class A extends S
+class B extends S
+fun f(s: S): Int {
+    when s {
+        is A -> { return 1 }
+        is B -> { print(2) }
+    }
+}

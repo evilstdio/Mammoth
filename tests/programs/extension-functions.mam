@@ -1,0 +1,71 @@
+// Extension functions add methods to existing types.
+import java.util.ArrayList
+
+fun Text.shout(): Text { return this.toUpperCase() + "!" }
+fun Text.twice(separator: Text = "-"): Text { return this + separator + this }
+fun Int.squared(): Int { return this * this }
+fun Text?.orEmpty2(): Text { return this ?: "" }
+print("hi".shout())
+print("a".twice())
+print("a".twice(separator = "+"))
+print(5.squared())
+print(3.squared().squared())
+let nothing: Text? = null
+print(nothing.orEmpty2().length())
+print("x".orEmpty2())
+
+// The receiver's members are in scope without `this`.
+fun Text.firstLetter(): Text { return substring(0, 1) }
+print("hello".firstLetter())
+
+class Point(let x: Int, var y: Int) {
+    fun sum(): Int { return x + y }
+}
+fun Point.describe(): Text { return "{x},{y} sum {sum()}" }
+fun Point.moved(by: Int = 1): Point { return Point(x + by, y + by) }
+print(Point(1, 2).describe())
+print(Point(1, 2).moved().moved(by = 3).describe())
+
+// A member always wins over an extension of the same name.
+fun Point.sum(): Int { return -1 }
+print(Point(1, 2).sum())
+
+// Generic receivers.
+fun MutableList<T>.second<T>(): T { return this[1] }
+fun ArrayList<T>.lastItem<T>(): T { return this.get(this.size() - 1) }
+let names = MutableList<Text>()
+names.add("a")
+names.add("b")
+print(names.second().length())
+let scores = ArrayList<Int>()
+scores.add(4)
+scores.add(6)
+print(scores.lastItem() + 1)
+
+// Extensions of the same name on different types.
+fun Int.kind(): Text { return "int" }
+fun Text.kind(): Text { return "text" }
+fun Point.kind(): Text { return "point" }
+print(1.kind())
+print("a".kind())
+print(Point(0, 0).kind())
+
+// Extensions on a parent type apply to subclasses, and the nearest wins.
+open class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+class Cat(name: Text) extends Animal(name)
+fun Animal.call(): Text { return "hey " + name }
+fun Dog.call(): Text { return "good dog " + name }
+print(Cat("tom").call())
+print(Dog("rex").call())
+
+// Chains, statements, safe calls and lambdas.
+print("ab".shout().twice().length())
+let ignored = "ignored"
+ignored.shout()
+let maybe: Text? = "yo"
+print(maybe?.shout())
+let none: Text? = null
+print(none?.shout())
+let f = { value: Text -> value.shout() }
+print(f("z"))

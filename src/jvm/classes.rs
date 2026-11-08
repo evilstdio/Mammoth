@@ -709,6 +709,26 @@ impl<'a> Symbols<'a> {
             {
                 return Err(at(*name, "An enum cannot be extended."));
             }
+            if let (Some(parent), Some((name, _))) = (parent, &class.extends)
+                && self.class_declarations[parent].is_sealed
+                && !self.own_classes.contains(&parent)
+            {
+                return Err(at(
+                    *name,
+                    "A sealed class can only be extended in the file that declares it.",
+                ));
+            }
+            for (&kind, name) in self.implementations[index].iter().zip(&class.implements) {
+                if let Some(interface) = self.types.interface_root(kind)
+                    && self.interface_declarations[interface].is_sealed
+                    && !self.own_interfaces.contains(&interface)
+                {
+                    return Err(at(
+                        *name,
+                        "A sealed interface can only be implemented in the file that declares it.",
+                    ));
+                }
+            }
             for method in &class.methods {
                 let signature = &self.methods[index][method.name.text];
                 self.check_generic_java_override(index, method, signature)?;
@@ -1385,7 +1405,7 @@ impl<'a> Symbols<'a> {
         Some(match expr {
             Expr::Named(_, value) => return self.static_kind(value, scope),
             Expr::Temp(kind, _) => *kind,
-            Expr::StaticHelper(..) => return None,
+            Expr::StaticHelper(..) | Expr::Jump(_) => return None,
             Expr::Int(..) => Kind::Int,
             Expr::Long(..) => Kind::Long,
             Expr::Char(..) => Kind::Char,

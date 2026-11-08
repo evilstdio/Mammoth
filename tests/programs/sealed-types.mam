@@ -1,0 +1,99 @@
+// Sealed classes and interfaces make `when` exhaustive without `else`.
+sealed class Expr
+data class Num(let value: Int) extends Expr
+data class Add(let left: Expr, let right: Expr) extends Expr
+class Neg(let inner: Expr) extends Expr
+
+fun eval(expr: Expr): Int {
+    return when expr {
+        is Num -> expr.value
+        is Add -> eval(expr.left) + eval(expr.right)
+        is Neg -> -eval(expr.inner)
+    }
+}
+print(eval(Add(Num(2), Neg(Num(5)))))
+
+// A when statement with a return in every branch ends the function.
+fun describe(expr: Expr): Text {
+    when expr {
+        is Num -> { return "number" }
+        is Add -> { return "sum" }
+        is Neg -> { return "negation" }
+    }
+}
+print(describe(Num(1)))
+print(describe(Neg(Num(1))))
+
+// A sealed child can be covered through its own subclasses.
+sealed interface Shape
+sealed interface Round extends Shape
+class Circle(let r: Int) implements Round
+class Dot implements Round
+class Box2(let w: Int) implements Shape
+
+fun area(shape: Shape): Int {
+    return when shape {
+        is Circle -> shape.r * 3
+        is Dot -> 0
+        is Box2 -> shape.w * shape.w
+    }
+}
+fun size(shape: Shape): Int {
+    return when shape {
+        is Round -> 1
+        is Box2 -> 2
+    }
+}
+print(area(Circle(2)) + area(Dot()) + area(Box2(3)))
+print(size(Dot()) + size(Box2(1)))
+
+// Sealed classes can carry fields, methods and generics.
+sealed class Outcome<T>(let tag: Text) {
+    fun label(): Text { return "[" + tag + "]" }
+}
+class Good<T>(let value: T) extends Outcome<T>("good")
+class Bad<T>(let reason: Text) extends Outcome<T>("bad")
+
+fun show(outcome: Outcome<Int>): Text {
+    return when outcome {
+        is Good<Int> -> outcome.label() + " {outcome.value + 1}"
+        is Bad<Int> -> outcome.label() + " " + outcome.reason
+    }
+}
+print(show(Good(41)))
+print(show(Bad("nope")))
+
+// A nullable subject needs a null branch.
+fun maybe(expr: Expr?): Int {
+    return when expr {
+        null -> -1
+        is Num -> expr.value
+        is Add -> 100
+        is Neg -> 200
+    }
+}
+print(maybe(null))
+print(maybe(Num(9)))
+
+// else still works, and a partial when with else is fine.
+fun onlyNum(expr: Expr): Bool {
+    return when expr {
+        is Num -> true
+        else -> false
+    }
+}
+print(onlyNum(Num(1)))
+print(onlyNum(Add(Num(1), Num(2))))
+
+// Enums implementing a sealed interface.
+sealed interface Token
+enum Op implements Token { PLUS, MINUS }
+class Lit(let n: Int) implements Token
+fun text(token: Token): Text {
+    return when token {
+        is Op -> "op"
+        is Lit -> "lit {token.n}"
+    }
+}
+print(text(Op.PLUS))
+print(text(Lit(3)))

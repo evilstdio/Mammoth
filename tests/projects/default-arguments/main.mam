@@ -2,8 +2,11 @@ module demo.Main
 import demo.Lib.greet as hello
 import demo.Lib.pairUp
 import demo.Lib.Shape
+import demo.Lib.exclaim
 print(hello("a"))
 print(hello("b", suffix = "?"))
 print(pairUp(1).size())
 print(Shape().area())
 print(Shape(height = 5).area(scale = 2))
+print("hey".exclaim())
+print("yo".exclaim(times = 1))

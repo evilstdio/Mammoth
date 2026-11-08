@@ -1,0 +1,121 @@
+// The built-in collection and text operations.
+import java.util.ArrayList
+import java.util.HashMap
+import java.util.HashSet
+import java.util.NoSuchElementException
+
+let numbers = MutableList<Int>()
+numbers.add(3)
+numbers.add(1)
+numbers.add(2)
+numbers.add(3)
+print(numbers.map { it * 2 })
+print(numbers.filter { it > 1 })
+print(numbers.filterNot { it > 1 })
+print(numbers.mapIndexed { index, value -> index * value })
+print(numbers.any { it == 2 })
+print(numbers.all { it > 0 })
+print(numbers.none { it > 5 })
+print(numbers.countOf { it == 3 })
+print(numbers.find { it < 3 })
+print(numbers.find { it > 9 })
+print(numbers.first() + numbers.last())
+print(numbers.firstOrNull())
+print(numbers.fold(10) { total, value -> total + value })
+print(numbers.reduce { a, b -> a * b })
+print(numbers.sum())
+print(numbers.average())
+print(numbers.minOrNull())
+print(numbers.maxOrNull())
+print(numbers.sorted())
+print(numbers.sortedDescending())
+print(numbers.reversed())
+print(numbers.distinct())
+print(numbers.take(2))
+print(numbers.drop(2))
+print(numbers.takeWhile { it != 2 })
+print(numbers.dropWhile { it != 2 })
+print(numbers.joinToString())
+print(numbers.joinToString(separator = "-", prefix = "<", suffix = ">"))
+print(numbers.isNotEmpty())
+print(numbers.toSet().size())
+
+// Chains keep their element types.
+let words = MutableList<Text>()
+words.add("pear")
+words.add("fig")
+words.add("banana")
+words.add("kiwi")
+print(words.map { it.length() }.filter { it > 3 }.sum())
+print(words.sortedBy { it.length() })
+print(words.sortedByDescending { it.length() }.first())
+print(words.minByOrNull { it.length() })
+print(words.maxByOrNull { it.length() })
+print(words.sumOf { it.length() })
+print(words.flatMap { word -> word.split("").toMutableList().take(2) }.size())
+
+// groupBy keeps first-seen order.
+let byLength = words.groupBy { it.length() }
+print(byLength.get(4))
+print(byLength.size())
+let byFirst = words.associateBy { it.substring(0, 1) }
+print(byFirst.get("k"))
+
+// Fixed lists, Java collections and objects.
+print([1, 2, 3].map { it + 1 })
+print([1.5, 2.5].sum())
+print(["a", "b"].joinToString(""))
+print([5, 6].filter { it > 5 }.size())
+let java = ArrayList<Text>()
+java.add("x")
+java.add("yy")
+print(java.map { it.length() })
+let set = HashSet<Int>()
+set.add(9)
+print(set.map { it + 1 })
+
+class Item(let name: Text, let price: Int)
+let items = MutableList<Item>()
+items.add(Item("a", 5))
+items.add(Item("b", 2))
+print(items.sortedBy { it.price }.map { it.name })
+print(items.sumOf { it.price })
+print(requireValue(items.minByOrNull { it.price }).name)
+
+// A stable sort keeps the order of equal keys.
+let pairs = MutableList<Item>()
+pairs.add(Item("first", 1))
+pairs.add(Item("second", 1))
+pairs.add(Item("zero", 0))
+print(pairs.sortedBy { it.price }.map { it.name })
+
+// Maps.
+let scores = HashMap<Text, Int>()
+scores.put("a", 1)
+print(scores.getOrPut("a") { 5 })
+print(scores.getOrPut("b") { 7 })
+print(scores.size())
+print(scores.mapValues { it * 10 }.get("b"))
+print(scores.filterValues { it > 3 }.size())
+
+// Text.
+print("abc".reversed())
+print("abc".take(2))
+print("abc".drop(2))
+print("7".padStart(3, '0'))
+print("7".padEnd(3))
+print("".isNotEmpty())
+print("  ".isNotBlank())
+
+// A user's own function takes priority over the built-in one.
+fun MutableList<Item>.joinToString(): Text { return "custom" }
+print(items.joinToString())
+
+// Errors from the empty case.
+try {
+    print(MutableList<Int>().first())
+} catch (e: NoSuchElementException) {
+    print(e.getMessage())
+}
+print(MutableList<Int>().firstOrNull())
+print(MutableList<Int>().maxOrNull())

@@ -1,0 +1,2 @@
+// error: Give this function a result type
+fun f() = 1
