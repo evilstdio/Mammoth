@@ -197,11 +197,7 @@ impl<'a> Emitter<'a> {
     ) -> Result<Kind, Error> {
         // Inside `x.apply { ... }`, the receiver's members are in scope.
         let outer_extension = self.in_extension;
-        if lambda
-            .parameters
-            .iter()
-            .any(|(name, _)| name.text == "this")
-        {
+        if lambda.receiver {
             self.in_extension = true;
         }
         let result = self.lambda_scoped(method, lambda, expected, base);
@@ -252,7 +248,7 @@ impl<'a> Emitter<'a> {
         {
             match target.parameters.as_slice() {
                 [] => {}
-                [kind] => parameters.push(("it", *kind)),
+                [kind] => parameters.push((if lambda.receiver { "this" } else { "it" }, *kind)),
                 _ => {
                     return Err(at(
                         offset,

@@ -502,6 +502,8 @@ pub struct Lambda<'a> {
     pub body: Vec<Statement<'a>>,
     /// A final expression that gives the lambda's result.
     pub value: Option<Box<Expr<'a>>>,
+    /// In `x.apply { ... }`, the implicit parameter is the receiver.
+    pub receiver: bool,
 }
 
 #[derive(Clone)]
@@ -524,12 +526,7 @@ fn with_receiver(lambda: Expr<'_>) -> Expr<'_> {
         return lambda;
     };
     if inner.parameters.is_empty() {
-        let this = Name {
-            text: "this",
-            offset: inner.offset,
-        };
-        inner.parameters.push((this, None));
-        inner.explicit = true;
+        inner.receiver = true;
     }
     Expr::Lambda(inner)
 }
@@ -2934,6 +2931,7 @@ impl<'a> Parser<'a> {
             explicit: true,
             body: function.body,
             value: None,
+            receiver: false,
         };
         Ok(Statement::Binding(
             plain,
@@ -3504,6 +3502,7 @@ impl<'a> Parser<'a> {
             explicit,
             body,
             value,
+            receiver: false,
         })))
     }
 
@@ -3836,6 +3835,7 @@ impl<'a> Parser<'a> {
                 explicit: true,
                 body: Vec::new(),
                 value: Some(Box::new(Expr::Call(target, arguments))),
+                receiver: false,
             })));
         }
         if self.take("\"") {
