@@ -1,0 +1,4 @@
+// error: no method
+class O { inner class I }
+class P
+print(P().I())

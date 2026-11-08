@@ -1,0 +1,2 @@
+// error: without type parameters
+class O<T> { inner class I }

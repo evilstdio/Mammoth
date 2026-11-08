@@ -1,0 +1,6 @@
+// error: private to its class
+class O {
+    private let s = 1
+    inner class I
+}
+fun f(o: O): Int = o.s

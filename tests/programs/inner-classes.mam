@@ -1,0 +1,39 @@
+class O(let a: Int) {
+    private var secret = 5
+    var total = 0
+    private fun hidden(): Int = secret * 2
+    fun add(n: Int) { total += n }
+    inner class I(let b: Int) {
+        var mine = 1
+        fun g(): Int = a + b + mine
+        fun bump() {
+            secret += 1
+            add(b)
+            total = total + 1
+        }
+        fun read(): Int = hidden() + secret
+        fun self(): O = this@O
+        fun own(): I = this@I
+        inner class Deep {
+            fun far(): Int = a + b + secret
+        }
+        fun deep(): Deep = Deep()
+    }
+    fun make(): I = I(10)
+    fun lam(): Int {
+        let i = I(1)
+        let f = { i.g() + a }
+        return f()
+    }
+}
+let o = O(1)
+print(o.I(2).g())
+let i = o.make()
+print(i.g())
+i.bump()
+print(o.total)
+print(i.read())
+print(i.self().a)
+print(i.own().b)
+print(i.deep().far())
+print(o.lam())

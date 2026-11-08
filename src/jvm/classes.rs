@@ -586,6 +586,13 @@ impl<'a> Symbols<'a> {
         }
     }
 
+    /// Whether `class` has inner classes, which reach its private members.
+    pub(super) fn has_inner_classes(&self, class: &crate::syntax::Class<'_>) -> bool {
+        self.class_declarations
+            .iter()
+            .any(|other| other.inner_of == Some(class.name.text))
+    }
+
     /// The parameterized Java superclass at the top of the superclass chain
     /// of a receiver of Mammoth type `receiver`, with the receiver's type
     /// arguments substituted, such as `ArrayList<Text>`.
@@ -1619,7 +1626,7 @@ impl<'a> Emitter<'a> {
         let (owner, signature) = symbols
             .find_method(class, name.text)
             .ok_or_else(|| at(name, "This type has no method with that name."))?;
-        if symbols.method_flags[owner][name.text].0 && self.current_class != Some(owner) {
+        if symbols.method_flags[owner][name.text].0 && !self.can_reach_private(owner) {
             return Err(at(name, "This method is private to its class."));
         }
         self.check_protected_method(class, owner, name)?;
@@ -1669,7 +1676,7 @@ impl<'a> Emitter<'a> {
         let (owner, field) = symbols
             .find_field(class, name.text)
             .ok_or_else(|| at(name, "This class has no field with that name."))?;
-        if field.private && self.current_class != Some(owner) {
+        if field.private && !self.can_reach_private(owner) {
             return Err(at(name, "This field is private to its class."));
         }
         if field.protected && self.current_class != Some(owner) {
@@ -2008,6 +2015,178 @@ impl<'a> Emitter<'a> {
         method.stack.pop();
         instruction(&mut method.code, 0xb5, reference); // putfield
         Ok(())
+    }
+
+    fn outer_of(&self, class: usize) -> Option<usize> {
+        let name = self.symbols.class_declarations[class].inner_of?;
+        match self.type_scope.names.get(name) {
+            Some(&Kind::Object(outer)) => Some(outer),
+            _ => None,
+        }
+    }
+
+    /// Whether code here may use a private member of `owner`: the class
+    /// itself and the inner classes inside it can.
+    fn can_reach_private(&self, owner: usize) -> bool {
+        let mut current = self.current_class;
+        while let Some(class) = current {
+            if class == owner {
+                return true;
+            }
+            current = self.outer_of(class);
+        }
+        false
+    }
+
+    /// `this.__outer`, repeated up to the enclosing class that has member
+    /// `name`, when the current class is an inner class.
+    pub(super) fn outer_path(
+        &self,
+        method: &Method<'a>,
+        name: Name<'a>,
+        call: bool,
+    ) -> Option<&'a Expr<'a>> {
+        let this = Name {
+            text: "this",
+            offset: name.offset,
+        };
+        method.binding(this)?;
+        let symbols = self.symbols;
+        let mut class = self.current_class?;
+        let mut path = Expr::Variable(this);
+        while let Some(outer) = self.outer_of(class) {
+            path = Expr::Field(
+                Box::new(path),
+                Name {
+                    text: "__outer",
+                    offset: name.offset,
+                },
+            );
+            if symbols.find_method(outer, name.text).is_some()
+                || (!call && symbols.find_field(outer, name.text).is_some())
+            {
+                return Some(Box::leak(Box::new(path)));
+            }
+            class = outer;
+        }
+        None
+    }
+
+    /// `this@Outer`.
+    pub(super) fn labeled_this(
+        &self,
+        method: &Method<'a>,
+        name: Name<'a>,
+    ) -> Result<&'a Expr<'a>, Error> {
+        let label = &name.text["this@".len()..];
+        let this = Name {
+            text: "this",
+            offset: name.offset,
+        };
+        let mut path = Expr::Variable(this);
+        let mut current = self
+            .current_class
+            .filter(|_| method.binding(this).is_some());
+        while let Some(class) = current {
+            if self.symbols.class_declarations[class].name.text == label {
+                return Ok(Box::leak(Box::new(path)));
+            }
+            path = Expr::Field(
+                Box::new(path),
+                Name {
+                    text: "__outer",
+                    offset: name.offset,
+                },
+            );
+            current = self.outer_of(class);
+        }
+        Err(at(name, "No enclosing class has that name."))
+    }
+
+    /// `Inner(...)` written where an enclosing object is available.
+    pub(super) fn create_inner(
+        &mut self,
+        method: &mut Method<'a>,
+        class: usize,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+        expected: Option<Kind>,
+    ) -> Result<Option<Kind>, Error> {
+        let target = self.outer_of(class);
+        let this = Name {
+            text: "this",
+            offset: name.offset,
+        };
+        let mut path = Expr::Variable(this);
+        let mut current = self
+            .current_class
+            .filter(|_| method.binding(this).is_some());
+        while let Some(here) = current {
+            if Some(here) == target {
+                let mut full = Vec::with_capacity(args.len() + 1);
+                full.push(path);
+                full.extend(args.iter().cloned());
+                let full: &'a [Expr<'a>] = Box::leak(full.into_boxed_slice());
+                self.inner_ready = true;
+                return self.call_expected(method, name, full, base, expected);
+            }
+            path = Expr::Field(
+                Box::new(path),
+                Name {
+                    text: "__outer",
+                    offset: name.offset,
+                },
+            );
+            current = self.outer_of(here);
+        }
+        Err(at(
+            name,
+            "An inner class needs its outer object. Write outer.Inner(...).",
+        ))
+    }
+
+    /// `outer.Inner(...)`.
+    pub(super) fn inner_on_receiver(
+        &mut self,
+        method: &mut Method<'a>,
+        receiver: &'a Expr<'a>,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+        expected: Option<Kind>,
+    ) -> Result<Option<Option<Kind>>, Error> {
+        let Some(&Kind::Object(class)) = self.type_scope.names.get(name.text) else {
+            return Ok(None);
+        };
+        let Some(target) = self.outer_of(class) else {
+            return Ok(None);
+        };
+        let saved = method.snapshot();
+        let depth = method.stack.len() as u16;
+        let kind = self.expression(method, receiver, depth);
+        method.restore(saved);
+        let Some(owner) = kind
+            .ok()
+            .and_then(|kind| self.symbols.types.native_class(kind))
+        else {
+            return Ok(None);
+        };
+        if !self
+            .symbols
+            .ancestors(owner)
+            .any(|ancestor| ancestor == target)
+            && owner != target
+        {
+            return Ok(None);
+        }
+        let mut full = Vec::with_capacity(args.len() + 1);
+        full.push(receiver.clone());
+        full.extend(args.iter().cloned());
+        let full: &'a [Expr<'a>] = Box::leak(full.into_boxed_slice());
+        self.inner_ready = true;
+        self.call_expected(method, name, full, base, expected)
+            .map(Some)
     }
 
     /// `name = value` inside a class whose property `name` has a setter.

@@ -151,6 +151,8 @@ pub struct Class<'a> {
     pub private_primary: bool,
     /// `implements I by value`: the interface and the field that answers it.
     pub delegates: Vec<(Name<'a>, Name<'a>)>,
+    /// For an `inner class`, the name of the class it belongs to.
+    pub inner_of: Option<&'a str>,
 }
 
 /// `constructor(s: Text) : this(s.length) { ... }`.
@@ -1941,6 +1943,7 @@ impl<'a> Parser<'a> {
                 no_primary: false,
                 private_primary,
                 delegates,
+                inner_of: None,
             });
         }
         self.expect("{", "Expected '{' after the class name.")?;
@@ -2013,6 +2016,7 @@ impl<'a> Parser<'a> {
             let mut is_static = in_companion;
             let mut lateinit = false;
             let mut open_member = false;
+            let mut inner_member = false;
             if member.text == "companion" {
                 if !self.take_word("object") {
                     return Err(self.error("Expected object after companion."));
@@ -2034,6 +2038,7 @@ impl<'a> Parser<'a> {
                     "export" if !exported => exported = true,
                     "lateinit" if !lateinit => lateinit = true,
                     "open" => open_member = true,
+                    "inner" if !inner_member => inner_member = true,
                     "operator" | "infix" | "inline" | "tailrec" => {}
                     _ => break,
                 }
@@ -2043,7 +2048,13 @@ impl<'a> Parser<'a> {
                 member.text,
                 "class" | "data" | "enum" | "sealed" | "object" | "interface"
             ) {
-                self.nested_type(member, abstract_member, name)?;
+                if inner_member && (member.text != "class" || !type_parameters.is_empty()) {
+                    return Err(Error {
+                        offset: member.offset,
+                        message: "Only a class inside a class without type parameters can be inner.",
+                    });
+                }
+                self.nested_type(member, abstract_member, name, inner_member)?;
                 continue;
             }
             if is_static {
@@ -2349,6 +2360,7 @@ impl<'a> Parser<'a> {
             no_primary,
             private_primary,
             delegates,
+            inner_of: None,
         })
     }
 
@@ -3848,6 +3860,7 @@ impl<'a> Parser<'a> {
         word: Name<'a>,
         is_abstract: bool,
         outer: Name<'a>,
+        inner: bool,
     ) -> Result<(), Error> {
         let mut interface = None;
         let mut class = None;
@@ -3878,7 +3891,34 @@ impl<'a> Parser<'a> {
             "object" => class = Some(self.object_declaration()?),
             _ => interface = Some(self.interface()?),
         }
-        if let Some(class) = class {
+        if let Some(mut class) = class {
+            if inner {
+                if !class.secondary.is_empty() || !class.static_methods.is_empty() {
+                    return Err(Error {
+                        offset: class.name.offset,
+                        message: "An inner class cannot have default values, more constructors or static members yet.",
+                    });
+                }
+                class.inner_of = Some(outer.text);
+                let holder = Name {
+                    text: "__outer",
+                    offset: class.name.offset,
+                };
+                class.parameters.insert(0, (holder, outer));
+                class
+                    .initializers
+                    .insert(0, Initializer::Field(class.fields.len()));
+                class.fields.push(Field {
+                    annotations: Vec::new(),
+                    protected: false,
+                    name: holder,
+                    annotation: Some(outer),
+                    value: Some(Expr::Variable(holder)),
+                    mutable: false,
+                    private: false,
+                    is_lateinit: false,
+                });
+            }
             self.nested_found.push((outer.text, class.name.text));
             self.nested_classes.push(class);
         }
@@ -5006,6 +5046,12 @@ impl<'a> Parser<'a> {
                     Expr::Field(Box::new(this), name)
                 };
                 return Ok(target);
+            }
+            if name.text == "this" && self.rest().starts_with('@') {
+                self.offset += 1;
+                let label = self.name()?;
+                name.text = Box::leak(format!("this@{}", label.text).into_boxed_str());
+                return Ok(Expr::Variable(name));
             }
             if self.rest().starts_with("::")
                 && name.text.starts_with(|ch: char| ch.is_ascii_uppercase())

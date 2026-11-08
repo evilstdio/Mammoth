@@ -1,0 +1,5 @@
+// error: not been defined
+class O {
+    class N { fun f(): Int = v }
+    var v = 1
+}

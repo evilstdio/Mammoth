@@ -1122,6 +1122,7 @@ fn new_emitter<'a>(
         candidate_depth: 0,
         explicit_java_arguments: Vec::new(),
         in_extension: false,
+        inner_ready: false,
         pending_fields: Vec::new(),
         pending_statics: Vec::new(),
     }
@@ -1186,8 +1187,10 @@ fn emit_class<'a>(
         for (field, declaration) in symbols.class_fields[index].iter().zip(&class.fields) {
             let name_index = emitter.pool.ascii(field.name);
             let type_index = emitter.pool.ascii(&field.kind.descriptor(&symbols.types));
-            let mut access = if field.private {
+            let mut access = if field.private && !symbols.has_inner_classes(class) {
                 0x0002
+            } else if field.private {
+                0 // Reached from its inner classes in this package.
             } else if field.protected {
                 0x0004
             } else {
@@ -1447,8 +1450,13 @@ fn emit_class<'a>(
         let kind = emitter.pool.ascii(&signature.descriptor);
         let access = if function.exported {
             access | 0x0001
-        } else if function.private && owner.is_some() {
+        } else if function.private
+            && owner
+                .is_some_and(|index| !symbols.has_inner_classes(symbols.class_declarations[index]))
+        {
             0x0002
+        } else if function.private && owner.is_some() {
+            0 // Reached from its inner classes in this package.
         } else if function.protected {
             0x0004
         } else {
@@ -1857,6 +1865,8 @@ struct Emitter<'a> {
     explicit_java_arguments: Vec<Kind>,
     /// Whether the function being compiled is an extension function.
     in_extension: bool,
+    /// The next inner class created already has its outer object as an argument.
+    inner_ready: bool,
     /// Instance fields whose starting values have not run yet, while a
     /// constructor runs field initializers and init blocks.
     pending_fields: Vec<&'a str>,
@@ -2171,6 +2181,9 @@ impl<'a> Emitter<'a> {
                         continue;
                     } else if self.assign_implicit_java_field(method, *name, expr)? {
                         continue;
+                    } else if let Some(path) = self.outer_path(method, *name, false) {
+                        self.set_field(method, path, *name, None, expr)?;
+                        continue;
                     } else {
                         return Err(at(*name, "This variable has not been defined here."));
                     };
@@ -2444,6 +2457,11 @@ impl<'a> Emitter<'a> {
                     ));
                 }
                 Kind::Object(class) => {
+                    if self.symbols.class_declarations[class].inner_of.is_some()
+                        && !std::mem::take(&mut self.inner_ready)
+                    {
+                        return self.create_inner(method, class, name, args, base, expected);
+                    }
                     if self.symbols.class_declarations[class].is_object
                         && self.current_class != Some(class)
                     {
@@ -2520,6 +2538,9 @@ impl<'a> Emitter<'a> {
                     let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
                     return self.method_call_expected(method, receiver, name, args, base, expected);
                 }
+            }
+            if let Some(path) = self.outer_path(method, name, true) {
+                return self.method_call_expected(method, path, name, args, base, expected);
             }
             return Err(at(name, "This function or class has not been defined."));
         };
@@ -2607,6 +2628,12 @@ impl<'a> Emitter<'a> {
     ) -> Result<Option<Kind>, Error> {
         if name.text == "sumOf" {
             return self.sum_of(method, receiver, name, args, base);
+        }
+        if name.text.starts_with(|ch: char| ch.is_ascii_uppercase())
+            && let Some(result) =
+                self.inner_on_receiver(method, receiver, name, args, base, expected)?
+        {
+            return Ok(result);
         }
         self.method_call_resolved(method, receiver, name, args, base, expected)
     }
@@ -3102,6 +3129,10 @@ impl<'a> Emitter<'a> {
     }
 
     fn load(&mut self, method: &mut Method<'a>, name: Name<'a>, base: u16) -> Result<Kind, Error> {
+        if name.text.starts_with("this@") {
+            let path = self.labeled_this(method, name)?;
+            return self.expression(method, path, base);
+        }
         if let Some(binding) = method.binding(name) {
             if method.boxed_slots.contains(&binding.slot) {
                 let list = ListKind::for_element(binding.kind).unwrap();
@@ -3263,6 +3294,9 @@ impl<'a> Emitter<'a> {
             if let Some(kind) = self.read_static_field(method, class, instance, base)? {
                 return Ok(kind);
             }
+        }
+        if let Some(path) = self.outer_path(method, name, false) {
+            return self.field_access(method, path, name, base);
         }
         Err(at(name, "This variable has not been defined here."))
     }
