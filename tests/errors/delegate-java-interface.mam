@@ -1,0 +1,2 @@
+// error: declared in this file
+class B(a: Runnable) implements Runnable by a

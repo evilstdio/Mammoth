@@ -619,37 +619,14 @@ impl<'a> Emitter<'a> {
             let target = self.symbols.types.replace_parameters(erased, map);
             let at = method.stack.len() as u16;
             let actual = self.expression_as(method, arg, at, Some(target))?;
-            let receiver = if let Kind::Object(class) = actual.non_null() {
-                self.symbols
-                    .ancestors(class)
-                    .last()
-                    .and_then(|root| self.symbols.java_supers[root])
-                    .map(Kind::Java)
-                    .unwrap_or(actual)
-            } else {
-                actual
-            };
-            if let Kind::Java(_) = target.non_null()
+            if matches!(target.non_null(), Kind::Java(_))
                 && actual != Kind::Null
+                && !self.symbols.java_type_arguments_fit(actual, target)
             {
-                let wanted = self.symbols.types.type_arguments(target);
-                if !wanted.is_empty() {
-                    let owner = self.symbols.types.runtime_class_name(target).unwrap();
-                    let known = self.symbols.types.substitution(receiver, &owner);
-                    let parameters = self.symbols.types.class_type_parameters(&owner);
-                    if parameters.len() != wanted.len()
-                        || parameters.iter().zip(wanted).any(|(name, wanted)| {
-                            !known
-                                .get(name)
-                                .is_some_and(|actual| self.symbols.types.same_kind(*actual, wanted))
-                        })
-                    {
-                        return Err(Error {
-                            offset: arg.offset(),
-                            message: "This collection's type arguments do not match the generic function parameter.",
-                        });
-                    }
-                }
+                return Err(Error {
+                    offset: arg.offset(),
+                    message: "This collection's type arguments do not match the generic function parameter.",
+                });
             }
             self.coerce(method, arg, actual, target, at)?;
             if matches!(erased, Kind::TypeParameter(_)) {

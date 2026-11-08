@@ -1,0 +1,29 @@
+let s = listOf(1, 2, 3, 4).asSequence().map { it * 2 }.filter { it > 2 }.take(2)
+print(s.toList())
+print(s.toList())
+var seen = 0
+let lazy = listOf(1, 2, 3).asSequence().map { x -> seen += 1
+ x + 1 }
+print(seen)
+print(lazy.first())
+print(seen)
+print(generateSequence(1) { it + 1 }.take(3).toList())
+print(generateSequence(1) { if it < 3 { it + 1 } else { null } }.toList())
+print(generateSequence(1) { it * 2 }.drop(2).takeWhile { it < 40 }.toList())
+for x in listOf("a").asSequence() { print(x) }
+print(listOf(1, 2).asSequence().sum())
+interface I { fun f(): Int
+ fun g(x: Text): Text
+ fun h() }
+class A implements I { override fun f(): Int = 1
+ override fun g(x: Text): Text = x + "!"
+ override fun h() { print("h") } }
+class B(a: A) implements I by a
+class C(a: I) implements I by a { override fun f(): Int = 100 }
+let b: I = B(A())
+print(b.f())
+print(b.g("x"))
+b.h()
+let c = C(B(A()))
+print(c.f())
+print(c.g("y"))

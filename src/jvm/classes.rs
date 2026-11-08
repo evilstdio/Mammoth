@@ -540,6 +540,26 @@ impl<'a> Symbols<'a> {
             Kind::Applied(_) if self.types.native_class(actual.non_null()).is_some() => {
                 self.class_view(actual, self.types.native_class(pattern.non_null()).unwrap())
             }
+            // A Mammoth class seen as a parameterized Java interface it implements.
+            Kind::Java(_) if self.types.native_class(actual.non_null()).is_some() => {
+                let owner = self.types.runtime_class_name(pattern.non_null());
+                owner.and_then(|owner| {
+                    let parameters = self.types.class_type_parameters(&owner);
+                    if parameters.is_empty() {
+                        return None;
+                    }
+                    self.java_generic_views(actual)
+                        .into_iter()
+                        .find_map(|view| {
+                            let map = self.types.substitution(view, &owner);
+                            let arguments = parameters
+                                .iter()
+                                .map(|name| map.get(name).copied())
+                                .collect::<Option<Vec<_>>>()?;
+                            Some(Kind::Java(self.types.java_generic(&owner, arguments)))
+                        })
+                })
+            }
             _ => None,
         };
         match view {

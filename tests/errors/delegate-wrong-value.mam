@@ -1,0 +1,4 @@
+// error: implements the declared interface
+interface I { fun f(): Int }
+class A
+class B(a: A) implements I by a

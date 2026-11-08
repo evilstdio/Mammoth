@@ -149,6 +149,8 @@ pub struct Class<'a> {
     pub no_primary: bool,
     /// `class K private constructor(...)`.
     pub private_primary: bool,
+    /// `implements I by value`: the interface and the field that answers it.
+    pub delegates: Vec<(Name<'a>, Name<'a>)>,
 }
 
 /// `constructor(s: Text) : this(s.length) { ... }`.
@@ -730,6 +732,7 @@ const PRELUDE_FUNCTIONS: &[&str] = &[
     "compareByDescending",
     "buildList",
     "readLine",
+    "generateSequence",
 ];
 
 /// Whether `source` has a bare call of `name`, as `name(` or `name {`.
@@ -824,6 +827,69 @@ fn accessor<'a>(
         vararg: false,
         overload_of: None,
     }
+}
+
+/// Writes the forwarding methods of each `implements I by value`.
+fn add_delegated_methods<'a>(program: &mut Program<'a>) -> Result<(), Error> {
+    for index in 0..program.classes.len() {
+        for position in 0..program.classes[index].delegates.len() {
+            let (written, field) = program.classes[index].delegates[position];
+            let plain = written.text.split('<').next().unwrap_or(written.text);
+            let plain = plain.rsplit('.').next().unwrap_or(plain);
+            let Some(interface) = program
+                .interfaces
+                .iter()
+                .find(|interface| interface.name.text == plain)
+            else {
+                return Err(Error {
+                    offset: written.offset,
+                    message: "Only an interface declared in this file can be implemented with by.",
+                });
+            };
+            if !interface.type_parameters.is_empty() {
+                return Err(Error {
+                    offset: written.offset,
+                    message: "Only an interface without type parameters can be implemented with by yet.",
+                });
+            }
+            let mut forwarders = Vec::new();
+            for method in &interface.methods {
+                if !method.is_abstract
+                    || program.classes[index]
+                        .methods
+                        .iter()
+                        .any(|existing| existing.name.text == method.name.text)
+                {
+                    continue;
+                }
+                let this = Expr::Variable(Name {
+                    text: "this",
+                    offset: written.offset,
+                });
+                let args = method
+                    .parameters
+                    .iter()
+                    .map(|&(name, _)| Expr::Variable(name))
+                    .collect();
+                let name = Name {
+                    text: method.name.text,
+                    offset: written.offset,
+                };
+                let call =
+                    Expr::MethodCall(Box::new(Expr::Field(Box::new(this), field)), name, args);
+                let body = if method.result.is_some() {
+                    vec![Statement::Return(name, Some(call))]
+                } else {
+                    vec![Statement::MethodCall(call)]
+                };
+                let mut forwarder = accessor(name, method.parameters.clone(), method.result, body);
+                forwarder.is_override = true;
+                forwarders.push(forwarder);
+            }
+            program.classes[index].methods.append(&mut forwarders);
+        }
+    }
+    Ok(())
 }
 
 /// Every function whose header says `: Nothing`.
@@ -948,9 +1014,13 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             || needs_map);
     let needs_indexed = calls_member(source, "withIndex");
     let needs_regex = calls_function(source, "Regex") || calls_member(source, "toRegex");
+    let needs_sequence =
+        calls_member(source, "asSequence") || calls_function(source, "generateSequence");
     for class in parsed.classes {
         if (class.name.text == "Pair" && needs_pair)
             || (class.name.text == "__Indexed" && needs_indexed)
+            || ((class.name.text == "Sequence" || class.name.text.starts_with("__Seq"))
+                && needs_sequence)
             || (class.name.text == "Regex"
                 && needs_regex
                 && !program
@@ -1231,6 +1301,7 @@ fn parse_with<'a>(
     program.functions.append(&mut parser.hoisted_functions);
     program.classes.append(&mut parser.nested_classes);
     program.interfaces.append(&mut parser.nested_interfaces);
+    add_delegated_methods(&mut program)?;
     Ok((
         program,
         parser.nested_found,
@@ -1801,10 +1872,34 @@ impl<'a> Parser<'a> {
             None
         };
         let mut implements = Vec::new();
+        let mut delegates = Vec::new();
         if self.take_word("implements") {
-            implements.push(self.annotation()?);
-            while self.take(",") {
-                implements.push(self.annotation()?);
+            loop {
+                let interface = self.annotation()?;
+                implements.push(interface);
+                if self.take_word("by") {
+                    // The value is kept in a hidden field; methods forward to it.
+                    let value = self.header_expression()?;
+                    let field = Name {
+                        text: Box::leak(format!("__by{}", delegates.len()).into_boxed_str()),
+                        offset: interface.offset,
+                    };
+                    initializers.push(Initializer::Field(fields.len()));
+                    fields.push(Field {
+                        annotations: Vec::new(),
+                        protected: false,
+                        name: field,
+                        annotation: Some(interface),
+                        value: Some(value),
+                        mutable: false,
+                        private: true,
+                        is_lateinit: false,
+                    });
+                    delegates.push((interface, field));
+                }
+                if !self.take(",") {
+                    break;
+                }
             }
         }
         if is_enum && extends.is_some() {
@@ -1845,6 +1940,7 @@ impl<'a> Parser<'a> {
                 secondary: Vec::new(),
                 no_primary: false,
                 private_primary,
+                delegates,
             });
         }
         self.expect("{", "Expected '{' after the class name.")?;
@@ -2252,6 +2348,7 @@ impl<'a> Parser<'a> {
             secondary,
             no_primary,
             private_primary,
+            delegates,
         })
     }
 
