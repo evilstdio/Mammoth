@@ -177,6 +177,12 @@ pub(super) fn check_global_order<'a>(
             collect_bound(&method.body, &mut bound);
             bound.extend(method.parameters.iter().map(|(name, _)| name.text));
             used.retain(|name| !bound.contains(name));
+            // A property read or write reaches the method through a dotted name.
+            let dotted: &str = Box::leak(format!(".{}", method.name.text).into_boxed_str());
+            reads
+                .entry(dotted)
+                .or_default()
+                .extend(used.iter().copied());
             reads.entry(method.name.text).or_default().extend(used);
         }
     }
@@ -271,6 +277,9 @@ pub(super) fn collect_statements<'a>(statements: &'a [Statement<'a>], used: &mut
             }
             Statement::Assign(name, expr) => {
                 used.insert(name.text);
+                if used.contains(SKIP_LAMBDAS) {
+                    used.insert(Box::leak(format!("{}$set", name.text).into_boxed_str()));
+                }
                 collect_expr(expr, used);
             }
             Statement::Call(name, args) => {
@@ -303,7 +312,10 @@ pub(super) fn collect_statements<'a>(statements: &'a [Statement<'a>], used: &mut
                 collect_expr(index, used);
                 collect_expr(value, used);
             }
-            Statement::SetField(receiver, _, _, value) => {
+            Statement::SetField(receiver, name, _, value) => {
+                if used.contains(SKIP_LAMBDAS) {
+                    used.insert(Box::leak(format!(".{}$set", name.text).into_boxed_str()));
+                }
                 collect_expr(receiver, used);
                 collect_expr(value, used);
             }
@@ -639,9 +651,14 @@ pub(super) fn collect_expr<'a>(expr: &'a Expr<'a>, used: &mut HashSet<&'a str>) 
             collect_expr(left, used);
             collect_expr(right, used);
         }
+        Expr::Field(inner, name) => {
+            if used.contains(SKIP_LAMBDAS) {
+                used.insert(Box::leak(format!(".{}", name.text).into_boxed_str()));
+            }
+            collect_expr(inner, used);
+        }
         Expr::Not(_, _, inner)
         | Expr::Negate(_, inner)
-        | Expr::Field(inner, _)
         | Expr::Cast(inner, _, _)
         | Expr::Is(inner, _) => collect_expr(inner, used),
         Expr::Arithmetic(left, rest) => {

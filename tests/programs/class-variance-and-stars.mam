@@ -1,0 +1,29 @@
+import java.util.ArrayList
+import java.util.Collection
+class B<out T>(let v: T) {
+    fun get(): T = v
+    private let cached: T = v
+}
+class S<in T>(let f: (T) -> Text) {
+    fun apply2(x: T): Text = f(x)
+}
+let b: B<Any> = B<Text>("a")
+print(b.v)
+print(b.get())
+let s: S<Text> = S<Any>({ x: Any -> "got " + x.toString() })
+print(s.apply2("q"))
+open class Base<out T>(let v: T)
+class Derived<out T>(v: T) extends Base<T>(v)
+let d: Base<Any> = Derived<Text>("d")
+print(d.v)
+fun size(x: ArrayList<*>): Int = x.size()
+print(size(mutableListOf(1)))
+print(size(ArrayList<Text>()))
+fun first(x: MutableList<*>): Any? = x.get(0)
+print(first(mutableListOf("s")))
+fun count(x: Collection<*>): Int = x.size()
+print(count(mutableListOf(1, 2)))
+let a: Any = mutableListOf(1)
+print(a is MutableList<*>)
+print(a is ArrayList<*>)
+if a is MutableList<*> { print(a.size()) }

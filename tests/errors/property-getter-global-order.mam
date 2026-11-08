@@ -1,0 +1,4 @@
+// error: declared further down
+class K { let a: Text get() = t }
+print(K().a.length)
+let t: Text = "x"

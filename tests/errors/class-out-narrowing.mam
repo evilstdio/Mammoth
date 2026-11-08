@@ -1,0 +1,3 @@
+// error: Expected an object of the declared class
+class B<out T>(let v: T)
+let b: B<Text> = B<Any>("a")

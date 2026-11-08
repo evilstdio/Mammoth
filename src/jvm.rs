@@ -482,6 +482,10 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
         && matches!(container.trim(), "List" | "MutableList")
     {
         let trimmed = element.trim();
+        if container.trim() == "MutableList" && trimmed == "*" {
+            let star = types.java_star();
+            return Ok(Kind::Java(types.java_generic(ARRAY_LIST, vec![star])));
+        }
         let offset = name.offset + container.len() + 1 + element.len() - element.trim_start().len();
         let element = resolve_type(
             types,
@@ -547,6 +551,10 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
         let mut resolved = Vec::with_capacity(parts.len());
         for part in parts {
             let text = part.trim();
+            if text == "*" {
+                resolved.push(types.java_star());
+                continue;
+            }
             let offset = name.offset + (text.as_ptr() as usize - name.text.as_ptr() as usize);
             let kind = resolve_type(types, Name { text, offset })?;
             if matches!(kind, Kind::Nullable(_)) {

@@ -392,6 +392,12 @@ impl<'a> Symbols<'a> {
             // `value is Box<*>` only asks for the erased class.
             return Ok(());
         }
+        if matches!(target.non_null(), Kind::Java(_)) {
+            let arguments = self.types.type_arguments(target.non_null());
+            if !arguments.is_empty() && arguments.iter().all(|&item| self.types.is_star(item)) {
+                return Ok(());
+            }
+        }
         if self.types.contains_parameter(target) {
             return Err(at(
                 annotation,
@@ -857,6 +863,19 @@ impl<'a> Symbols<'a> {
                         method.name,
                         "This method does not override a method from a superclass or interface.",
                     ));
+                }
+            }
+            if let Some(parent) = self.superclasses[index] {
+                for method in class.methods.iter().filter(|method| method.is_override) {
+                    let setter = format!("{}$set", method.name.text);
+                    if self.find_method(parent, &setter).is_some()
+                        && !class.methods.iter().any(|item| item.name.text == setter)
+                    {
+                        return Err(at(
+                            method.name,
+                            "A let property cannot override a var property, because callers could still assign it.",
+                        ));
+                    }
                 }
             }
             if !class.is_abstract
@@ -1715,6 +1734,13 @@ impl<'a> Emitter<'a> {
     ) -> Result<Kind, Error> {
         if matches!(receiver, Expr::Variable(this) if this.text == "this") {
             self.check_property_ready(name)?;
+        }
+        if matches!(receiver, Expr::Variable(parent) if parent.text == "super") {
+            let saved = method.snapshot();
+            if let Ok(Some(kind)) = self.method_call(method, receiver, name, &[], base) {
+                return Ok(kind);
+            }
+            method.restore(saved);
         }
         if name.text == "class"
             && let Expr::Variable(type_name) = receiver

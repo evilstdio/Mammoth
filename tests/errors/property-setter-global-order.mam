@@ -1,0 +1,8 @@
+// error: declared further down
+class K {
+    var a: Int
+        get() = 1
+        set(v) { print(t.length) }
+}
+K().a = 1
+let t: Text = "x"

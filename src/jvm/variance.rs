@@ -78,6 +78,26 @@ impl<'a> Types<'a> {
         kind
     }
 
+    /// The hidden type that `*` stands for in a Java type such as
+    /// `ArrayList<*>`. Values read from it are only known to be objects.
+    pub(super) fn java_star(&self) -> Kind {
+        if let Some(&(.., kind)) = self
+            .stars
+            .borrow()
+            .iter()
+            .find(|entry| entry.1 == usize::MAX)
+        {
+            return kind;
+        }
+        let index = self.parameters.borrow().len();
+        self.parameters.borrow_mut().push("*");
+        self.bounds.borrow_mut().push(Vec::new());
+        self.variances.borrow_mut().push(Variance::Invariant);
+        let kind = Kind::TypeParameter(index);
+        self.stars.borrow_mut().push((false, usize::MAX, 0, kind));
+        kind
+    }
+
     pub(super) fn is_star(&self, kind: Kind) -> bool {
         matches!(kind.non_null(), Kind::TypeParameter(index) if self.parameters.borrow()[index] == "*")
     }
@@ -114,7 +134,32 @@ impl<'a> Types<'a> {
         if let Some(result) = signature.result {
             self.check_position(result, Position::Positive, name)?;
         }
+        for &(_, parameter) in &signature.type_parameters {
+            for bound in self.all_bounds(parameter) {
+                self.check_position(bound, Position::Negative, name)?;
+            }
+        }
         Ok(())
+    }
+
+    /// A field can always be read; a `var` can be written as well.
+    pub(super) fn check_field_variance(
+        &self,
+        kind: Kind,
+        mutable: bool,
+        name: Name<'_>,
+    ) -> Result<(), Error> {
+        let position = if mutable {
+            Position::Invariant
+        } else {
+            Position::Positive
+        };
+        self.check_position(kind, position, name)
+    }
+
+    /// A parent type is a promise about everything the child can be used as.
+    pub(super) fn check_parent_variance(&self, kind: Kind, name: Name<'_>) -> Result<(), Error> {
+        self.check_position(kind, Position::Positive, name)
     }
 
     fn check_position(&self, kind: Kind, position: Position, name: Name<'_>) -> Result<(), Error> {
@@ -136,8 +181,11 @@ impl<'a> Types<'a> {
                 Ok(())
             }
             Kind::Applied(index) => {
-                for argument in self.application(index).arguments {
-                    self.check_position(argument, Position::Invariant, name)?;
+                let application = self.application(index);
+                let parameters = self.class_parameters.borrow()[application.class].clone();
+                for (&(_, parameter), &argument) in parameters.iter().zip(&application.arguments) {
+                    let inner = position.through(self.variance(parameter));
+                    self.check_position(argument, inner, name)?;
                 }
                 Ok(())
             }

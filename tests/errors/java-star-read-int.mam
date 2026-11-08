@@ -1,0 +1,2 @@
+// error: Expected an Int
+fun f(x: MutableList<*>): Int = x.get(0)

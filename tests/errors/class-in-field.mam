@@ -1,0 +1,2 @@
+// error: result type
+class B<in T>(let v: T)

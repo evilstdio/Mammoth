@@ -1,0 +1,2 @@
+// error: cannot appear inside an invariant
+class B<out T>(var v: T)

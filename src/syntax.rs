@@ -138,6 +138,8 @@ pub struct Class<'a> {
     pub initializers: Vec<Initializer<'a>>,
     /// `data class`: generate `toString`, `equals`, and `hashCode`.
     pub is_data: bool,
+    /// The `out` or `in` of each type parameter.
+    pub variances: Vec<Variance>,
     /// For an `enum`, its values and their constructor arguments.
     pub enum_values: Option<Vec<(Name<'a>, Vec<Expr<'a>>)>>,
     /// Constructors beyond the one in the class header.
@@ -1555,17 +1557,14 @@ impl<'a> Parser<'a> {
     ) -> Result<Class<'a>, Error> {
         let name = self.binding()?;
         let mut type_parameters = Vec::new();
+        let mut variances = Vec::new();
         let mut bounds = Vec::new();
         if self.take("<") {
             if is_enum {
                 return Err(self.error("Enums cannot declare type parameters."));
             }
             loop {
-                if self.variance() != Variance::Invariant {
-                    return Err(
-                        self.error("Only interface type parameters can be marked 'out' or 'in'.")
-                    );
-                }
+                variances.push(self.variance());
                 type_parameters.push(self.name()?);
                 bounds.push(self.bound_list()?);
                 if self.take(">") {
@@ -1728,6 +1727,7 @@ impl<'a> Parser<'a> {
                 static_initializers: Vec::new(),
                 initializers,
                 is_data,
+                variances,
                 enum_values: None,
                 secondary: Vec::new(),
                 no_primary: false,
@@ -1949,6 +1949,12 @@ impl<'a> Parser<'a> {
                                 message: "Only an abstract class can have abstract properties.",
                             });
                         }
+                        if private {
+                            return Err(Error {
+                                offset: name.offset,
+                                message: "An abstract property cannot be private.",
+                            });
+                        }
                         let Some(result) = annotation else {
                             return Err(self.error("Give an abstract property a type."));
                         };
@@ -2127,6 +2133,7 @@ impl<'a> Parser<'a> {
             static_initializers,
             initializers,
             is_data,
+            variances,
             enum_values,
             secondary,
             no_primary,

@@ -1,0 +1,6 @@
+// error: parameter type
+class B<out T>(let v: T) {
+    var p: T
+        get() = v
+        set(x) { }
+}

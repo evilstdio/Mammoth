@@ -1,0 +1,3 @@
+// error: cannot override a var
+open class B { open var a: Int = 1 }
+class C extends B { override let a: Int = 2 }

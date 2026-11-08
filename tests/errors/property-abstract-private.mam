@@ -1,0 +1,2 @@
+// error: cannot be private
+abstract class B { private abstract let a: Int }

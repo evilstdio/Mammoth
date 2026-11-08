@@ -926,8 +926,10 @@ impl super::Symbols<'_> {
                 .iter()
                 .zip(&arguments)
                 .all(|(name, expected)| {
-                    map.get(name)
-                        .is_some_and(|actual| self.types.same_kind(*actual, *expected))
+                    self.types.is_star(*expected)
+                        || map
+                            .get(name)
+                            .is_some_and(|actual| self.types.same_kind(*actual, *expected))
                 })
         })
     }

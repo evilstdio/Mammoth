@@ -240,6 +240,12 @@ pub(super) fn resolve<'a>(
                 .types
                 .push_parameters(&mut local, &class.type_parameters)
                 .map_err(|error| (owner, error))?;
+            for (&(_, kind), &variance) in names.iter().zip(&class.variances) {
+                let Kind::TypeParameter(parameter) = kind else {
+                    unreachable!()
+                };
+                variances.borrow_mut()[parameter] = variance;
+            }
             class_parameters.borrow_mut()[index] = names;
         }
         for (&index, interface) in scope.interfaces.iter().zip(&program.interfaces) {
@@ -542,6 +548,7 @@ pub(super) fn resolve<'a>(
                 let mut parents = Vec::new();
                 for &name in &interface.extends {
                     let kind = resolve_type(&local, name)?;
+                    local.check_parent_variance(kind, name)?;
                     let java_interface = matches!(kind, Kind::Java(index)
                     if java_classes.get(&index).map_or_else(
                         || types.is_java_interface(&types.java_name(index)),
@@ -630,7 +637,11 @@ pub(super) fn resolve<'a>(
                 static_fields.push(fields);
                 let local = types.class_scope(index);
                 let types = &local;
-                methods.push(resolve_functions(&class.methods, 254, types, false)?);
+                let resolved = resolve_functions(&class.methods, 254, types, false)?;
+                for method in &class.methods {
+                    types.check_variance(&resolved[method.name.text], method.name)?;
+                }
+                methods.push(resolved);
                 constructors.push(Signature::resolve(
                     class.name,
                     &class.parameters,
@@ -722,6 +733,12 @@ pub(super) fn resolve<'a>(
                     // Enum<E>, so E satisfies bounds such as the one on EnumMap.
                     java_super =
                         Some(types.java_generic("java/lang/Enum", vec![Kind::Object(index)]));
+                }
+                if let Some(kind) = superclass_kind {
+                    types.check_parent_variance(kind, class.name)?;
+                }
+                for &kind in &implements {
+                    types.check_parent_variance(kind, class.name)?;
                 }
                 superclasses.push(superclass);
                 superclass_kinds.push(superclass_kind);
@@ -887,7 +904,18 @@ pub(super) fn resolve<'a>(
             template.types = scopes[owner].types.class_scope(index).into_owned();
             template.functions = scopes[owner].functions.clone();
             match template.resolve_fields(index) {
-                Ok(fields) => Rc::get_mut(&mut template.class_fields).unwrap()[index] = fields,
+                Ok(fields) => {
+                    for (field, declaration) in fields
+                        .iter()
+                        .zip(&template.class_declarations[index].fields)
+                    {
+                        template
+                            .types
+                            .check_field_variance(field.kind, field.mutable, declaration.name)
+                            .map_err(|error| (owner, error))?;
+                    }
+                    Rc::get_mut(&mut template.class_fields).unwrap()[index] = fields;
+                }
                 Err(error) if error.message.starts_with("Add a type to this field") => {
                     deferred.push(index);
                     first_error.get_or_insert((owner, error));
