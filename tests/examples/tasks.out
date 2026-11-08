@@ -1,0 +1,16 @@
+[ship(40), crash on start(16), write docs(15)]
+[write docs, ship, crash on start]
+3
+done on 2026-11-09
+failed: no time
+pending
+tag7/c7; urgent/red
+[crash on start] 3
+high:10
+true
+36
+[High, Low, Medium]
+6
+1
+[1, 3, 9, 27, 81]
+[1, 9, 25]

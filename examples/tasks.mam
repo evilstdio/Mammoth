@@ -1,0 +1,159 @@
+// A small task tracker that uses classes the way a larger program would:
+// several constructors, properties with accessors, inner classes, object
+// expressions passed to Java, lazy sequences, delegation and sealed results.
+import java.time.Duration
+import java.time.LocalDate
+import java.util.ArrayList
+import java.util.Comparator
+import java.util.HashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+
+enum Priority(let weight: Int) {
+    Low(1), Medium(5), High(10);
+
+    fun label(): Text = name.lowercase() + ":" + weight.toString()
+}
+
+interface Named {
+    let title: Text
+    var notes: Int
+    let summary: Text get() = "[" + title + "]"
+}
+
+data class Tag(let name: Text, let color: Text = "grey") {
+    constructor(both: Int) : this("tag" + both.toString(), "c" + both.toString())
+}
+
+sealed class Outcome
+data class Done(let on: LocalDate) extends Outcome
+data class Failed(let reason: Text) extends Outcome
+object Pending extends Outcome
+
+fun describe(outcome: Outcome): Text = when outcome {
+    is Done -> "done on " + outcome.on.toString()
+    is Failed -> "failed: " + outcome.reason
+    Pending -> "pending"
+}
+
+open class Task(override let title: Text, let priority: Priority) implements Named {
+    override var notes = 0
+    var outcome: Outcome = Pending
+        private set
+    var estimate: Int = 1
+        set(value) { field = value.coerceIn(1, 40) }
+    let tags = mutableListOf<Tag>()
+
+    constructor(title: Text) : this(title, Priority.Medium)
+
+    open fun score(): Int = priority.weight * estimate
+
+    fun finish(day: LocalDate) { outcome = Done(day) }
+    fun fail(reason: Text) { outcome = Failed(reason) }
+
+    override fun toString(): Text = title + "(" + score().toString() + ")"
+}
+
+class Bug(title: Text, let severity: Int) extends Task(title, Priority.High) {
+    override fun score(): Int = super.score() + severity * 2
+}
+
+interface Clock { fun today(): LocalDate }
+class FixedClock(let day: LocalDate) implements Clock {
+    override fun today(): LocalDate = day
+}
+class LoggedClock(inner_clock: Clock) implements Clock by inner_clock {
+    var reads = 0
+}
+
+class Board(let name: Text, clock: Clock) {
+    private let tasks = ArrayList<Task>()
+    private let clock_value = clock
+    var finished = 0
+        private set
+
+    fun add(task: Task): Board {
+        tasks.add(task)
+        return this
+    }
+
+    inner class Cursor(var position: Int) {
+        fun current(): Task? = if position < tasks.size() { tasks.get(position) } else { null }
+        fun advance(): Bool {
+            position += 1
+            return position < tasks.size()
+        }
+        fun finishCurrent() {
+            let task = current() ?: return
+            task.finish(clock_value.today())
+            finished += 1
+        }
+    }
+
+    fun ranked(): MutableList<Task> {
+        let copy = tasks.toMutableList()
+        copy.sort(object implements Comparator<Task> {
+            override fun compare(a: Task, b: Task): Int = b.score() - a.score()
+        })
+        return copy
+    }
+
+    fun titlesLazily(): Sequence<Text> = tasks.asSequence().filter { it.score() > 4 }.map { it.title }
+}
+
+let day = LocalDate.of(2026, 11, 9)
+let clock = LoggedClock(FixedClock(day))
+let board = Board("main", clock)
+
+let write = Task("write docs")
+write.estimate = 3
+let ship = Task("ship", Priority.Low)
+ship.estimate = 100
+let crash = Bug("crash on start", 3)
+crash.tags.add(Tag(7))
+crash.tags.add(Tag("urgent", "red"))
+board.add(write).add(ship).add(crash)
+
+print(board.ranked())
+print(board.titlesLazily().toList())
+
+let cursor = board.Cursor(0)
+do {
+    cursor.finishCurrent()
+} while cursor.advance()
+print(board.finished)
+print(describe(write.outcome))
+print(describe(Failed("no time")))
+print(describe(Pending))
+print(crash.tags.joinToString("; ") { it.name + "/" + it.color })
+
+let named: Named = crash
+named.notes = 2
+named.notes += 1
+print(named.summary + " " + named.notes.toString())
+print(crash.priority.label())
+
+// Java concurrency, with an object expression and a lambda.
+let counter = AtomicInteger(0)
+let pool = Executors.newFixedThreadPool(4)
+for i in 1..8 {
+    pool.submit(object implements Runnable {
+        override fun run() { counter.addAndGet(i) }
+    })
+}
+pool.shutdown()
+print(pool.awaitTermination(5L, TimeUnit.SECONDS))
+print(counter.get())
+
+// Grouping and totals over Java and Mammoth collections.
+let totals = HashMap<Text, Int>()
+for task in board.ranked() {
+    let key = task.priority.name
+    totals[key] = totals.getOrDefault(key, 0) + task.score()
+}
+print(totals.keySet().toMutableList().sorted())
+print(List<Int>(3) { it + 1 }.sum())
+print(Duration.ofMinutes(90L).toHours())
+print(generateSequence(1) { it * 3 }.takeWhile { it < 100 }.toList())
+print((1..5).filter { it % 2 == 1 }.map { it * it })

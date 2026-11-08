@@ -87,6 +87,8 @@ fn collect_program<'a>(program: &'a Program<'a>, mut used: HashSet<&'a str>) -> 
         free_names(function, &mut used);
     }
     for class in &program.classes {
+        // A class's own fields and constructor parameters hide top-level names.
+        let outer: HashSet<&'a str> = used.clone();
         for method in &class.methods {
             free_names(method, &mut used);
         }
@@ -111,6 +113,14 @@ fn collect_program<'a>(program: &'a Program<'a>, mut used: HashSet<&'a str>) -> 
             }
             collect_statements(&item.body, &mut used);
         }
+        used.retain(|name| {
+            outer.contains(name)
+                || !(class.fields.iter().any(|field| field.name.text == *name)
+                    || class
+                        .parameters
+                        .iter()
+                        .any(|(parameter, _)| parameter.text == *name))
+        });
     }
     collect_lambdas(&program.body, &mut used);
     used
