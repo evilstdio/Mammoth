@@ -322,6 +322,16 @@ impl<'a> Emitter<'a> {
             .flat_map(|branch| &branch.conditions)
             .filter_map(|condition| match condition {
                 WhenCondition::Is(annotation) => resolve_type(&self.type_scope, *annotation).ok(),
+                // An object is named without `is`.
+                WhenCondition::Value(Expr::Variable(name)) => self
+                    .type_scope
+                    .names
+                    .get(name.text)
+                    .copied()
+                    .filter(|kind| {
+                        matches!(kind, Kind::Object(class)
+                            if self.symbols.class_declarations[*class].is_object)
+                    }),
                 _ => None,
             })
             .filter_map(|kind| {

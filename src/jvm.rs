@@ -2294,6 +2294,14 @@ impl<'a> Emitter<'a> {
                     ));
                 }
                 Kind::Object(class) => {
+                    if self.symbols.class_declarations[class].is_object
+                        && self.current_class != Some(class)
+                    {
+                        return Err(at(
+                            name,
+                            "An object has one instance already. Use its name without parentheses.",
+                        ));
+                    }
                     if self.symbols.is_abstract_class(class) {
                         return Err(at(
                             name,
@@ -3040,6 +3048,17 @@ impl<'a> Emitter<'a> {
             let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
             return self.field_access(method, receiver, name, base);
         }
+        if let Some(&Kind::Object(class)) = self.type_scope.names.get(name.text)
+            && self.symbols.class_declarations[class].is_object
+        {
+            let instance = Name {
+                text: "INSTANCE",
+                offset: name.offset,
+            };
+            if let Some(kind) = self.read_static_field(method, class, instance, base)? {
+                return Ok(kind);
+            }
+        }
         Err(at(name, "This variable has not been defined here."))
     }
 
@@ -3357,6 +3376,28 @@ impl<'a> Emitter<'a> {
                 let (list, mutable) = match kind {
                     Kind::List(list) => (list, false),
                     Kind::MutableList(list) => (list, true),
+                    Kind::Object(_)
+                    | Kind::Applied(_)
+                    | Kind::Java(_)
+                    | Kind::Interface(_)
+                    | Kind::AppliedInterface(_) => {
+                        // `a[i]` calls `a.get(i)` on an object.
+                        let get = Name {
+                            text: "get",
+                            offset: receiver.offset(),
+                        };
+                        self.allow_null = allow_null;
+                        return self
+                            .call_method_on(
+                                method,
+                                kind,
+                                get,
+                                std::slice::from_ref(index.as_ref()),
+                                base,
+                                allow_null,
+                            )?
+                            .ok_or_else(|| at(get, "get must give a value."));
+                    }
                     _ => {
                         return Err(Error {
                             offset: receiver.offset(),
@@ -3409,6 +3450,38 @@ impl<'a> Emitter<'a> {
                 offset: statement.offset(),
                 message: "This jump cannot be used as a value here. Use it after ?: or in a when or if branch.",
             }),
+            Expr::Progression(start, ..) => Err(Error {
+                offset: start.offset(),
+                message: "A range can be used in a for loop or after in.",
+            }),
+            Expr::InRange(value, range, negated) => {
+                let Expr::Range(start, end, inclusive) = range.as_ref() else {
+                    unreachable!("the parser only wraps ranges")
+                };
+                let kind = self.expression(method, value, base)?;
+                let slot = method.local(self.local_type(kind));
+                method.access(kind.store(), slot);
+                let held = || Box::new(Expr::Temp(kind, slot));
+                let upper = if *inclusive {
+                    Comparison::Le
+                } else {
+                    Comparison::Lt
+                };
+                let check = Expr::Logic(
+                    crate::syntax::Logic::And,
+                    vec![
+                        Expr::Compare(held(), Comparison::Ge, start.clone()),
+                        Expr::Compare(held(), upper, end.clone()),
+                    ],
+                );
+                let check = if *negated {
+                    Expr::Not(value.offset(), true, Box::new(check))
+                } else {
+                    check
+                };
+                let check: &'a Expr<'a> = Box::leak(Box::new(check));
+                self.expression(method, check, base)
+            }
             Expr::Named(label, _) => Err(at(
                 *label,
                 "Named arguments work only in calls to functions written in Mammoth.",
@@ -3576,6 +3649,43 @@ impl<'a> Emitter<'a> {
             }
             instruction(&mut method.code, 0xb6, self.refs.to_string);
             return Ok(Kind::Text);
+        }
+        if matches!(
+            kind,
+            Kind::Object(_)
+                | Kind::Applied(_)
+                | Kind::Java(_)
+                | Kind::Interface(_)
+                | Kind::AppliedInterface(_)
+        ) && !rest.is_empty()
+        {
+            // `a + b` calls `a.plus(b)` on an object.
+            for &(operator, right) in rest {
+                let name = Name {
+                    text: match operator {
+                        Arithmetic::Add => "plus",
+                        Arithmetic::Sub => "minus",
+                        Arithmetic::Mul => "times",
+                        Arithmetic::Div => "div",
+                        Arithmetic::Rem => "rem",
+                    },
+                    offset: right.offset(),
+                };
+                kind = self
+                    .call_method_on(method, kind, name, std::slice::from_ref(right), base, false)
+                    .map_err(|error| {
+                        if error.message.contains("no method") {
+                            Error {
+                                offset: left.offset(),
+                                message: "Arithmetic needs an Int, Long, or Double, or an object with a method such as plus.",
+                            }
+                        } else {
+                            error
+                        }
+                    })?
+                    .ok_or_else(|| at(name, "This operator method does not give a value."))?;
+            }
+            return Ok(kind);
         }
         if !kind.is_numeric() {
             let joins_text = matches!(rest.first(), Some((Arithmetic::Add, Expr::Text(..))));
@@ -3782,6 +3892,42 @@ impl<'a> Emitter<'a> {
                 let equality = matches!(comparison, Comparison::Eq | Comparison::Ne);
                 self.allow_null = equality;
                 let lhs = self.expression(method, left, base)?;
+                if !equality
+                    && matches!(
+                        lhs,
+                        Kind::Object(_)
+                            | Kind::Applied(_)
+                            | Kind::Java(_)
+                            | Kind::Interface(_)
+                            | Kind::AppliedInterface(_)
+                    )
+                {
+                    // `a < b` asks `a.compareTo(b) < 0`.
+                    let name = Name {
+                        text: "compareTo",
+                        offset: left.offset(),
+                    };
+                    let _order = self
+                        .call_method_on(
+                            method,
+                            lhs,
+                            name,
+                            std::slice::from_ref(right.as_ref()),
+                            base,
+                            false,
+                        )?
+                        .filter(|&kind| kind == Kind::Int)
+                        .ok_or_else(|| at(name, "compareTo must give an Int."))?;
+                    let (yes, no) = match comparison {
+                        Comparison::Lt => (0x9b, 0x9c),
+                        Comparison::Le => (0x9e, 0x9d),
+                        Comparison::Gt => (0x9d, 0x9e),
+                        _ => (0x9c, 0x9b),
+                    };
+                    let branch = method.code.len();
+                    instruction(&mut method.code, if when { yes } else { no }, 0);
+                    return Ok(vec![branch]);
+                }
                 let operand = if lhs == Kind::Null {
                     Local::Null
                 } else {
@@ -4045,6 +4191,18 @@ impl<'a> Emitter<'a> {
         if let Expr::Range(start, end, inclusive) = values {
             return self.loop_range(method, name, start, end, *inclusive, body);
         }
+        if let Expr::Progression(start, end, inclusive, down, step) = values {
+            return self.loop_progression(
+                method,
+                name,
+                start,
+                end,
+                *inclusive,
+                *down,
+                step.as_deref(),
+                body,
+            );
+        }
         let mut kind = self.expression(method, values, 0)?;
         if self.is_java_map(kind) {
             // Looping over a map visits its entries.
@@ -4132,6 +4290,115 @@ impl<'a> Emitter<'a> {
         Ok(())
     }
 
+    /// `for x in a downTo b` and ranges with `step`.
+    #[allow(clippy::too_many_arguments)]
+    fn loop_progression(
+        &mut self,
+        method: &mut Method<'a>,
+        name: Name<'a>,
+        start: &'a Expr<'a>,
+        end: &'a Expr<'a>,
+        inclusive: bool,
+        down: bool,
+        step: Option<&'a Expr<'a>>,
+        body: &'a [Statement<'a>],
+    ) -> Result<(), Error> {
+        let kind = self.expression(method, start, 0)?;
+        if !matches!(kind, Kind::Int | Kind::Char) {
+            return Err(Error {
+                offset: start.offset(),
+                message: "A range needs Int or Char values, such as 1..10.",
+            });
+        }
+        let counter = method.local(Local::Int);
+        method.access(0x36, counter); // istore
+        let actual = self.expression(method, end, 0)?;
+        self.symbols.require(end, actual, kind)?;
+        let limit = method.local(Local::Int);
+        method.access(0x36, limit);
+        let stride = method.local(Local::Int);
+        match step {
+            Some(step) => {
+                let actual = self.expression(method, step, 0)?;
+                self.symbols.require(step, actual, Kind::Int)?;
+            }
+            None => push_int(&mut method.code, 1),
+        }
+        method.access(0x36, stride);
+        method.max_stack = method.max_stack.max(5);
+        // A step must be positive.
+        method.access(0x15, stride);
+        let positive = method.code.len();
+        instruction(&mut method.code, 0x9d, 0); // ifgt
+        let error = self.pool_class("java/lang/IllegalArgumentException");
+        instruction(&mut method.code, 0xbb, error); // new
+        method.code.extend([0x59]); // dup
+        let init = self.pool.member_for(10, error, "<init>", "()V");
+        instruction(&mut method.code, 0xb7, init);
+        method.code.push(0xbf); // athrow
+        let live = stride as usize + 1;
+        method.patch_branch(positive, method.code.len(), name.offset)?;
+        method.frame(live);
+        let header = method.code.len();
+        method.frame(live);
+        method.access(0x15, counter);
+        method.access(0x15, limit);
+        let branch = method.code.len();
+        let opcode = match (down, inclusive) {
+            (true, _) => 0xa1,      // if_icmplt
+            (false, true) => 0xa3,  // if_icmpgt
+            (false, false) => 0xa2, // if_icmpge
+        };
+        instruction(&mut method.code, opcode, 0);
+        method.variables.push(Binding {
+            name: name.text,
+            slot: counter,
+            kind,
+            mutable: false,
+        });
+        method.loops.push(LoopFrame::new(None));
+        let continues = self.scoped_block(method, body, &[]);
+        let frame = method.loops.pop().unwrap();
+        method.pop_variable();
+        let mut last = None;
+        if continues? || !frame.continues.is_empty() {
+            method.patch_branches(&frame.continues, name.offset)?;
+            if !frame.continues.is_empty() {
+                method.frame(live);
+            }
+            // Stop before the counter can overflow.
+            let (first, second) = if down {
+                (counter, limit)
+            } else {
+                (limit, counter)
+            };
+            method.access(0x15, first);
+            method.code.push(0x85); // i2l
+            method.access(0x15, second);
+            method.code.push(0x85);
+            method.code.push(0x65); // lsub
+            method.access(0x15, stride);
+            method.code.push(0x85);
+            method.code.push(0x94); // lcmp
+            last = Some(method.code.len());
+            instruction(&mut method.code, 0x9b, 0); // iflt
+            method.access(0x15, counter);
+            method.access(0x15, stride);
+            method.code.push(if down { 0x64 } else { 0x60 });
+            method.access(0x36, counter);
+            let back = method.jump();
+            method.patch_branch(back, header, name.offset)?;
+        }
+        method.patch_branch(branch, method.code.len(), name.offset)?;
+        if let Some(last) = last {
+            method.patch_branch(last, method.code.len(), name.offset)?;
+        }
+        method.patch_branches(&frame.breaks, name.offset)?;
+        method.frame(counter as usize);
+        method.locals.truncate(counter as usize);
+        Ok(())
+    }
+
     fn loop_range(
         &mut self,
         method: &mut Method<'a>,
@@ -4202,6 +4469,25 @@ impl<'a> Emitter<'a> {
         let (element_list, mutable) = match kind {
             Kind::List(list) => (list, false),
             Kind::MutableList(list) => (list, true),
+            Kind::Object(_)
+            | Kind::Applied(_)
+            | Kind::Java(_)
+            | Kind::Interface(_)
+            | Kind::AppliedInterface(_)
+                if operator.is_none() =>
+            {
+                // `a[i] = v` calls `a.set(i, v)` on an object.
+                let set = Name {
+                    text: "set",
+                    offset: list.offset(),
+                };
+                let args: &'a [Expr<'a>] =
+                    Box::leak(vec![index.clone(), value.clone()].into_boxed_slice());
+                if let Some(kind) = self.call_method_on(method, kind, set, args, 0, true)? {
+                    method.code.push(kind.pop_opcode());
+                }
+                return Ok(());
+            }
             _ => {
                 return Err(Error {
                     offset: list.offset(),

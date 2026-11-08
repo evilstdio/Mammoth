@@ -1,0 +1,3 @@
+// error: Use step after a range
+let xs = [1]
+for x in xs step 2 { print(x) }

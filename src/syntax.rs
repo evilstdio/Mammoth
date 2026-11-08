@@ -118,6 +118,8 @@ pub struct Class<'a> {
     pub is_abstract: bool,
     /// `sealed class`: subclasses must be declared in the same file.
     pub is_sealed: bool,
+    /// `object`: the one instance is the static field `INSTANCE`.
+    pub is_object: bool,
     pub fields: Vec<Field<'a>>,
     pub methods: Vec<Function<'a>>,
     /// `static var`/`static let` fields, initialized once in declaration order.
@@ -400,6 +402,17 @@ pub enum Expr<'a> {
     Elvis(Box<Expr<'a>>, Box<Expr<'a>>),
     /// `start..end` (inclusive) or `start until end` (exclusive), used by `for` loops.
     Range(Box<Expr<'a>>, Box<Expr<'a>>, bool),
+    /// `start downTo end` or a range with `step`: start, end, whether the
+    /// end is included, whether it counts down, and the step.
+    Progression(
+        Box<Expr<'a>>,
+        Box<Expr<'a>>,
+        bool,
+        bool,
+        Option<Box<Expr<'a>>>,
+    ),
+    /// `value in start..end`: the value, the range, and whether it is `not in`.
+    InRange(Box<Expr<'a>>, Box<Expr<'a>>, bool),
     /// `parameter = value` in a call.
     Named(Name<'a>, Box<Expr<'a>>),
     /// `return`, `throw`, `break` or `continue` where a value could go, such
@@ -425,6 +438,7 @@ impl Expr<'_> {
             | Self::Null(offset) => *offset,
             Self::Named(name, _) | Self::StaticHelper(_, name, _) => name.offset,
             Self::Temp(..) => 0,
+            Self::Progression(start, ..) | Self::InRange(start, ..) => start.offset(),
             Self::Jump(statement) => statement.offset(),
             Self::Variable(name) | Self::Call(name, _) => name.offset,
             Self::MethodCall(receiver, _, _)
@@ -553,6 +567,19 @@ fn calls_member(source: &str, name: &str) -> bool {
     })
 }
 
+/// Whether `source` has a bare call of `name`, as `name(` or `name {`.
+fn calls_function(source: &str, name: &str) -> bool {
+    source.match_indices(name).any(|(at, _)| {
+        let before = source[..at].chars().next_back();
+        let after = source[at + name.len()..]
+            .trim_start_matches(' ')
+            .chars()
+            .next();
+        !before.is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '.')
+            && matches!(after, Some('(' | '{'))
+    })
+}
+
 fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
     let parsed = parse_source(PRELUDE).expect("the built-in library parses");
     let extensions: Vec<&str> = parsed
@@ -565,6 +592,10 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         .any(|text| source.contains(text));
     if !destructuring
         && !source.contains("Pair(")
+        && !source.contains(" in ")
+        && !["repeat", "maxOf", "minOf"]
+            .iter()
+            .any(|name| calls_function(source, name))
         && !extensions.iter().any(|name| calls_member(source, name))
     {
         return;
@@ -585,6 +616,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
                 let needs_pair = matches!(name, "zip" | "partition");
                 name == "toMutableList"
                     || (destructures && name.starts_with("component"))
+                    || (name == "contains" && source.contains(" in "))
                     || (calls_member(source, name) && !(needs_pair && user_pair))
             })
         })
@@ -604,6 +636,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
     }
     let keep = |name: &str| {
         name.starts_with("__")
+            || matches!(name, "repeat" | "maxOf" | "minOf") && calls_function(source, name)
             || wanted.iter().any(|wanted| {
                 name == *wanted
                     || name
@@ -706,6 +739,26 @@ fn parse_source(source: &str) -> Result<Program<'_>, Error> {
             program.classes.push(parser.class(false, false, false)?);
         } else if name.text == "abstract" && parser.take_word("class") {
             program.classes.push(parser.class(true, false, false)?);
+        } else if name.text == "object" && identifier(parser.rest_trimmed(), 0).is_some() {
+            let mut class = parser.class(false, false, false)?;
+            class.is_object = true;
+            let instance = Name {
+                text: "INSTANCE",
+                offset: class.name.offset,
+            };
+            class
+                .static_initializers
+                .insert(0, Initializer::Field(class.static_fields.len()));
+            class.static_fields.push(Field {
+                annotations: Vec::new(),
+                protected: false,
+                name: instance,
+                annotation: Some(class.name),
+                value: Some(Expr::Call(class.name, Vec::new())),
+                mutable: false,
+                private: false,
+            });
+            program.classes.push(class);
         } else if name.text == "sealed" && parser.take_word("class") {
             let mut class = parser.class(true, false, false)?;
             class.is_sealed = true;
@@ -1161,6 +1214,7 @@ impl<'a> Parser<'a> {
                 extends,
                 is_abstract,
                 is_sealed: false,
+                is_object: false,
                 fields,
                 methods: Vec::new(),
                 static_fields: Vec::new(),
@@ -1399,6 +1453,7 @@ impl<'a> Parser<'a> {
             extends,
             is_abstract,
             is_sealed: false,
+            is_object: false,
             fields,
             methods,
             static_fields,
@@ -1992,6 +2047,26 @@ impl<'a> Parser<'a> {
                 values = Expr::Range(Box::new(values), Box::new(self.header_expression()?), true);
             } else if self.take_word("until") {
                 values = Expr::Range(Box::new(values), Box::new(self.header_expression()?), false);
+            } else if self.take_word("downTo") {
+                let end = self.header_expression()?;
+                values = Expr::Progression(Box::new(values), Box::new(end), true, true, None);
+            }
+            if self.take_word("step") {
+                let step = Box::new(self.header_expression()?);
+                values = match values {
+                    Expr::Range(start, end, inclusive) => {
+                        Expr::Progression(start, end, inclusive, false, Some(step))
+                    }
+                    Expr::Progression(start, end, inclusive, down, None) => {
+                        Expr::Progression(start, end, inclusive, down, Some(step))
+                    }
+                    other => {
+                        return Err(Error {
+                            offset: other.offset(),
+                            message: "Use step after a range, such as 0..10 step 2.",
+                        });
+                    }
+                };
             }
             let mut body = self.block(depth + 1)?;
             if let Some(names) = names {
@@ -2117,6 +2192,11 @@ impl<'a> Parser<'a> {
         let mut statements = vec![first];
         statements.append(&mut self.extra_statements);
         Ok(statements)
+    }
+
+    fn rest_trimmed(&mut self) -> &'a str {
+        self.skip_space();
+        self.rest()
     }
 
     fn compound_operator(&mut self) -> Option<Arithmetic> {
@@ -2352,6 +2432,34 @@ impl<'a> Parser<'a> {
         if !self.newline_ahead() && self.take_word("is") {
             return Ok(Expr::Is(Box::new(left), self.annotation()?));
         }
+        if !self.newline_ahead() {
+            let start = self.offset;
+            let negated = self.take_word("not");
+            if self.take_word("in") {
+                let values = self.elvis(depth)?;
+                let range = if self.take("..") {
+                    Some(Expr::Range(
+                        Box::new(values),
+                        Box::new(self.elvis(depth)?),
+                        true,
+                    ))
+                } else if self.take_word("until") {
+                    Some(Expr::Range(
+                        Box::new(values),
+                        Box::new(self.elvis(depth)?),
+                        false,
+                    ))
+                } else {
+                    return Ok(Self::contains_check(left, values, negated));
+                };
+                return Ok(Expr::InRange(
+                    Box::new(left),
+                    Box::new(range.unwrap()),
+                    negated,
+                ));
+            }
+            self.offset = start;
+        }
         for (token, operator) in [
             ("==", Comparison::Eq),
             ("!=", Comparison::Ne),
@@ -2369,6 +2477,24 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(left)
+    }
+
+    /// `item in values` asks `values.contains(item)`.
+    fn contains_check(item: Expr<'a>, values: Expr<'a>, negated: bool) -> Expr<'a> {
+        let offset = item.offset();
+        let call = Expr::MethodCall(
+            Box::new(values),
+            Name {
+                text: "contains",
+                offset,
+            },
+            vec![item],
+        );
+        if negated {
+            Expr::Not(offset, true, Box::new(call))
+        } else {
+            call
+        }
     }
 
     fn expression(&mut self) -> Result<Expr<'a>, Error> {
@@ -2646,6 +2772,15 @@ impl<'a> Parser<'a> {
             return Ok(inner);
         }
         if self.take("\"") {
+            if self.rest().starts_with("\"\"") {
+                self.offset += 2;
+                let Some(length) = self.rest().find("\"\"\"") else {
+                    return Err(self.error("Expected three quotes to close this text."));
+                };
+                let text = self.rest()[..length].replace("\r\n", "\n");
+                self.offset += length + 3;
+                return Ok(Expr::Text(offset, vec![Part::Literal(text)]));
+            }
             return Ok(Expr::Text(offset, self.read_text()?));
         }
         if self.take("{") {

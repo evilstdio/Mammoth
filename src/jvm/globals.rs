@@ -534,6 +534,17 @@ fn lambda_expr<'a>(expr: &'a Expr<'a>, used: &mut dyn FnMut(&'a Lambda<'a>)) {
 pub(super) fn collect_expr<'a>(expr: &'a Expr<'a>, used: &mut HashSet<&'a str>) {
     match expr {
         Expr::Named(_, value) => collect_expr(value, used),
+        Expr::Progression(start, end, _, _, step) => {
+            collect_expr(start, used);
+            collect_expr(end, used);
+            if let Some(step) = step {
+                collect_expr(step, used);
+            }
+        }
+        Expr::InRange(value, range, _) => {
+            collect_expr(value, used);
+            collect_expr(range, used);
+        }
         Expr::Jump(statement) => collect_statements(std::slice::from_ref(statement), used),
         Expr::Temp(..) => {}
         Expr::StaticHelper(_, _, args) => {

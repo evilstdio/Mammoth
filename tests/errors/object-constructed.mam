@@ -1,0 +1,3 @@
+// error: An object has one instance already
+object O
+print(O())
