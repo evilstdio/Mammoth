@@ -1,0 +1,26 @@
+// A new line ends a branch value, so the next branch can start with a
+// parenthesis, a bracket or a minus sign. Method chains still continue.
+let a = 5
+let c = [1, 2]
+fun f(n: Int): Int { return n }
+print(when {
+    a < 0 -> a
+    (a > 3) -> f(a).toString().length()
+    else -> 3
+})
+print(when 0 {
+    1 -> a
+    -1 -> 2
+    (0) -> f(9)
+    else -> 3
+})
+let picked = when 2 {
+    1 -> c
+    [2][0] -> [c[1]]
+    else -> c
+}
+print(picked[0])
+let chained = "abc"
+    .toUpperCase()
+    .length()
+print(chained)

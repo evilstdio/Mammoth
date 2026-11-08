@@ -2086,7 +2086,7 @@ impl<'a> Parser<'a> {
                 self.offset += 2;
             }
             let method = safe || (!self.rest().starts_with("..") && self.take("."));
-            if !method && !self.take("[") {
+            if !method && (self.newline_ahead() || !self.take("[")) {
                 return Ok(receiver);
             }
             if nested == 64 {
@@ -2100,7 +2100,7 @@ impl<'a> Parser<'a> {
                 } else {
                     name
                 };
-                if self.take("(") {
+                if !self.newline_ahead() && self.take("(") {
                     let mut args = self.list(")", |parser| parser.logical(0, nested + 1))?;
                     if let Some(lambda) = self.trailing_lambda(nested + 1)? {
                         args.push(lambda);
@@ -2263,7 +2263,10 @@ impl<'a> Parser<'a> {
                 let (subject, branches) = self.when_parts(depth + 1, true)?;
                 return Ok(Expr::When(offset, subject.map(Box::new), branches));
             }
-            if !matches!(name.text, "true" | "false" | "null") && self.take("(") {
+            if !matches!(name.text, "true" | "false" | "null")
+                && !self.newline_ahead()
+                && self.take("(")
+            {
                 if depth == 64 {
                     return Err(self.error("Expressions can be nested up to 64 levels."));
                 }
