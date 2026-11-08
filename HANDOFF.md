@@ -1,3 +1,31 @@
+# Session summary: session 3, 2026-11-08 (read this first)
+
+**State.** Local Git repository, no remote, identity `sss47 <sss47@users.invalid>` set for this repository only, no AI attribution in commits. `main` holds the baseline; the work is on `compiler-correctness`. Commit `acab45e` has one failing test (`generic-methods`), fixed by the next commit.
+
+**Done, newest details in the entries below.**
+1. Fixed the invalid bytecode from the fuzzer: stack frames for untyped branch values, stale shared-variable slots.
+2. Differential, soundness and adversarial tools (`tests/fuzz`), plus a seeded differential test in `cargo test`.
+3. Soundness: null through `as`, `MutableList` casts, map keys, array element reads, generic Java interface signatures, instance field writes from static code, early reads of top-level variables, enum subclasses, final Java overrides.
+4. Overloads follow javac's phases and lambda specificity. Explicit type arguments on Java calls.
+5. Interop: `for` over `Iterable` classes, `EnumMap`, nested Java arrays, `byte`/`short` parameters, nullable lambda inputs, null-tolerant text joining and `==`.
+6. Diagnostics and robustness: correct stack-trace lines after probes, unreachable `catch`, unrelated `==`, `while true`, a compiler panic on `static init`.
+
+**Evidence.**
+- Differential fuzz: 0 problems on 620 programs (seeds 2, 5, 7) against javac.
+- Soundness fuzz: 0 unexplained failures on 150 grown programs after the last soundness fix, 75 of them with random class declarations. A later final run is recorded below if it finished.
+- Mutation fuzz with a debug compiler: 6300 inputs found one panic, now fixed.
+- The fuzz runs predate the final two compiler commits, which changed only global name tracking and static-field checks.
+
+**Known limitations.**
+- Top-level initialization order does not follow method calls or lambdas. Indirect this-escape can still observe null or 0.
+- Arrays passed through generic functions are not element-checked. Raw Java parameters can pollute typed collections.
+- Mammoth cannot write wildcard types, so some valid wildcard programs are rejected.
+- `byte[]` is an opaque Java value with no indexing. Branches over 32 KB are a clean compile error.
+- `a ?: return x` is not supported. Compound assignment to Java fields through an explicit receiver is not supported.
+- Generic default methods cannot be called through `super.` when the superclass inherits them.
+
+**Next concrete task.** Follow method calls in `check_global_order`, then extend the fuzzers to multi-file projects and Java subclasses of Mammoth classes.
+
 # Latest: generic Java interfaces, narrow numbers, null text (2026-11-08, session 3)
 
 - **Unsound before.** `class C implements Conv<Text, Int> { fun conv(a: Int): Int }` compiled because only the erased signature was checked. `check_java_interface` now uses the same type-argument comparison as Java superclasses (`classes.rs` `uses_java_arguments`).

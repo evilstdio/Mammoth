@@ -35,6 +35,7 @@ class In<T>(let label: Text) implements InI<T> { fun put(x: T): Text { return la
 interface Src<T> { fun src(): T }
 class SrcB implements Src<B> { fun src(): B { return B() } }
 class Pair2<X, Y>(let x: X, let y: Y) { fun swap(): Pair2<Y, X> { return Pair2<Y, X>(y, x) } }
+fun boxSeed<T>(): T { throw IllegalStateException("seed") }
 fun same<T>(x: T): T { return x }
 fun pick<T>(x: T, y: T): T { return y }
 fun boxOf<T>(x: T): Box<T> { return Box<T>(x) }
@@ -66,14 +67,64 @@ ATOMS = ['A()', 'B()', 'C()', 'D()', '"t"', '1', '2L', '1.5', 'null', 'true', 'B
          '{ x: A -> x }', '{ x: B -> x }', '{ x: A -> B() }', '{ -> B() }', '{ x: B -> x.onlyB() }']
 
 
+VALUE = {'A': 'A()', 'B': 'B()', 'C': 'C()', 'D': 'D()', 'Any': '"s"', 'Text': '"t"', 'Int': '1', 'A?': 'null', 'B?': 'B()'}
+
+
 class G:
     def __init__(s, r):
         s.r, s.vars, s.n = r, [], 0
+        s.classes = []
+
+    def elem(s):
+        return s.r.choice(ELEM)
+
+    def value(s, t):
+        return VALUE[t]
+
+    def class_decl(s):
+        r = s.r
+        s.n += 1
+        n = f'X{s.n}'
+        t, t2, t3, t4 = s.elem(), s.elem(), s.elem(), s.elem()
+        if r.random() < .55:
+            t2 = t
+        if r.random() < .55:
+            t3 = t
+        if r.random() < .55:
+            t4 = t
+        form = r.randrange(13)
+        if form == 0:
+            return f'class {n} implements Src<{t}> {{ fun src(): {t2} {{ return {s.value(t2)} }} }}', n + '()'
+        if form == 1:
+            return f'class {n} extends Box<{t}>({s.value(t)}) {{ override fun swap(x: {t3}): {t4} {{ return {s.value(t4)} }} }}', n + '()'
+        if form == 2:
+            return f'class {n} extends BBox(B()) {{ override fun swap(x: {t3}): {t4} {{ return {s.value(t4)} }} }}', n + '()'
+        if form == 3:
+            return f'class {n} extends A {{ override fun name(): {t2} {{ return {s.value(t2)} }} }}', n + '()'
+        if form == 4:
+            return f'interface I{n}<T> {{ fun m(x: T): T\n    fun d(x: T): T {{ return m(x) }} }}\nclass {n} implements I{n}<{t}> {{ fun m(x: {t3}): {t4} {{ return {s.value(t4)} }} }}', n + '()'
+        if form == 5:
+            return f'class {n} implements Comparable<{t}> {{ fun compareTo(o: {t2}): Int {{ return 0 }} }}', n + '()'
+        if form == 6:
+            return f'class {n} implements Function<{t}, {t2}> {{ fun apply(a: {t3}): {t4} {{ return {s.value(t4)} }} }}', n + '()'
+        if form == 7:
+            return f'class {n} extends ArrayList<{t}>() {{ override fun add(e: {t2}): Bool {{ return super.add(e) }} }}', n + '()'
+        if form == 8:
+            return f'class {n}<T> extends Box<T>(boxSeed<T>()) {{ fun other(x: {t}): T {{ return v }} }}', n + f'<{t2}>()'
+        if form == 9:
+            return f'class {n}<T>(let a: T) implements Src<T> {{ fun src(): T {{ return a }} }}', n + f'<{t2}>({s.value(t3)})'
+        if form == 10:
+            return f'class {n} implements Supplier<{t}> {{ override fun get(): {t2} {{ return {s.value(t2)} }} }}', n + '()'
+        if form == 11:
+            return f'abstract class AB{n}<T> {{ abstract fun make(): T\n    fun twice(): T {{ make()\n        return make() }} }}\nclass {n} extends AB{n}<{t}> {{ override fun make(): {t2} {{ return {s.value(t2)} }} }}', n + '()'
+        return f'enum {n} {{ P, Q\n    fun v(): {t} {{ return {s.value(t)} }} }}', n + '.P'
 
     def var(s):
         return s.r.choice(s.vars)[0] if s.vars else s.atom()
 
     def atom(s):
+        if s.classes and s.r.random() < .45:
+            return s.r.choice(s.classes)
         return s.r.choice(ATOMS)
 
     def expr(s, d=0):
@@ -92,7 +143,7 @@ class G:
             ta = f'<{r.choice(ELEM)}>' if r.random() < .25 and f in ('same', 'pick', 'boxOf', 'unbox', 'bounded') else ''
             return f'{f}{ta}({", ".join(e() for _ in range(n))})'
         if k == 'meth':
-            m = r.choice(['get()', 'get(0)', 'name()', 'onlyB()', 'onlyC()', 'swap()', f'swap({e()})', f'set({e()})', f'put({e()})', f'add({e()})', f'contains({e()})', 'remove(0)', 'src()', f'apply({e()})', f'orElse({e()})', 'size()', 'stream().findFirst().get()', 'iterator().next()', 'toString()', 'hashCode()', 'getClass()'])
+            m = r.choice(['get()', 'get(0)', 'name()', 'onlyB()', 'onlyC()', 'swap()', f'swap({e()})', f'set({e()})', f'put({e()})', f'add({e()})', f'contains({e()})', 'remove(0)', 'src()', 'm(' + e() + ')', 'd(' + e() + ')', 'twice()', 'make()', 'v()', 'compareTo(' + e() + ')', f'apply({e()})', f'orElse({e()})', 'size()', 'stream().findFirst().get()', 'iterator().next()', 'toString()', 'hashCode()', 'getClass()'])
             if r.random() < .15:
                 return f'{e()}?.{m}'
             return f'{e()}.{m}'
@@ -122,6 +173,9 @@ class G:
         r = s.r
         s.n += 1
         name = f'v{s.n}'
+        if r.random() < .22:
+            text, instance = s.class_decl()
+            return text, ('class', instance)
         k = r.choice(['let', 'let', 'let', 'infer', 'var', 'assign', 'effect', 'effect', 'print', 'setf', 'forin'])
         if k == 'let':
             t = r.choice(TYPES)
@@ -201,7 +255,9 @@ def main():
                 continue
             body.append(text)
             kept_total += 1
-            if new:
+            if new and new[0] == 'class':
+                g.classes.append(new[1])
+            elif new:
                 g.vars.append(new)
     print('programs', count, 'kept statements', kept_total, 'bad', found, 'panics', panics)
 

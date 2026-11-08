@@ -99,3 +99,17 @@ Work in correctness milestones with reproductions, valid-program coverage, rejec
 8. **Release contract and distribution.** Define supported features and compatibility, install/version reliably, publish limitations/documentation/licensing and bug-report guidance before a stable release.
 
 New syntax is considered when a real application needs it; it does not replace the correctness work above.
+
+## Correctness work, November 2026 (session 3)
+
+The compiler now has three independent checks beyond its example tests: a differential fuzzer against javac, a soundness fuzzer that feeds it ill-typed programs, and hand-written adversarial batteries (see `tests/fuzz`). They found and fixed invalid bytecode from untyped branch values and stale shared-variable slots, null passing through `as`, unchecked `MutableList` casts and map keys, unchecked type arguments on Java interfaces, instance-field writes from static code, and reads of top-level variables before their declaration. Java overloads are now chosen in javac's phases.
+
+Open correctness work, in order:
+
+1. Follow method calls in the top-level initialization-order check, and consider this-escape from initializers.
+2. Element checks for arrays passed through generic functions.
+3. Wildcard types written in Mammoth source, so conservatively rejected wildcard programs can be expressed.
+4. `byte[]` as a usable list type, and `goto_w` for branches over 32 KB.
+5. Extend the fuzzers to multi-file projects and Java subclasses of Mammoth classes.
+
+This work does not establish full Java or Kotlin compatibility, and no performance claims follow from it.

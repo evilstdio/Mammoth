@@ -1472,6 +1472,14 @@ Static fields of a Java superclass and its interfaces can be read the same way: 
 
 Lambdas can be passed where a Java generic parameter is erased to `Object`, and they take the parameter's type argument: `ArrayList<(Int) -> Int>().add { value -> value + 1 }` or `ArrayList<Runnable>().add { ... }`. Real functional-interface overloads are still preferred.
 
+#### Runtime checks where Java can break a promise
+
+- Reading a non-null reference from a list, such as `items[i]` or a `for` loop, checks for null, since a Java array can contain null. Use `let value: Text? = items[i]` to allow it. A list passed through a generic function is not checked element by element.
+- `value as Text` throws if `value` is null. Use `as Text?` to keep null.
+- A top-level statement cannot reach a variable declared later through the functions and constructors it calls. Calls through objects and lambdas are not followed.
+- Mammoth has no `Byte` or `Short` type, so an `Int` can be passed to Java `byte` and `short` parameters after any `int` overload. The value is truncated as a Java cast would.
+- Call a generic Java method with explicit type arguments like `Collections.emptyList<Text>()`. Arguments must fit them.
+
 #### Casts to parameterized Java types
 
 The JVM cannot check type arguments, so `value as ArrayList<Text>`, `as?` and `is` with a parameterized Java type are accepted only when the value's type already determines the arguments:
