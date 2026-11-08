@@ -1,0 +1,5 @@
+// error: read before its starting value
+class A {
+    let y: Int = x
+    open let x: Int = 1
+}

@@ -1,0 +1,4 @@
+// error: A constructor
+class A(let a: Int) {
+    constructor(c: Text) : this(1) { return }
+}

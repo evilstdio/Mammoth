@@ -517,6 +517,7 @@ pub(super) fn resolve<'a>(
     let overloads = Rc::new(overload_table);
     let mut methods = Vec::new();
     let mut constructors = Vec::new();
+    let mut secondary_constructors = Vec::new();
     let mut implementations = Vec::new();
     let mut superclasses = Vec::new();
     let mut superclass_kinds = Vec::new();
@@ -637,6 +638,24 @@ pub(super) fn resolve<'a>(
                     254,
                     types,
                 )?);
+                let mut secondary: Vec<Signature<'_>> = Vec::new();
+                for item in &class.secondary {
+                    let signature =
+                        Signature::resolve(item.keyword, &item.parameters, None, 254, types)?;
+                    let primary: &Signature<'_> = &constructors[constructors.len() - 1];
+                    if signature.descriptor == primary.descriptor
+                        || secondary
+                            .iter()
+                            .any(|other| other.descriptor == signature.descriptor)
+                    {
+                        return Err(at(
+                            item.keyword,
+                            "Another constructor of this class takes the same parameter types.",
+                        ));
+                    }
+                    secondary.push(signature);
+                }
+                secondary_constructors.push(secondary);
                 let mut implements = Vec::new();
                 for &name in &class.implements {
                     let kind = resolve_type(types, name)?;
@@ -811,6 +830,7 @@ pub(super) fn resolve<'a>(
         java_fields: HashMap::new(),
         methods: Rc::new(methods),
         constructors: Rc::new(constructors),
+        secondary: Rc::new(secondary_constructors),
         interfaces: Rc::new(interface_methods),
         interface_parents: Rc::new(interface_parents),
         implementations: Rc::new(implementations),

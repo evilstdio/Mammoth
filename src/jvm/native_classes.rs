@@ -232,7 +232,14 @@ impl Symbols<'_> {
             return self.types.resolve_application(class, name).ok();
         }
         let mut map = HashMap::new();
-        for ((_, pattern), arg) in self.constructors[class].parameters.iter().zip(args) {
+        let mut fitting = std::iter::once(&self.constructors[class])
+            .chain(&self.secondary[class])
+            .filter(|signature| signature.parameters.len() == args.len());
+        let signature = fitting.next()?;
+        if fitting.next().is_some() {
+            return None;
+        }
+        for ((_, pattern), arg) in signature.parameters.iter().zip(args) {
             self.infer_from(*pattern, self.static_kind(arg, scope)?, &mut map);
         }
         let arguments = parameters
@@ -311,7 +318,7 @@ impl<'a> Emitter<'a> {
                 "This class is abstract. Create one of its subclasses instead.",
             ));
         }
-        let signature = &self.symbols.constructors[class];
+        let signature = self.constructor_for(method, class, name, args, false)?;
         let args = self.complete_args(
             method,
             name,

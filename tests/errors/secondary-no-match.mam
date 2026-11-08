@@ -1,0 +1,5 @@
+// error: No constructor of this class accepts these arguments.
+class A {
+    constructor(b: Text) { }
+}
+print(A())

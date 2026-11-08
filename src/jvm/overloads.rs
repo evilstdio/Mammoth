@@ -174,6 +174,64 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// The constructor of `class` that takes these arguments.
+    pub(super) fn constructor_for(
+        &mut self,
+        method: &mut Method<'a>,
+        class: usize,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        delegating: bool,
+    ) -> Result<&'a Signature<'a>, Error> {
+        let symbols = self.symbols;
+        let secondary = &symbols.secondary[class];
+        let primary = &symbols.constructors[class];
+        if secondary.is_empty() {
+            return Ok(primary);
+        }
+        let arguments = self.probe_arguments(method, args);
+        let mut best: Vec<(&'a Signature<'a>, u32)> = Vec::new();
+        let hidden = symbols.class_declarations[class].no_primary && !delegating;
+        let header = (!hidden).then_some(primary);
+        for signature in header.into_iter().chain(secondary) {
+            // Only the header's constructor has default values.
+            if !std::ptr::eq(signature, primary) && signature.parameters.len() != args.len() {
+                continue;
+            }
+            let Some(score) = self.overload_score(signature, &arguments) else {
+                continue;
+            };
+            match best.first() {
+                Some(&(_, top)) if score > top => {}
+                Some(&(_, top)) if score == top => best.push((signature, score)),
+                _ => best = vec![(signature, score)],
+            }
+        }
+        match best.as_slice() {
+            [] => Err(at(
+                name,
+                "No constructor of this class accepts these arguments.",
+            )),
+            [(signature, _)] => Ok(*signature),
+            _ => {
+                // An argument that could not be typed has the real problem.
+                for arg in args {
+                    if !matches!(arg, Expr::Lambda(_) | Expr::Named(..)) {
+                        let saved = method.snapshot();
+                        let base = method.stack.len() as u16;
+                        let result = self.expression(method, arg, base);
+                        method.restore(saved);
+                        result?;
+                    }
+                }
+                Err(at(
+                    name,
+                    "This call matches more than one constructor. Make the argument types exact.",
+                ))
+            }
+        }
+    }
+
     /// Resolves a bare call to one overload, if its name is overloaded here.
     pub(super) fn overloaded_function(
         &mut self,

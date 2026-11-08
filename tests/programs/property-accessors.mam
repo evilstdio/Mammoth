@@ -1,0 +1,87 @@
+class K {
+    var a: Int = 0
+        set(v) { field = v * 2 }
+    var b: Int = 5
+        get() = field + 1
+    var count = 0
+        private set
+    let computed: Int get() = a + b
+    fun bump() {
+        count += 1
+        a = a + 1
+    }
+    fun readAll(): Int = a + b + count + computed
+}
+let k = K()
+k.a = 2
+print(k.a)
+k.a += 1
+print(k.a)
+print(k.b)
+k.b = 10
+print(k.b)
+k.bump()
+print(k.count)
+print(k.a)
+print(k.computed)
+print(k.readAll())
+
+abstract class Shape {
+    abstract let sides: Int
+    abstract var label: Text
+    open let name: Text = "shape"
+    fun describe(): Text = name + " with " + sides.toString() + " sides, " + label
+}
+class Square extends Shape {
+    override let sides: Int = 4
+    override var label: Text = "plain"
+    override let name: Text = "square"
+}
+class Tri(override let sides: Int, override var label: Text) extends Shape
+let s: Shape = Square()
+print(s.describe())
+s.label = "red"
+print(s.label)
+print(s.describe())
+let t: Shape = Tri(3, "t")
+print(t.describe())
+t.label += "!"
+print(t.label)
+
+interface Named { let name: Text
+  var size: Int
+  let kind: Text get() = "default-" + name
+}
+class A(let name: Text, var size: Int) implements Named
+class B implements Named {
+    override let name: Text = "b"
+    override var size: Int = 2
+        set(v) { field = v + 100 }
+    override let kind: Text = "custom"
+}
+fun show(n: Named) {
+    n.size = n.size + 1
+    print(n.name + " " + n.size.toString() + " " + n.kind)
+}
+show(A("a", 1))
+show(B())
+
+data class D(override let x: Int, let y: Int) implements HasX
+interface HasX { let x: Int }
+print(D(1, 2))
+let hx: HasX = D(3, 4)
+print(hx.x)
+class Cnt {
+    var n = 0
+    var doubled: Int
+        get() = n * 2
+        set(v) { n = v / 2 }
+}
+let c = Cnt()
+c.doubled = 10
+print(c.n)
+print(c.doubled)
+fun side(): Cnt { print("once")
+ return c }
+side().doubled += 2
+print(c.doubled)

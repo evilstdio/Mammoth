@@ -1,0 +1,5 @@
+// error: Expected Text here
+class A {
+    var a: Text = "x"
+        set(v) { field = 1 }
+}

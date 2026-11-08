@@ -105,6 +105,12 @@ fn collect_program<'a>(program: &'a Program<'a>, mut used: HashSet<&'a str>) -> 
                 collect_expr(arg, &mut used);
             }
         }
+        for item in &class.secondary {
+            for arg in &item.arguments {
+                collect_expr(arg, &mut used);
+            }
+            collect_statements(&item.body, &mut used);
+        }
     }
     collect_lambdas(&program.body, &mut used);
     used
@@ -152,6 +158,14 @@ pub(super) fn check_global_order<'a>(
                 collect_statements(statements, &mut used);
                 collect_bound(statements, &mut local);
             }
+        }
+        for item in &class.secondary {
+            for arg in &item.arguments {
+                collect_expr(arg, &mut used);
+            }
+            collect_statements(&item.body, &mut used);
+            collect_bound(&item.body, &mut local);
+            local.extend(item.parameters.iter().map(|(name, _)| name.text));
         }
         used.retain(|name| !local.contains(name));
         reads.entry(class.name.text).or_default().extend(used);

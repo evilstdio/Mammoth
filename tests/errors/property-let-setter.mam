@@ -1,0 +1,5 @@
+// error: A let property cannot have a setter.
+class A {
+    let a: Int = 1
+        set(v) { }
+}

@@ -2,8 +2,8 @@
 
 use super::defaults::DefaultHost;
 use super::{
-    Emitter, Error, FieldInfo, Kind, ListKind, Local, Method, Name, at, instruction, push_int,
-    shorts,
+    Binding, Emitter, Error, FieldInfo, Kind, ListKind, Local, Method, Name, at, instruction,
+    push_int, shorts,
 };
 use crate::syntax::Class;
 
@@ -149,6 +149,85 @@ impl<'a> Emitter<'a> {
     /// Generates `toString`, `equals`, and `hashCode` for a data class from
     /// the fields its constructor declares, unless the class defines them.
     /// Returns the number of methods added.
+    /// Emits each `constructor(...)`, which runs another constructor of the
+    /// class first. Returns the number of methods added.
+    pub(super) fn secondary_constructors(
+        &mut self,
+        index: usize,
+        class: &'a Class<'a>,
+        methods: &mut Vec<u8>,
+        init: u16,
+        code_name: u16,
+        stack_map_name: u16,
+    ) -> Result<usize, Error> {
+        let symbols = self.symbols;
+        let this_class = self.this_class;
+        let secondary = &symbols.secondary[index];
+        let mut targets = Vec::new();
+        for (declaration, signature) in class.secondary.iter().zip(secondary) {
+            let mut method = Method::new(vec![Local::UninitializedThis]);
+            self.mark_line(&mut method, declaration.keyword.offset);
+            self.bind_parameters(&mut method, signature);
+            method.access(0x19, 0);
+            method.max_stack = 1;
+            method.stack.push(Local::UninitializedThis);
+            self.this_ready = false;
+            let target = self.constructor_for(
+                &mut method,
+                index,
+                declaration.keyword,
+                &declaration.arguments,
+                true,
+            )?;
+            targets.push(secondary.iter().position(|item| std::ptr::eq(item, target)));
+            let args = self.complete_args(
+                &mut method,
+                declaration.keyword,
+                target,
+                &declaration.arguments,
+                DefaultHost::Constructor(index),
+            )?;
+            self.call_arguments(&mut method, declaration.keyword, args, target, 1)?;
+            method.max_stack = method.max_stack.max(1 + target.slots);
+            method.stack.clear();
+            let reference = self.member(Some(Kind::Object(index)), "<init>", &target.descriptor);
+            instruction(&mut method.code, 0xb7, reference); // invokespecial
+            self.this_ready = true;
+            method.locals[0] = Local::Object(this_class);
+            method.variables.push(Binding {
+                name: "this",
+                slot: 0,
+                kind: symbols.types.self_kind(index),
+                mutable: false,
+            });
+            if !self.scoped_block(&mut method, &declaration.body, &[])? {
+                return Err(at(
+                    declaration.keyword,
+                    "A constructor's body cannot end by returning.",
+                ));
+            }
+            method.code.push(0xb1); // return
+            let kind = self.pool.ascii(&signature.descriptor);
+            let start = methods.len();
+            method.write(methods, 0x0001, init, kind, code_name, stack_map_name)?;
+            self.method_signature(methods, start, signature, declaration.keyword)?;
+        }
+        for (start, declaration) in class.secondary.iter().enumerate() {
+            let mut next = targets[start];
+            for _ in 0..targets.len() {
+                let Some(position) = next else { break };
+                if position == start {
+                    return Err(at(
+                        declaration.keyword,
+                        "These constructors call each other and never finish.",
+                    ));
+                }
+                next = targets[position];
+            }
+        }
+        Ok(class.secondary.len())
+    }
+
     pub(super) fn data_members(
         &mut self,
         index: usize,
@@ -161,9 +240,10 @@ impl<'a> Emitter<'a> {
             .parameters
             .iter()
             .filter_map(|(parameter, _)| {
-                symbols.class_fields[index]
-                    .iter()
-                    .find(|field| field.name == parameter.text)
+                symbols.class_fields[index].iter().find(|field| {
+                    field.name == parameter.text
+                        || field.name.strip_prefix("__field_") == Some(parameter.text)
+                })
             })
             .collect();
         let this_class = self.this_class;
@@ -185,9 +265,9 @@ impl<'a> Emitter<'a> {
             instruction(&mut method.code, 0xb7, init);
             for (position, field) in fields.iter().enumerate() {
                 let label = if position == 0 {
-                    format!("{}=", field.name)
+                    format!("{}=", field.name.trim_start_matches("__field_"))
                 } else {
-                    format!(", {}=", field.name)
+                    format!(", {}=", field.name.trim_start_matches("__field_"))
                 };
                 let label = self.text_constant_owned(&label);
                 super::load_constant(&mut method.code, label);

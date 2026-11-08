@@ -1228,8 +1228,9 @@ fn emit_class<'a>(
                 .member_for(10, super_class, "<init>", &chosen.descriptor)
         } else if let Some((parent_name, args)) = &class.extends {
             let parent = symbols.superclasses[index].expect("superclass was resolved");
-            let parent_signature = &symbols.constructors[parent];
             constructor.stack.push(Local::UninitializedThis);
+            let parent_signature =
+                emitter.constructor_for(&mut constructor, parent, *parent_name, args, false)?;
             let args = emitter.complete_args(
                 &mut constructor,
                 *parent_name,
@@ -1312,12 +1313,21 @@ fn emit_class<'a>(
                 0x0002, // private
             )
         } else {
-            (signature.descriptor.clone(), 0x0001)
+            let access = if class.no_primary { 0x0002 } else { 0x0001 };
+            (signature.descriptor.clone(), access)
         };
         let kind = emitter.pool.ascii(&descriptor);
         let constructor_start = methods.len();
         constructor.write(&mut methods, access, init, kind, code_name, stack_map_name)?;
         emitter.method_signature(&mut methods, constructor_start, signature, class.name)?;
+        generated_methods += emitter.secondary_constructors(
+            index,
+            class,
+            &mut methods,
+            init,
+            code_name,
+            stack_map_name,
+        )?;
         let mut field_count = class.fields.len();
         if is_enum {
             let (extra_fields, extra_methods) =
@@ -1669,6 +1679,8 @@ struct Symbols<'a> {
     overloads: Rc<HashMap<&'a str, Vec<&'a str>>>,
     methods: Rc<Vec<HashMap<&'a str, Signature<'a>>>>,
     constructors: Rc<Vec<Signature<'a>>>,
+    /// For each class, the constructors beyond the one in its header.
+    secondary: Rc<Vec<Vec<Signature<'a>>>>,
     interfaces: Rc<Vec<HashMap<&'a str, Signature<'a>>>>,
     /// The interfaces each Mammoth interface extends, in terms of its own
     /// type parameters.
@@ -1846,6 +1858,17 @@ impl<'a> Emitter<'a> {
     fn check_initialized(&self, name: Name<'_>) -> Result<(), Error> {
         if self.pending_fields.contains(&name.text) {
             return Err(at(name, FIELD_BEFORE_START));
+        }
+        Ok(())
+    }
+
+    /// Rejects reading a property whose hidden field has no value yet.
+    fn check_property_ready(&self, name: Name<'_>) -> Result<(), Error> {
+        if !self.pending_fields.is_empty() {
+            let hidden = format!("__field_{}", name.text);
+            if self.pending_fields.contains(&hidden.as_str()) {
+                return Err(at(name, FIELD_BEFORE_START));
+            }
         }
         Ok(())
     }
@@ -2080,6 +2103,12 @@ impl<'a> Emitter<'a> {
                 }
                 Statement::Assign(name, expr) => {
                     let local = method.binding(*name);
+                    if local.is_none()
+                        && !self.fields.contains_key(name.text)
+                        && self.assign_property(method, *name, expr)?
+                    {
+                        continue;
+                    }
                     let (expected, mutable, field) = if let Some(binding) = local {
                         (binding.kind, binding.mutable, None)
                     } else if self.fields.contains_key(name.text)
@@ -2402,7 +2431,7 @@ impl<'a> Emitter<'a> {
                             "This class is abstract. Create one of its subclasses instead.",
                         ));
                     }
-                    &self.symbols.constructors[class]
+                    self.constructor_for(method, class, name, args, false)?
                 }
                 Kind::Java(class) if !self.symbols.java_classes.contains_key(&class) => {
                     return self
@@ -2967,7 +2996,10 @@ impl<'a> Emitter<'a> {
     }
 
     fn member(&mut self, owner: Option<Kind>, name: &'a str, descriptor: &str) -> u16 {
-        if let Some(&index) = self.members.get(&(owner, name)) {
+        // Constructors share a name, so only their descriptors tell them apart.
+        if name != "<init>"
+            && let Some(&index) = self.members.get(&(owner, name))
+        {
             return index;
         }
         let class = match owner {
@@ -3142,6 +3174,7 @@ impl<'a> Emitter<'a> {
         if let Some(class) = self.current_class
             && self.symbols.find_method(class, name.text).is_some()
         {
+            self.check_property_ready(name)?;
             let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(Name {
                 text: "this",
                 offset: name.offset,

@@ -1,0 +1,4 @@
+// error: Another constructor of this class takes the same parameter types.
+class A(let a: Int) {
+    constructor(b: Int) : this(1)
+}

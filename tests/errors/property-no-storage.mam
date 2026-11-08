@@ -1,0 +1,4 @@
+// error: This property stores a value, so give it a starting value.
+class A {
+    var a: Int get() = 1
+}

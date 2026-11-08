@@ -69,6 +69,22 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// Evaluates `value` once, for code that needs it several times.
+    pub(super) fn hold_value(
+        &mut self,
+        method: &mut Method<'a>,
+        value: &'a Expr<'a>,
+    ) -> Result<Expr<'a>, Error> {
+        if self.is_pure(method, value) {
+            return Ok(value.clone());
+        }
+        let depth = method.stack.len() as u16;
+        let kind = self.expression(method, value, depth)?;
+        let slot = method.local(self.local_type(kind));
+        method.access(kind.store(), slot);
+        Ok(Expr::Temp(kind, slot))
+    }
+
     /// Stores `value` in a new local and returns an expression that reads it.
     fn temporary(
         &mut self,

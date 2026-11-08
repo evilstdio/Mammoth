@@ -1,0 +1,4 @@
+// error: Only an abstract class
+class A {
+    abstract let a: Int
+}

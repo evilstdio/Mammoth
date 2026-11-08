@@ -1,0 +1,6 @@
+// error: private
+class A {
+    var a = 1
+        private set
+}
+A().a = 2

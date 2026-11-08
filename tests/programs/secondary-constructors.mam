@@ -1,0 +1,45 @@
+class K(let a: Int) {
+    var note = "primary"
+    constructor(s: Text) : this(s.length) {
+        note = "text " + s
+    }
+    constructor(x: Int, y: Int) : this("ab") {
+        note = note + " pair " + (x + y).toString()
+    }
+}
+class Empty {
+    var v = 1
+    constructor(a: Int) { v = a }
+    constructor(a: Text) { v = a.length + 10 }
+}
+class Hidden {
+    var v = 1
+    constructor() { v = 7 }
+    constructor(a: Int) { v = a }
+}
+class Box<T>(let item: T) {
+    var tag = 0
+    constructor(item: T, tag: Int) : this(item) { this.tag = tag }
+}
+class Sub extends K("xyz") {
+    fun show(): Int = a
+}
+data class P(let x: Int, let y: Int) {
+    constructor(both: Int) : this(both, both)
+}
+print(K(3).a)
+print(K("four").a)
+print(K("four").note)
+print(K(1, 2).note)
+print(Empty(5).v)
+print(Empty("abc").v)
+print(Hidden().v)
+print(Hidden(9).v)
+let b = Box("x", 3)
+print(b.item.length)
+print(b.tag)
+let c: Box<Int> = Box(4)
+print(c.item + 1)
+print(Sub().show())
+print(P(2))
+print(P(2, 3))

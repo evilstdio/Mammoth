@@ -1713,6 +1713,9 @@ impl<'a> Emitter<'a> {
         name: Name<'a>,
         base: u16,
     ) -> Result<Kind, Error> {
+        if matches!(receiver, Expr::Variable(this) if this.text == "this") {
+            self.check_property_ready(name)?;
+        }
         if name.text == "class"
             && let Expr::Variable(type_name) = receiver
             && method.binding(*type_name).is_none()
@@ -1894,6 +1897,9 @@ impl<'a> Emitter<'a> {
             }
             return self.write_java_field(method, None, &class, name, value);
         }
+        if self.property_setter(method, receiver, name, operator, value)? {
+            return Ok(());
+        }
         let kind = self.expression(method, receiver, 0)?;
         if let Some(class) = self.symbols.types.runtime_class_name(kind.non_null())
             && matches!(kind, Kind::Java(_))
@@ -1956,6 +1962,94 @@ impl<'a> Emitter<'a> {
         method.stack.pop();
         instruction(&mut method.code, 0xb5, reference); // putfield
         Ok(())
+    }
+
+    /// `name = value` inside a class whose property `name` has a setter.
+    pub(super) fn assign_property(
+        &mut self,
+        method: &mut Method<'a>,
+        name: Name<'a>,
+        value: &'a Expr<'a>,
+    ) -> Result<bool, Error> {
+        let Some(class) = self.current_class else {
+            return Ok(false);
+        };
+        let text: &'a str = Box::leak(format!("{}$set", name.text).into_boxed_str());
+        if self.symbols.find_method(class, text).is_none() {
+            return Ok(false);
+        }
+        let this = Name {
+            text: "this",
+            offset: name.offset,
+        };
+        if method.binding(this).is_none() {
+            return Ok(false);
+        }
+        let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
+        self.property_setter(method, receiver, name, None, value)
+    }
+
+    /// `receiver.name = value` when the receiver's type has a setter for it.
+    fn property_setter(
+        &mut self,
+        method: &mut Method<'a>,
+        receiver: &'a Expr<'a>,
+        name: Name<'a>,
+        operator: Option<Arithmetic>,
+        value: &'a Expr<'a>,
+    ) -> Result<bool, Error> {
+        let text: &'a str = Box::leak(format!("{}$set", name.text).into_boxed_str());
+        let symbols = self.symbols;
+        if !symbols
+            .methods
+            .iter()
+            .any(|methods| methods.contains_key(text))
+            && !symbols
+                .interfaces
+                .iter()
+                .any(|methods| methods.contains_key(text))
+        {
+            return Ok(false);
+        }
+        let saved = method.snapshot();
+        let kind = self.expression(method, receiver, 0);
+        method.restore(saved);
+        let Ok(kind) = kind else {
+            return Ok(false);
+        };
+        let kind = kind.non_null();
+        let found = if let Some(class) = symbols.types.native_class(kind) {
+            // A plain field answering an interface property is written directly.
+            symbols.find_method(class, text).is_some()
+                && symbols.find_field(class, name.text).is_none()
+        } else {
+            symbols
+                .types
+                .interface_root(kind)
+                .is_some_and(|interface| symbols.interfaces[interface].contains_key(text))
+        };
+        if !found {
+            return Ok(false);
+        }
+        let setter = Name {
+            text,
+            offset: name.offset,
+        };
+        let (receiver, value): (&'a Expr<'a>, Expr<'a>) = match operator {
+            None => (receiver, value.clone()),
+            Some(operator) => {
+                // The receiver is evaluated once, then read and written.
+                let held: &'a Expr<'a> = Box::leak(Box::new(self.hold_value(method, receiver)?));
+                let current = Expr::Field(Box::new(held.clone()), name);
+                (
+                    held,
+                    Expr::Arithmetic(Box::new(current), vec![(operator, value.clone())]),
+                )
+            }
+        };
+        let args: &'a [Expr<'a>] = Box::leak(vec![value].into_boxed_slice());
+        self.method_call(method, receiver, setter, args, 0)?;
+        Ok(true)
     }
 
     /// Calls `name` on the current object when the class (or a superclass)

@@ -1,0 +1,5 @@
+// error: before
+class A(let a: Int) {
+    let b = 1
+    constructor(c: Text) : this(b)
+}

@@ -140,6 +140,21 @@ pub struct Class<'a> {
     pub is_data: bool,
     /// For an `enum`, its values and their constructor arguments.
     pub enum_values: Option<Vec<(Name<'a>, Vec<Expr<'a>>)>>,
+    /// Constructors beyond the one in the class header.
+    pub secondary: Vec<SecondaryConstructor<'a>>,
+    /// The class has only secondary constructors, so nothing outside it may
+    /// call the generated header constructor.
+    pub no_primary: bool,
+}
+
+/// `constructor(s: Text) : this(s.length) { ... }`.
+pub struct SecondaryConstructor<'a> {
+    pub keyword: Name<'a>,
+    pub parameters: Vec<(Name<'a>, Name<'a>)>,
+    /// Whether `: this(...)` was written.
+    pub delegates: bool,
+    pub arguments: Vec<Expr<'a>>,
+    pub body: Vec<Statement<'a>>,
 }
 
 pub enum Initializer<'a> {
@@ -720,6 +735,87 @@ fn calls_function(source: &str, name: &str) -> bool {
         !before.is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '.')
             && matches!(after, Some('(' | '{'))
     })
+}
+
+/// What was written after a property's starting value.
+#[derive(Default)]
+struct Accessors<'a> {
+    getter: Option<Vec<Statement<'a>>>,
+    setter: Option<(Name<'a>, Vec<Statement<'a>>)>,
+    setter_declared: bool,
+    setter_private: bool,
+    setter_protected: bool,
+    uses_field: bool,
+}
+
+impl Accessors<'_> {
+    fn declared(&self) -> bool {
+        self.getter.is_some() || self.setter_declared
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PropertyAccess {
+    private: bool,
+    protected: bool,
+    is_override: bool,
+}
+
+/// The hidden field that stores a property reached through accessors.
+fn backing_name(property: Name<'_>) -> &'static str {
+    Box::leak(format!("__field_{}", property.text).into_boxed_str())
+}
+
+/// The hidden method that changes a property.
+fn setter_name<'a>(property: Name<'a>) -> Name<'a> {
+    Name {
+        text: Box::leak(format!("{}$set", property.text).into_boxed_str()),
+        offset: property.offset,
+    }
+}
+
+/// The type of a literal starting value, written as a type name.
+fn literal_type<'a>(value: &Expr<'a>, at: Name<'a>) -> Option<Name<'a>> {
+    let text = match value {
+        Expr::Int(..) => "Int",
+        Expr::Long(..) => "Long",
+        Expr::Double(..) => "Double",
+        Expr::Bool(..) => "Bool",
+        Expr::Text(..) => "Text",
+        _ => return None,
+    };
+    Some(Name {
+        text,
+        offset: at.offset,
+    })
+}
+
+/// A method generated for a property.
+fn accessor<'a>(
+    name: Name<'a>,
+    parameters: Vec<(Name<'a>, Name<'a>)>,
+    result: Option<Name<'a>>,
+    body: Vec<Statement<'a>>,
+) -> Function<'a> {
+    Function {
+        annotations: Vec::new(),
+        type_parameters: Vec::new(),
+        bounds: Vec::new(),
+        exported: false,
+        foreign_name: None,
+        name,
+        parameters,
+        result,
+        body,
+        private: false,
+        protected: false,
+        is_abstract: false,
+        is_override: false,
+        extension_of: None,
+        in_prelude: false,
+        vararg: false,
+        overload_of: None,
+    }
 }
 
 fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
@@ -1350,12 +1446,37 @@ impl<'a> Parser<'a> {
         while has_body && !self.take("}") {
             let annotations = self.annotations()?;
             let is_override = self.take_word("override");
-            if self.take_word("let") || self.take_word("val") {
+            let mutable_property = self.take_word("var");
+            if mutable_property || self.take_word("let") || self.take_word("val") {
                 // A property is a method its implementers answer with a field.
                 let property = self.binding()?;
                 self.expect(":", "Expected ':' followed by the property type.")?;
                 let annotation = self.annotation()?;
                 self.properties_found.push(property.text);
+                if mutable_property {
+                    let setter = setter_name(property);
+                    self.properties_found.push(setter.text);
+                    let value = Name {
+                        text: "value",
+                        offset: property.offset,
+                    };
+                    let mut declared =
+                        accessor(setter, vec![(value, annotation)], None, Vec::new());
+                    declared.is_abstract = true;
+                    methods.push(declared);
+                }
+                let default_body = if !mutable_property && self.take_word("get") {
+                    self.expect("(", "Expected '()' after get.")?;
+                    self.expect(")", "Expected '()' after get.")?;
+                    Some(if self.take_assignment() {
+                        vec![Statement::Return(property, Some(self.expression()?))]
+                    } else {
+                        self.block(1)?
+                    })
+                } else {
+                    None
+                };
+                let has_default = default_body.is_some();
                 methods.push(Function {
                     annotations,
                     type_parameters: Vec::new(),
@@ -1365,10 +1486,10 @@ impl<'a> Parser<'a> {
                     name: property,
                     parameters: Vec::new(),
                     result: Some(annotation),
-                    body: Vec::new(),
+                    body: default_body.unwrap_or_default(),
                     private: false,
                     protected: false,
-                    is_abstract: true,
+                    is_abstract: !has_default,
                     is_override,
                     extension_of: None,
                     in_prelude: false,
@@ -1438,7 +1559,9 @@ impl<'a> Parser<'a> {
         let mut parameters = Vec::new();
         let mut fields = Vec::new();
         let mut initializers = Vec::new();
-        if self.take("(") {
+        let mut header_methods = Vec::new();
+        let has_header = self.take("(");
+        if has_header {
             let mut index = 0;
             let declared = self.list(")", |parser| {
                 let annotations = parser.annotations()?;
@@ -1447,6 +1570,8 @@ impl<'a> Parser<'a> {
                 if parser.take_word("private") || parser.take_word("protected") {
                     return Err(parser.error("Choose only one field visibility: private or protected."));
                 }
+                let overriding = parser.take_word("override");
+                let open = !overriding && parser.take_word("open");
                 let mutable = if parser.take_word("var") {
                     Some(true)
                 } else if parser.take_word("let") || parser.take_word("val") {
@@ -1465,11 +1590,42 @@ impl<'a> Parser<'a> {
                 let annotation = parser.annotation()?;
                 parser.default_value(index)?;
                 index += 1;
-                Ok((parameter, annotation, mutable, private, protected, annotations))
+                if (overriding || open) && mutable.is_none() {
+                    return Err(parser.error("Expected let or var before an overridable constructor property."));
+                }
+                Ok((parameter, annotation, mutable, private, protected, annotations, overriding, open))
             })?;
-            for (parameter, annotation, mutable, private, protected, annotations) in declared {
+            for (
+                parameter,
+                annotation,
+                mutable,
+                private,
+                protected,
+                annotations,
+                overriding,
+                open,
+            ) in declared
+            {
                 parameters.push((parameter, annotation));
-                if let Some(mutable) = mutable {
+                if let Some(mutable) = mutable
+                    && (overriding || open)
+                {
+                    let (field, methods) = self.finish_property(
+                        parameter,
+                        Some(annotation),
+                        Some(Expr::Variable(parameter)),
+                        mutable,
+                        Accessors::default(),
+                        PropertyAccess {
+                            private,
+                            protected,
+                            is_override: overriding,
+                        },
+                    )?;
+                    initializers.push(Initializer::Field(fields.len()));
+                    fields.extend(field);
+                    header_methods.extend(methods);
+                } else if let Some(mutable) = mutable {
                     initializers.push(Initializer::Field(fields.len()));
                     fields.push(Field {
                         annotations,
@@ -1544,7 +1700,10 @@ impl<'a> Parser<'a> {
                 is_abstract,
                 is_sealed: false,
                 is_object: false,
-                methods: self.property_getters(&fields, &[]),
+                methods: {
+                    header_methods.extend(self.property_getters(&fields, &header_methods));
+                    header_methods
+                },
                 fields,
                 static_fields: Vec::new(),
                 static_methods: constructor_helpers,
@@ -1552,6 +1711,8 @@ impl<'a> Parser<'a> {
                 initializers,
                 is_data,
                 enum_values: None,
+                secondary: Vec::new(),
+                no_primary: false,
             });
         }
         self.expect("{", "Expected '{' after the class name.")?;
@@ -1597,10 +1758,11 @@ impl<'a> Parser<'a> {
             enum_values = Some(values);
         }
         let outer_type = std::mem::replace(&mut self.current_type, name.text);
-        let mut methods = Vec::new();
+        let mut methods = header_methods;
         let mut static_fields = Vec::new();
         let mut static_methods = constructor_helpers;
         let mut static_initializers = Vec::new();
+        let mut secondary: Vec<SecondaryConstructor<'a>> = Vec::new();
         let mut in_companion = false;
         loop {
             if self.take("}") {
@@ -1622,6 +1784,7 @@ impl<'a> Parser<'a> {
             let mut exported = false;
             let mut is_static = in_companion;
             let mut lateinit = false;
+            let mut open_member = false;
             if member.text == "companion" {
                 if !self.take_word("object") {
                     return Err(self.error("Expected object after companion."));
@@ -1642,7 +1805,8 @@ impl<'a> Parser<'a> {
                     "override" if !is_override => is_override = true,
                     "export" if !exported => exported = true,
                     "lateinit" if !lateinit => lateinit = true,
-                    "open" | "operator" | "infix" | "inline" | "tailrec" => {}
+                    "open" => open_member = true,
+                    "operator" | "infix" | "inline" | "tailrec" => {}
                     _ => break,
                 }
                 member = self.name()?;
@@ -1752,7 +1916,7 @@ impl<'a> Parser<'a> {
                     methods.push(function);
                     methods.append(&mut self.finished_helpers);
                 }
-                "var" | "let" | "val" if !abstract_member && !is_override && !exported => {
+                "var" | "let" | "val" if !exported => {
                     let mutable = member.text == "var";
                     let name = self.binding()?;
                     let annotation = if self.take(":") {
@@ -1760,6 +1924,38 @@ impl<'a> Parser<'a> {
                     } else {
                         None
                     };
+                    if abstract_member {
+                        if !is_abstract {
+                            return Err(Error {
+                                offset: member.offset,
+                                message: "Only an abstract class can have abstract properties.",
+                            });
+                        }
+                        let Some(result) = annotation else {
+                            return Err(self.error("Give an abstract property a type."));
+                        };
+                        let mut getter = accessor(name, Vec::new(), Some(result), Vec::new());
+                        getter.is_abstract = true;
+                        getter.is_override = is_override;
+                        getter.protected = protected;
+                        methods.push(getter);
+                        if mutable {
+                            let value = Name {
+                                text: "value",
+                                offset: name.offset,
+                            };
+                            let mut setter = accessor(
+                                setter_name(name),
+                                vec![(value, result)],
+                                None,
+                                Vec::new(),
+                            );
+                            setter.is_abstract = true;
+                            setter.protected = protected;
+                            methods.push(setter);
+                        }
+                        continue;
+                    }
                     if self.take_word("by") {
                         if !self.take_word("lazy") || !self.take("{") {
                             return Err(self.error("Expected lazy and a block after by."));
@@ -1779,46 +1975,45 @@ impl<'a> Parser<'a> {
                         methods.push(getter);
                         continue;
                     }
-                    if self.take_word("get") {
-                        // A computed property is a method read like a field.
-                        self.expect("(", "Expected '()' after get.")?;
-                        self.expect(")", "Expected '()' after get.")?;
-                        let Some(result) = annotation else {
-                            return Err(self.error("Give a computed property a type."));
-                        };
-                        let body = if self.take_assignment() {
-                            vec![Statement::Return(name, Some(self.expression()?))]
-                        } else {
-                            self.block(1)?
-                        };
-                        methods.push(Function {
-                            annotations: Vec::new(),
-                            type_parameters: Vec::new(),
-                            bounds: Vec::new(),
-                            exported: false,
-                            foreign_name: None,
-                            name,
-                            parameters: Vec::new(),
-                            result: Some(result),
-                            body,
-                            private,
-                            protected,
-                            is_abstract: false,
-                            is_override: false,
-                            extension_of: None,
-                            in_prelude: false,
-                            vararg: false,
-                            overload_of: None,
-                        });
-                        continue;
-                    }
                     let value = if self.take_assignment() {
                         Some(self.expression()?)
-                    } else if lateinit || annotation.is_some_and(|name| name.text.ends_with('?')) {
-                        None
                     } else {
-                        return Err(self.error("Expected '=' before the field's starting value."));
+                        None
                     };
+                    let backing = backing_name(name);
+                    let accessors = self.property_accessors(name, mutable, backing)?;
+                    if open_member || is_override || accessors.declared() {
+                        if lateinit {
+                            return Err(Error {
+                                offset: name.offset,
+                                message: "A lateinit field cannot have accessors or be overridden.",
+                            });
+                        }
+                        let (field, new_methods) = self.finish_property(
+                            name,
+                            annotation,
+                            value,
+                            mutable,
+                            accessors,
+                            PropertyAccess {
+                                private,
+                                protected,
+                                is_override,
+                            },
+                        )?;
+                        if let Some(field) = field {
+                            initializers.push(Initializer::Field(fields.len()));
+                            fields.push(field);
+                        }
+                        methods.extend(new_methods);
+                        continue;
+                    }
+                    if value.is_none()
+                        && !lateinit
+                        && !annotation.is_some_and(|name| name.text.ends_with('?'))
+                    {
+                        return Err(self.error("Expected '=' before the field's starting value."));
+                    }
                     if lateinit
                         && (!mutable
                             || value.is_some()
@@ -1847,6 +2042,17 @@ impl<'a> Parser<'a> {
                         is_lateinit: lateinit,
                     });
                 }
+                "constructor"
+                    if !private
+                        && !protected
+                        && !abstract_member
+                        && !is_override
+                        && !exported
+                        && !is_enum
+                        && annotations.is_empty() =>
+                {
+                    secondary.push(self.secondary_constructor(member)?);
+                }
                 "init"
                     if !private
                         && !protected
@@ -1874,6 +2080,17 @@ impl<'a> Parser<'a> {
         self.current_type = outer_type;
         let getters = self.property_getters(&fields, &methods);
         methods.extend(getters);
+        let mut no_primary = !has_header && !secondary.is_empty();
+        if no_primary
+            && let Some(position) = secondary
+                .iter()
+                .position(|item| item.parameters.is_empty() && !item.delegates)
+        {
+            // Its body runs after the field initializers, like an init block.
+            let item = secondary.remove(position);
+            initializers.push(Initializer::Block(item.body));
+            no_primary = false;
+        }
         Ok(Class {
             annotations: Vec::new(),
             type_parameters,
@@ -1893,6 +2110,186 @@ impl<'a> Parser<'a> {
             initializers,
             is_data,
             enum_values,
+            secondary,
+            no_primary,
+        })
+    }
+
+    /// Any `get()` and `set(value)` written after a property's starting value.
+    fn property_accessors(
+        &mut self,
+        property: Name<'a>,
+        mutable: bool,
+        backing: &'a str,
+    ) -> Result<Accessors<'a>, Error> {
+        let mut accessors = Accessors::default();
+        let start = self.offset;
+        self.local_aliases.push(("field", backing));
+        loop {
+            self.skip_space();
+            let before = self.offset;
+            let private = self.take_word("private");
+            let protected = !private && self.take_word("protected");
+            if !private && !protected && self.take_word("get") {
+                self.expect("(", "Expected '()' after get.")?;
+                self.expect(")", "Expected '()' after get.")?;
+                if accessors.getter.is_some() {
+                    return Err(self.error("This property already has a getter."));
+                }
+                accessors.getter = Some(if self.take_assignment() {
+                    vec![Statement::Return(property, Some(self.expression()?))]
+                } else {
+                    self.block(1)?
+                });
+                continue;
+            }
+            if self.take_word("set") {
+                if !mutable {
+                    return Err(self.error("A let property cannot have a setter. Use var."));
+                }
+                if accessors.setter_declared {
+                    return Err(self.error("This property already has a setter."));
+                }
+                accessors.setter_declared = true;
+                accessors.setter_private = private;
+                accessors.setter_protected = protected;
+                if self.take("(") {
+                    let parameter = self.binding()?;
+                    if self.take(":") {
+                        self.annotation()?;
+                    }
+                    self.expect(")", "Expected ')' after the setter's parameter.")?;
+                    let body = if self.take_assignment() {
+                        vec![Statement::Assign(
+                            Name {
+                                text: backing,
+                                offset: parameter.offset,
+                            },
+                            self.expression()?,
+                        )]
+                    } else {
+                        self.block(1)?
+                    };
+                    accessors.setter = Some((parameter, body));
+                }
+                continue;
+            }
+            self.offset = before;
+            break;
+        }
+        self.local_aliases.pop();
+        let text = &self.source[start..self.offset];
+        accessors.uses_field = text
+            .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+            .any(|word| word == "field");
+        Ok(accessors)
+    }
+
+    /// Builds a property with accessors, which callers reach through methods
+    /// so that subclasses can replace them.
+    fn finish_property(
+        &self,
+        name: Name<'a>,
+        annotation: Option<Name<'a>>,
+        value: Option<Expr<'a>>,
+        mutable: bool,
+        accessors: Accessors<'a>,
+        access: PropertyAccess,
+    ) -> Result<(Option<Field<'a>>, Vec<Function<'a>>), Error> {
+        let result =
+            annotation.or_else(|| value.as_ref().and_then(|value| literal_type(value, name)));
+        let Some(result) = result else {
+            return Err(Error {
+                offset: name.offset,
+                message: "Give this property a type, such as var count: Int = 0.",
+            });
+        };
+        let backing = Name {
+            text: backing_name(name),
+            offset: name.offset,
+        };
+        let needs_field = value.is_some()
+            || accessors.uses_field
+            || accessors.getter.is_none()
+            || (mutable && accessors.setter.is_none());
+        if needs_field && value.is_none() && !result.text.ends_with('?') {
+            return Err(Error {
+                offset: name.offset,
+                message: "This property stores a value, so give it a starting value.",
+            });
+        }
+        let this = Expr::Variable(Name {
+            text: "this",
+            offset: name.offset,
+        });
+        let getter_body = accessors.getter.unwrap_or_else(|| {
+            let field = Expr::Field(Box::new(this.clone()), backing);
+            vec![Statement::Return(name, Some(field))]
+        });
+        let mut getter = accessor(name, Vec::new(), Some(result), getter_body);
+        getter.private = access.private;
+        getter.protected = access.protected;
+        getter.is_override = access.is_override;
+        let mut methods = vec![getter];
+        if mutable {
+            let (parameter, body) = accessors.setter.unwrap_or_else(|| {
+                let parameter = Name {
+                    text: "value",
+                    offset: name.offset,
+                };
+                let store =
+                    Statement::SetField(this.clone(), backing, None, Expr::Variable(parameter));
+                (parameter, vec![store])
+            });
+            let mut setter = accessor(setter_name(name), vec![(parameter, result)], None, body);
+            setter.private = access.private || accessors.setter_private;
+            setter.protected = access.protected || accessors.setter_protected;
+            methods.push(setter);
+        }
+        let field = needs_field.then_some(Field {
+            annotations: Vec::new(),
+            protected: false,
+            name: backing,
+            annotation: Some(result),
+            value,
+            mutable,
+            private: true,
+            is_lateinit: false,
+        });
+        Ok((field, methods))
+    }
+
+    /// After the word `constructor`.
+    fn secondary_constructor(
+        &mut self,
+        keyword: Name<'a>,
+    ) -> Result<SecondaryConstructor<'a>, Error> {
+        self.expect("(", "Expected '(' after constructor.")?;
+        let parameters = self.list(")", |parser| {
+            let parameter = parser.binding()?;
+            parser.expect(":", "Expected ':' followed by the parameter type.")?;
+            Ok((parameter, parser.annotation()?))
+        })?;
+        let mut arguments = Vec::new();
+        let delegates = self.take(":");
+        if delegates {
+            if !self.take_word("this") {
+                return Err(self.error("A constructor can only call this(...) of its own class."));
+            }
+            self.expect("(", "Expected '(' after this.")?;
+            arguments = self.list(")", |parser| parser.argument(0))?;
+        }
+        let body = if self.rest_trimmed().starts_with('{') {
+            self.block(0)?
+        } else {
+            Vec::new()
+        };
+        Ok(SecondaryConstructor {
+            keyword,
+            parameters,
+            delegates,
+            arguments,
+            body,
         })
     }
 
@@ -2428,7 +2825,16 @@ impl<'a> Parser<'a> {
         Ok(body)
     }
 
-    fn statement(&mut self, name: Name<'a>, depth: usize) -> Result<Statement<'a>, Error> {
+    fn statement(&mut self, mut name: Name<'a>, depth: usize) -> Result<Statement<'a>, Error> {
+        if name.text == "field"
+            && let Some(&(_, hidden)) = self
+                .local_aliases
+                .iter()
+                .rev()
+                .find(|(plain, _)| *plain == "field")
+        {
+            name.text = hidden;
+        }
         if name.text == "return" {
             let line = self.rest().split('\n').next().unwrap_or("");
             let bare = line.trim().is_empty()
@@ -3108,6 +3514,36 @@ impl<'a> Parser<'a> {
                     overload_of: None,
                 })
             })
+            .chain(fields.iter().filter_map(|field| {
+                let setter = setter_name(field.name);
+                if field.private
+                    || !field.mutable
+                    || !self.interface_properties.contains(&setter.text)
+                    || methods.iter().any(|method| method.name.text == setter.text)
+                {
+                    return None;
+                }
+                let this = Name {
+                    text: "this",
+                    offset: field.name.offset,
+                };
+                let value = Name {
+                    text: "value",
+                    offset: field.name.offset,
+                };
+                let store = Statement::SetField(
+                    Expr::Variable(this),
+                    field.name,
+                    None,
+                    Expr::Variable(value),
+                );
+                Some(accessor(
+                    setter,
+                    vec![(value, field.annotation?)],
+                    None,
+                    vec![store],
+                ))
+            }))
             .collect()
     }
 

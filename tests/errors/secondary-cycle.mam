@@ -1,0 +1,5 @@
+// error: These constructors call each other and never finish.
+class A {
+    constructor(b: Text) : this(1)
+    constructor(c: Int) : this("x")
+}
