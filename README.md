@@ -968,6 +968,36 @@ A `when` over a sealed type must cover every case or have an `else`, as a statem
 
 `fun Text.shout(): Text = this.toUpperCase() + "!"` adds a call `"hi".shout()`. Inside, `this` is the receiver and its members can be used directly, except from a lambda's implicit receiver use. A real method of the same name always wins. Receivers can be generic, as in `fun MutableList<T>.second<T>(): T`. Extensions are declared at the top level and imported by name.
 
+### Constructors, properties and object expressions
+
+A class can have more constructors. Each runs another constructor of the class first, and a class with only `constructor(...)` declarations has no other way to be created. These are real JVM constructors, so Java can call them. A `class K private constructor(...)` can only be created from inside `K`, usually by a companion object.
+
+```
+class Point(let x: Int, let y: Int) {
+    constructor(both: Int) : this(both, both)
+}
+```
+
+A `var` or `let` can have accessors. `field` is the stored value. `private set` lets everyone read it but only the class change it. A property marked `open`, `override` or `abstract` is reached through methods, so subclasses can replace it, and an interface can declare `var` properties. A `let` cannot replace a `var`, and reading a property before its starting value is rejected.
+
+```
+class Account {
+    var balance = 0
+        set(value) { field = if value < 0 { 0 } else { value } }
+    var uses = 0
+        private set
+    let empty: Bool get() = balance == 0
+}
+```
+
+`object implements Runnable { ... }`, `object extends Task() { ... }` and `object { ... }` make a one-off object. Its methods can use the local variables around it. Limits: a method needs written parameter and result types, its methods cannot have type parameters, a field's starting value and the arguments to the superclass cannot use those local variables, and `super` and inherited Java members need `this.` where available.
+
+Classes can mark type parameters `out` or `in`, with the same rules as interfaces. A `var` field counts as both directions. `ArrayList<*>` and `MutableList<*>` accept any element type and can only be read, as `Any`.
+
+`List<Int>(n)` makes a list of zeros or nulls and `List<Text>(n) { ... }` or `MutableList<Int>(n) { ... }` fill one with a block. Items that cannot be null need the block, and generic code cannot create a `List<T>`.
+
+`1..3` used as a value is a `MutableList<Int>` holding those numbers. Loops and `in` over a written range do not build a list. `infix fun` names can be written between their operands, `fun f(): Nothing` never returns and can be used wherever a value is expected, `return@forEach` leaves a lambda, and `{ (a, b) -> ... }` unpacks its parameter. `Regex`, `compareBy`, `sortedWith`, `shuffled`, `buildList`, `readLine`, `distinctBy`, `filterKeys`, `mapKeys`, `union`, `intersect`, `subtract`, `coerceIn`, `trimMargin` and `sumOf` for `Long` and `Double` are in the library. `mapValues` and `mapKeys` receive the value or key rather than an entry.
+
 ### Objects
 
 `object Counter { var total = 0 }` declares a single instance, used by name: `Counter.total`. It can implement interfaces and extend classes.

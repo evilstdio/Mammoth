@@ -1,5 +1,18 @@
 # Changelog
 
+## Classes and everyday syntax, 2026-11-09
+
+- Secondary constructors as real JVM constructors, private primary constructors, and classes with only secondary constructors.
+- Property accessors with `field`, `private set`, computed `var`s, `open`, `override` and `abstract` properties, `var` and default-getter properties in interfaces, `super.property`.
+- Object expressions: `object implements I { ... }`, capturing local variables.
+- Declaration-site variance on classes. `out`/`in` now also check method type parameter bounds and parent types, including for interfaces.
+- `*` on Java types and `MutableList<*>`, including `is MutableList<*>`.
+- `List<T>(n)`, `List<T>(n) { ... }`, `MutableList<T>(n) { ... }`.
+- Infix functions, `Nothing`, ranges as values, `return@label`, destructuring lambda parameters, `Type::member`, `::Class`, `unaryMinus`, `E.entries`, `name` and `ordinal` inside enums.
+- Library: `Regex`, comparators, `shuffled`, `buildList`, `readLine`, `filterKeys`, `mapKeys`, `distinctBy`, set operations, `coerce*`, `rem`, `trimMargin`, `first`/`last`/`firstOrNull` with a predicate, `joinToString` with a transform, `sumOf` for `Long` and `Double`, `Map + Pair`, `mutableSetOf`.
+- A lambda can be passed to a Mammoth parameter of a Java functional type, and a nullable function value can be called after a null check.
+- Fixes: generated data class methods keep line tables after library functions, the library's `Pair` is selected only when called, the Fabric demo's jar now tracks its compiled classes, top-level initialization order follows property reads and writes, names declared inside a top-level lambda no longer force a type on a same-named top-level variable.
+
 ## Everyday syntax and library, 2026-11-08
 
 - `!!`, `!is`, `!in`, `++`, `--`, bit operations (`shl`, `shr`, `ushr`, `&`, `|`, `^`), hex, binary and underscore literals, `do`/`while`, labeled `break`/`continue`, `try` as a value, block comments, semicolons, `val`, `const`, `where`, `Unit` and `Nothing` result types.

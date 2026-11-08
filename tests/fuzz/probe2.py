@@ -1,0 +1,168 @@
+"""Second round of everyday constructs, in Mammoth spelling."""
+import os, subprocess, shutil, sys
+HERE = __import__('tempfile').mkdtemp().replace(chr(92), '/')
+COMPILER = os.environ.get('MAMMOTH', 'target/release/mammoth.exe')
+cases = {
+'label_return_foreach': 'listOf(1, 2).forEach { if it == 1 { return@forEach }\n print(it) }\n',
+'return_from_lambda_fun': 'fun f(): Int { listOf(1, 2).forEach { if it == 2 { return 7 } }\n return 0 }\nprint(f())\n',
+'anon_object_interface': 'interface I { fun f(): Int }\nlet i: I = object implements I { override fun f(): Int = 3 }\nprint(i.f())\n',
+'anon_object_java': 'let r: Runnable = object implements Runnable { override fun run() { print("r") } }\nr.run()\n',
+'anon_object_capture': 'interface I { fun f(): Int }\nlet n = 2\nlet i: I = object implements I { override fun f(): Int = n + 1 }\nprint(i.f())\n',
+'anon_object_extends': 'open class A(let x: Int) { open fun g(): Int = x }\nlet a: A = object extends A(1) { override fun g(): Int = 5 }\nprint(a.g())\n',
+'typealias': 'typealias Name2 = Text\nlet a: Name2 = "x"\nprint(a)\n',
+'typealias_fn': 'typealias F = (Int) -> Int\nlet f: F = { it + 1 }\nprint(f(1))\n',
+'const_val': 'const let MAX = 3\nprint(MAX)\n',
+'destructure_lambda': 'print(listOf(Pair(1, "a")).map { (n, s) -> s + n.toString() })\n',
+'destructure_map_for': 'for (k, v) in mapOf("a" to 1) { print(k + v.toString()) }\n',
+'map_foreach': 'mapOf("a" to 1).forEach { k, v -> print(k + v.toString()) }\n',
+'map_map': 'print(mapOf("a" to 1).map { it.key + it.value.toString() })\n',
+'map_filter_values': 'print(mapOf("a" to 1, "b" to 2).filterValues { it > 1 })\n',
+'map_filter_keys': 'print(mapOf("a" to 1, "b" to 2).filterKeys { it == "a" })\n',
+'map_map_values': 'print(mapOf("a" to 1).mapValues { it.value + 1 })\n',
+'map_map_keys': 'print(mapOf("a" to 1).mapKeys { it.key + "x" })\n',
+'map_get_or_default': 'print(mapOf("a" to 1).getOrDefault("b", 2))\n',
+'map_index': 'print(mapOf("a" to 1)["a"])\n',
+'map_set_index': 'let m = mutableMapOf("a" to 1)\nm["b"] = 2\nprint(m)\n',
+'map_keys_values': 'let m = mapOf("a" to 1)\nprint(m.keys)\nprint(m.values)\n',
+'map_entries': 'for e in mapOf("a" to 1).entries { print(e.key) }\n',
+'map_contains': 'print("a" in mapOf("a" to 1))\n',
+'map_size': 'print(mapOf("a" to 1).size)\n',
+'map_is_empty': 'print(mapOf("a" to 1).isEmpty())\n',
+'group_by': 'print(listOf(1, 2, 3).groupBy { it % 2 })\n',
+'associate_with': 'print(listOf(1).associateWith { it + 1 })\n',
+'flat_map': 'print(listOf(1).flatMap { listOf(it, it) })\n',
+'fold': 'print(listOf(1, 2).fold(0) { a, b -> a + b })\n',
+'reduce': 'print(listOf(1, 2).reduce { a, b -> a + b })\n',
+'zip': 'print(listOf(1).zip(listOf("a")))\n',
+'chunked': 'print(listOf(1, 2, 3).chunked(2))\n',
+'windowed': 'print(listOf(1, 2, 3).windowed(2))\n',
+'distinct': 'print(listOf(1, 1).distinct())\n',
+'distinct_by': 'print(listOf("a", "b").distinctBy { it.length })\n',
+'take_drop': 'print(listOf(1, 2, 3).take(1))\nprint(listOf(1, 2, 3).drop(1))\n',
+'take_while': 'print(listOf(1, 2).takeWhile { it < 2 })\nprint(listOf(1, 2).dropWhile { it < 2 })\n',
+'any_all_none': 'print(listOf(1).any { it > 0 })\nprint(listOf(1).all { it > 0 })\nprint(listOf(1).none { it > 0 })\n',
+'count': 'print(listOf(1).count { it > 0 })\n',
+'first_last': 'print(listOf(1).first())\nprint(listOf(1).last())\nprint(listOf(1).firstOrNull { it > 1 })\n',
+'find': 'print(listOf(1).find { it > 0 })\n',
+'index_of': 'print(listOf(1).indexOf(1))\n',
+'joinToString': 'print(listOf(1, 2).joinToString(", "))\n',
+'joinToString_transform': 'print(listOf(1, 2).joinToString("-") { (it * 2).toString() })\n',
+'indices': 'for i in listOf(1).indices { print(i) }\n',
+'last_index': 'print(listOf(1).lastIndex)\n',
+'with_index': 'for (i, v) in listOf(1).withIndex() { print(i + v) }\n',
+'for_each_indexed': 'listOf(1).forEachIndexed { i, v -> print(i + v) }\n',
+'map_indexed': 'print(listOf(1).mapIndexed { i, v -> i + v })\n',
+'min_max': 'print(listOf(1).maxOrNull())\nprint(listOf(1).minOrNull())\n',
+'max_by': 'print(listOf("a").maxByOrNull { it.length })\n',
+'partition': 'print(listOf(1, 2).partition { it > 1 })\n',
+'text_ops': 'print("a,b".split(","))\nprint(" a ".trim())\nprint("a".uppercase())\nprint("A".lowercase())\nprint("ab".replace("a", "b"))\nprint("ab".startsWith("a"))\nprint("ab".endsWith("b"))\nprint("ab".contains("a"))\nprint("abc".substring(1))\nprint("ab".length)\n',
+'text_more': 'print("ab".reversed())\nprint("a".repeat(2))\nprint("ab".first())\nprint("ab".last())\nprint("1".toInt())\nprint("1".toIntOrNull())\nprint("x".toIntOrNull())\nprint("1.5".toDouble())\nprint("ab".isEmpty())\nprint("".isBlank())\nprint("ab".indexOf("b"))\n',
+'text_pad': 'print("a".padStart(3))\nprint("a".padEnd(3, \'-\'))\n',
+'text_lines': 'print("a\\nb".lines())\n',
+'text_chars': 'print("ab".toList())\nprint("ab".map { it })\nprint("ab".filter { it == \'a\' })\n',
+'text_multiline': 'let s = """a\nb"""\nprint(s)\n',
+'text_trim_margin': 'let s = """\n |a\n""".trimMargin()\nprint(s)\n',
+'text_format': 'print(String.format("%d", 1))\n',
+'text_format_ext': 'print("%d".format(1))\n',
+'regex': 'print(Regex("a+").matches("aa"))\n',
+'char_ops': 'print(\'a\'.isLetter())\nprint(\'1\'.isDigit())\nprint(\'a\'.uppercaseChar())\nprint(\'a\'.code)\nprint(97.toChar())\nprint(\'1\'.digitToInt())\n',
+'num_conv': 'print(1.toLong())\nprint(1.toDouble())\nprint(1.5.toInt())\nprint(1L.toInt())\nprint(1.toString())\n',
+'num_math': 'print(Math.abs(-1))\nprint(Math.max(1, 2))\nprint(Math.sqrt(4.0))\n',
+'num_coerce': 'print(5.coerceIn(1, 3))\nprint(5.coerceAtMost(3))\nprint(1.coerceAtLeast(3))\n',
+'mod_ops': 'print(7 % 3)\nprint(7.rem(3))\nprint(-7 / 2)\n',
+'range_ops': 'print((1..3).toList())\nprint((1..3).sum())\nprint((1..3).map { it * 2 })\nprint((1..3).filter { it > 1 })\n',
+'range_step': 'for i in 0..10 step 5 { print(i) }\nfor i in 3 downTo 1 { print(i) }\n',
+'range_var': 'let r = 1..3\nprint(2 in r)\nfor i in r { print(i) }\n',
+'char_range': 'for c in \'a\'..\'c\' { print(c) }\n',
+'enum_values': 'enum E { A, B }\nprint(E.values().size)\nprint(E.valueOf("A"))\nprint(E.A.name)\nprint(E.A.ordinal)\n',
+'enum_entries': 'enum E { A, B }\nprint(E.entries.size)\n',
+'enum_method': 'enum E { A, B;\n fun low(): Text = name.lowercase() }\nprint(E.A.low())\n',
+'enum_fields': 'enum E(let n: Int) { A(1), B(2) }\nprint(E.B.n)\n',
+'enum_when': 'enum E { A, B }\nfun f(e: E): Int = when (e) {\n E.A -> 1\n E.B -> 2\n}\nprint(f(E.A))\n',
+'operator_get': 'class V { fun get(i: Int): Int = i }\nprint(V()[1])\n',
+'operator_set': 'class V { var a = 0\n fun set(i: Int, v: Int) { a = v } }\nlet v = V()\nv[0] = 2\nprint(v.a)\n',
+'operator_compare': 'class V(let n: Int) { fun compareTo(o: V): Int = n - o.n }\nprint(V(1) < V(2))\n',
+'operator_equals': 'class V(let n: Int) { override fun equals(o: Any?): Bool = true\n override fun hashCode(): Int = 1 }\nprint(V(1) == V(2))\n',
+'tostring_override': 'class V { override fun toString(): Text = "v" }\nprint(V())\nprint("{V()}")\n',
+'infix_call': 'class V { infix fun add(o: Int): Int = o + 1 }\nprint(V() add 1)\n',
+'infix_ext': 'infix fun Int.addTo(o: Int): Int = this + o\nprint(1 addTo 2)\n',
+'generic_reified': 'inline fun f<reified T>(a: Any): Bool = a is T\nprint(f<Text>("x"))\n',
+'delegation_by': 'interface I { fun f(): Int }\nclass A implements I { override fun f(): Int = 1 }\nclass B(a: A) implements I by a\nprint(B(A()).f())\n',
+'function_ref': 'fun f(x: Int): Int = x + 1\nprint(listOf(1).map(::f))\n',
+'method_ref': 'print(listOf("a").map(Text::length))\n',
+'ctor_ref': 'data class P(let a: Int)\nprint(listOf(1).map(::P))\n',
+'lambda_stored': 'let f = { x: Int -> x + 1 }\nprint(f(1))\n',
+'lambda_return_lambda': 'fun f(a: Int): (Int) -> Int = { b -> a + b }\nprint(f(1)(2))\n',
+'higher_order_generic': 'fun apply2<T>(x: T, f: (T) -> T): T = f(f(x))\nprint(apply2(1) { it + 1 })\n',
+'nullable_chain': 'class A(let b: A?, let n: Int)\nlet a: A? = A(A(null, 1), 2)\nprint(a?.b?.n)\nprint(a?.b?.b?.n ?: 9)\n',
+'let_chain': 'let a: Text? = "x"\nprint(a?.let { it + "y" })\n',
+'run_also_apply': 'print("a".run { length })\nprint("a".also { print(it) })\n',
+'take_if': 'print(1.takeIf { it > 0 })\nprint(1.takeUnless { it > 0 })\n',
+'is_smart': 'fun f(a: Any): Int = if a is Text { a.length } else { 0 }\nprint(f("ab"))\n',
+'as_cast': 'let a: Any = "x"\nprint((a as Text).length)\n',
+'try_finally': 'try { print("a") } finally { print("b") }\n',
+'custom_exception': 'class E(m: Text) extends RuntimeException(m)\ntry { throw E("x") } catch (e: E) { print(e.message) }\n',
+'multi_catch': 'try { throw IllegalStateException("x") } catch (e: IllegalArgumentException) { print(1) } catch (e: IllegalStateException) { print(2) }\n',
+'error_fn': 'try { error("x") } catch (e: IllegalStateException) { print(e.message) }\n',
+'nothing_fn': 'fun f(): Nothing = throw RuntimeException("x")\nfun g(a: Int?): Int = a ?: f()\nprint(g(1))\n',
+'unit_type': 'fun f(): Unit { print(1) }\nf()\n',
+'default_and_named': 'fun f(a: Int = 1, b: Int = 2): Int = a + b\nprint(f(b = 3))\n',
+'top_level_private': 'private fun f(): Int = 1\nprint(f())\n',
+'object_method': 'object O { fun f(): Int = 1 }\nprint(O.f())\n',
+'companion_factory': 'class K private constructor(let a: Int) {\n companion object { fun make(): K = K(1) }\n}\nprint(K.make().a)\n',
+'private_ctor': 'class K private constructor(let a: Int)\nprint(1)\n',
+'nested_generic_data': 'data class P<A, B>(let a: A, let b: B)\nprint(P(1, "x").b.length)\n',
+'sealed_interface': 'sealed interface S\ndata class A(let n: Int) implements S\nobject B implements S\nfun f(s: S): Int = when s {\n is A -> s.n\n B -> 0\n}\nprint(f(A(2)))\n',
+'value_class': 'value class W(let n: Int)\nprint(W(1).n)\n',
+'data_copy': 'data class P(let a: Int, let b: Int)\nprint(P(1, 2).copy(b = 3))\n',
+'data_component': 'data class P(let a: Int)\nprint(P(1).component1())\n',
+'hash_set': 'let s = mutableSetOf(1)\ns.add(2)\nprint(s.size)\nprint(1 in s)\n',
+'set_ops': 'print(setOf(1, 2) intersect setOf(2))\nprint(setOf(1) union setOf(2))\nprint(setOf(1, 2) subtract setOf(2))\n',
+'array_deque': 'let q = ArrayDeque<Int>()\nq.addLast(1)\nprint(q.removeFirst())\n',
+'stringbuilder': 'let b = StringBuilder()\nb.append("a").append(1)\nprint(b.toString())\nprint(b.length)\n',
+'measure': 'print(System.currentTimeMillis() > 0)\n',
+'thread': 'let t = Thread({ print("t") })\nt.start()\nt.join()\n',
+'synchronized': 'let o = Any()\nsynchronized(o) { print(1) }\n',
+'while_break_continue': 'var i = 0\nwhile true { i += 1\n if i < 2 { continue }\n break }\nprint(i)\n',
+'ternary_if': 'let a = if 1 > 0 { 1 } else { 2 }\nprint(a)\n',
+'elvis_throw': 'fun f(a: Int?): Int = a ?: throw RuntimeException("x")\nprint(f(1))\n',
+'elvis_return': 'fun f(a: Int?): Int { let b = a ?: return 0\n return b }\nprint(f(null))\n',
+'when_no_subject': 'let a = 1\nprint(when {\n a > 0 -> "p"\n else -> "n"\n})\n',
+'when_block_value': 'print(when (1) {\n 1 -> { let x = 2\n x + 1 }\n else -> 0\n})\n',
+'multi_assign_ops': 'var a = 1\na += 1\na -= 1\na *= 2\na /= 1\na %= 3\nprint(a)\n',
+'increment': 'var a = 1\na++\na--\nprint(a)\n',
+'prefix_increment': 'var a = 1\n++a\nprint(a)\n',
+'increment_value': 'var a = 1\nprint(a++)\nprint(++a)\n',
+'string_compare': 'print("a" < "b")\n',
+'long_literal_ops': 'print(1L + 2)\nprint(2 * 1.5)\n',
+'float_type': 'let a: Float = 1.5f\nprint(a)\n',
+'byte_short': 'let a: Byte = 1\nlet b: Short = 2\nprint(a + b)\n',
+'uint': 'let a: UInt = 1u\nprint(a)\n',
+'bit_named': 'print(5 and 3)\nprint(5 or 3)\nprint(5 xor 3)\nprint(5.inv())\n',
+}
+os.makedirs(HERE + '/ko2', exist_ok=True)
+only = sys.argv[1:]
+ok, rej, bad = 0, [], []
+for name, src in cases.items():
+    if only and name not in only:
+        continue
+    path = HERE + '/ko2/' + name + '.mam'
+    open(path, 'w', encoding='utf-8').write(src)
+    out = HERE + '/ko2/o'
+    shutil.rmtree(out, ignore_errors=True)
+    p = subprocess.run([COMPILER, path, out], capture_output=True, timeout=60, stdin=subprocess.DEVNULL)
+    if p.returncode != 0:
+        lines = p.stderr.decode('utf-8', 'replace').strip().splitlines()
+        msg = lines[0].split(': ', 1)[-1] if lines else f'exit {p.returncode}'
+        rej.append(f'{name}: {msg[:90]}')
+        continue
+    r = subprocess.run(['java', '-Xverify:all', '-cp', out, 'Main'], capture_output=True, timeout=30, stdin=subprocess.DEVNULL)
+    if r.returncode != 0:
+        bad.append(f'{name}: ' + r.stderr.decode('utf-8', 'replace').strip().splitlines()[0][:120])
+    else:
+        ok += 1
+        if only:
+            print(name, r.stdout.decode('utf-8', 'replace').strip().replace('\r', '').replace('\n', ' | ')[:200])
+print('ok', ok, 'rejected', len(rej), 'runtime', len(bad))
+print('--- rejected'); print('\n'.join(rej))
+print('--- runtime'); print('\n'.join(bad))

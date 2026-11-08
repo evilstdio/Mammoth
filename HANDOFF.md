@@ -1,3 +1,23 @@
+# Session 5: classes and everyday syntax (2026-11-09, read this first)
+
+Work continues on branch `compiler-correctness`, local only, identity `sss47 <sss47@users.invalid>`, no remote, no AI attribution. Commit only after `cargo test --release --offline`, `cargo fmt --check` and `cargo clippy --offline --all-targets -- -D warnings` pass. Use a separate `CARGO_TARGET_DIR` while a fuzzer or test holds the binary.
+
+**Design notes for what was added.**
+- **Secondary constructors** (`Class.secondary`, `Symbols.secondary`, `special.rs` `secondary_constructors`, `overloads.rs` `constructor_for`). Real `<init>` methods that delegate. `Emitter::member` must not cache `<init>` by name.
+- **Properties** (`syntax.rs` `property_accessors`, `finish_property`). A property with accessors or marked open, override or abstract has a private field `__field_x`, a getter `x` and a setter `x$set`. Reads reach the getter through the existing `field_on` fallback. Writes go through `classes.rs` `property_setter`. `check_property_ready` rejects early reads. `globals.rs` follows `.x` and `.x$set`.
+- **Object expressions** (`syntax.rs` `object_expression`). The object becomes a hidden class `__Anon<offset>` with one function-typed constructor parameter per method, and its methods forward to lambdas written at the creation site, so ordinary lambda capture applies. The body is parsed twice, first to learn member names. Bare member names become `__self<offset>.name`.
+- **Sized lists** (`collections.rs` `sized_collection`). Blocks run in the library's `__fill*` and `__growList`. A loop must not be emitted inside an expression, because operand stacks are not tracked for it.
+- **Variance on classes** uses the interface machinery. **Java `*`** is a shared hidden star type parameter (`java_star`), and `java_type_arguments_fit` accepts anything for it.
+- **`Nothing`** functions are declared to return `RuntimeException`, and each bare call becomes `throw f()`. Names come from a source scan. **Infix** names also come from a source scan.
+- **Ranges as values** are eager lists through `__rangeTo`, `__rangeUntil` and `__rangeDown`.
+- Library imports used as static call receivers must start with an uppercase letter, hence `M__Collections`.
+
+**Fabric.** `build` and `verifyMod` passed and produced JAR `3A62CD15...29CB`, the hash already smoke-tested. If a build seems stale, delete `build/libs`, `build/devlibs` and `build/loom-cache/remapped_working` under `examples/fabric-demo`.
+
+**Known limits.** No coroutines, no `inner` classes, no class delegation with `by`, no `Float`, `Byte`, `Short` or unsigned types in Mammoth source, no reified type parameters, no `synchronized`, non-local `return` from lambdas is not supported (a plain `return` leaves the lambda). See the object expression limits in the README. Top-level `obj.fail()` methods returning `Nothing` are not treated as jumps.
+
+**Probes.** `tests/fuzz/kotlin_probe.py` and `tests/fuzz/probe2.py` list everyday constructs, `tests/fuzz/advcases5.py` and `advcases6.py` are adversarial batteries for this session.
+
 # Session 4: language features (2026-11-08, read this first)
 
 The goal is closing the feature gap with Kotlin. Work is on branch `compiler-correctness`, committed locally, identity `sss47 <sss47@users.invalid>`, no remote and no AI attribution. Commit only after `cargo test --release --offline`, `cargo fmt --check` and clippy pass; use a separate `CARGO_TARGET_DIR` so a running fuzzer cannot lock the binary.

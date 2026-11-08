@@ -1051,15 +1051,17 @@ fun Double.rem(other: Double): Double = this % other
 
 fun Text.trimMargin(marker: Text = "|"): Text {
     let out = StringBuilder()
-    var first = true
+    var opening = true
+    var started = false
     for line in this.split("\n") {
         let trimmed = line.trim()
-        if first and trimmed.length() == 0 {
-            first = false
+        if opening and trimmed.length() == 0 {
+            opening = false
             continue
         }
-        if not first { out.append("\n") }
-        first = false
+        opening = false
+        if started { out.append("\n") }
+        started = true
         if trimmed.startsWith(marker) {
             out.append(trimmed.substring(marker.length()))
         } else {

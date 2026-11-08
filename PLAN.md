@@ -85,6 +85,10 @@ Generated class files now carry SourceFile and LineNumberTable data (real `.mam`
  Static init blocks and inferred static field types are supported; the Fabric demo uses a Mammoth @Accessor/@Invoker interface in game.
  Nested Java class imports and Double-to-float arguments work; the Fabric demo registers a real custom block.
 
+## Language gaps still open (November 2026)
+
+`inner` classes, class delegation with `by`, `Float`/`Byte`/`Short` as Mammoth types, sequences, coroutines, reified type parameters, `synchronized`, non-local returns. Tooling gaps: no language server, no language specification, no package manager.
+
 ## Production-readiness queue (highest priority first)
 
 Work in correctness milestones with reproductions, valid-program coverage, rejection tests, and full release checks before delivery. This queue supersedes older "next" suggestions above.
