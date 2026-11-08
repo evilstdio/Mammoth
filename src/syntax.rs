@@ -1564,37 +1564,8 @@ impl<'a> Parser<'a> {
         {
             return Ok(Statement::MethodCall(receiver));
         }
-        if let Expr::Field(..) = receiver {
-            let operator = self.compound_operator();
-            if operator.is_none() && !self.take_assignment() {
-                return Err(
-                    self.error("Expected '=' to change this field, or '(' to call a method.")
-                );
-            }
-            let Expr::Field(object, field) = receiver else {
-                unreachable!()
-            };
-            return Ok(Statement::SetField(
-                *object,
-                field,
-                operator,
-                self.expression()?,
-            ));
-        }
-        if let Expr::Index(..) = receiver {
-            let operator = self.compound_operator();
-            if operator.is_none() && !self.take_assignment() {
-                return Err(self.error("Expected '=' to change this list item."));
-            }
-            let Expr::Index(list, index) = receiver else {
-                unreachable!()
-            };
-            return Ok(Statement::SetIndex(
-                *list,
-                *index,
-                operator,
-                self.expression()?,
-            ));
+        if matches!(receiver, Expr::Field(..) | Expr::Index(..)) {
+            return self.member_assignment(receiver);
         }
         let args = if let Expr::Variable(_) = receiver
             && let Some(lambda) = self.trailing_lambda(0)?
@@ -1611,8 +1582,27 @@ impl<'a> Parser<'a> {
         match self.postfix(Expr::Call(name, args), 0)? {
             Expr::Call(name, args) => Ok(Statement::Call(name, args)),
             call @ Expr::MethodCall(..) => Ok(Statement::MethodCall(call)),
+            target @ (Expr::Field(..) | Expr::Index(..)) => self.member_assignment(target),
             _ => Err(self.error("Expected a function or method call.")),
         }
+    }
+
+    /// `object.field = value` or `list[index] += value`, after the target.
+    fn member_assignment(&mut self, target: Expr<'a>) -> Result<Statement<'a>, Error> {
+        let operator = self.compound_operator();
+        if operator.is_none() && !self.take_assignment() {
+            return Err(self.error(if matches!(target, Expr::Field(..)) {
+                "Expected '=' to change this field, or '(' to call a method."
+            } else {
+                "Expected '=' to change this list item."
+            }));
+        }
+        let value = self.expression()?;
+        Ok(match target {
+            Expr::Field(object, field) => Statement::SetField(*object, field, operator, value),
+            Expr::Index(list, index) => Statement::SetIndex(*list, *index, operator, value),
+            _ => unreachable!("only members are assigned here"),
+        })
     }
 
     fn compound_operator(&mut self) -> Option<Arithmetic> {

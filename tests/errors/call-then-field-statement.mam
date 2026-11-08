@@ -1,0 +1,3 @@
+// error: Expected
+fun f(): Int { return 1 }
+f().value

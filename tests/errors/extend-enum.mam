@@ -1,0 +1,4 @@
+// error: An enum cannot be extended
+enum E { A }
+class K extends E
+print(1)

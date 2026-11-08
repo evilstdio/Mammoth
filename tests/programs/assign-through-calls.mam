@@ -1,0 +1,21 @@
+// Assignment targets may start with a call.
+class K(var v: Int)
+var calls = 0
+fun mk(k: K): K {
+    calls += 1
+    return k
+}
+let k = K(1)
+mk(k).v += 2
+mk(k).v = mk(k).v * 3
+print(k.v)
+print(calls)
+let xs = [1, 2]
+fun list(): List<Int> {
+    calls += 1
+    return xs
+}
+list()[1] = 7
+list()[0] += 4
+print(xs[0] + xs[1])
+print(calls)

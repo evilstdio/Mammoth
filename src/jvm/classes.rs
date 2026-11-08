@@ -703,6 +703,11 @@ impl<'a> Symbols<'a> {
     pub(super) fn check_classes(&self, program: &Program<'a>) -> Result<(), Error> {
         for (&index, class) in self.own_classes.iter().zip(&program.classes) {
             let parent = self.superclasses[index];
+            if let (Some(parent), Some((name, _))) = (parent, &class.extends)
+                && self.enum_values[parent].is_some()
+            {
+                return Err(at(*name, "An enum cannot be extended."));
+            }
             for method in &class.methods {
                 let signature = &self.methods[index][method.name.text];
                 self.check_generic_java_override(index, method, signature)?;
@@ -1119,6 +1124,12 @@ impl<'a> Symbols<'a> {
         for inherited in self.types.java_inherited_methods(&root, method.name.text) {
             if !self.java_compatible(signature, &inherited) {
                 continue;
+            }
+            if inherited.access & crate::classfile::ACC_FINAL != 0 {
+                return Err(at(
+                    method.name,
+                    "This Java method is final, so it cannot be overridden.",
+                ));
             }
             let Some(generic) = inherited
                 .signature
