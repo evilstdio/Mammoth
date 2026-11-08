@@ -1,0 +1,4 @@
+// error: Expected a value of the declared nullable type here.
+import java.util.HashMap
+let ages = HashMap<Text, Int>()
+print(ages[5])

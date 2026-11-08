@@ -2329,6 +2329,31 @@ impl Emitter<'_> {
             )
     }
 
+    /// The phase of Java's overload resolution that accepts this candidate:
+    /// subtyping and widening, then boxing, then variable arity. A Mammoth
+    /// `Double` reaching a Java `float` waits until after real `double`s.
+    fn java_phase(&self, candidate: &JavaMethod, kinds: &[Argument], spread: bool) -> u8 {
+        if spread {
+            return 3;
+        }
+        kinds
+            .iter()
+            .zip(&candidate.parameters)
+            .map(|(&argument, target)| {
+                let narrowing = matches!(
+                    (argument, target),
+                    (Argument::Value(Kind::Double), JType::Float)
+                );
+                match self.java_argument_cost(argument, target) {
+                    _ if narrowing => 1,
+                    Some(4..) => 2,
+                    _ => 0,
+                }
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
     fn select_specific_java_overload<'m>(
         &self,
         candidates: &'m [JavaMethod],
@@ -2341,17 +2366,14 @@ impl Emitter<'_> {
                 overload_score(candidate, kinds, &|argument, target| {
                     self.java_argument_cost(argument, target)
                 })
-                .map(|(score, spread)| (candidate, spread, score))
+                .map(|(_, spread)| (candidate, spread, self.java_phase(candidate, kinds, spread)))
             })
             .collect();
-        let best = scored.iter().map(|(_, _, score)| *score).min()?;
-        let mut tied: Vec<_> = scored
+        let best = scored.iter().map(|(_, _, phase)| *phase).min()?;
+        let tied: Vec<_> = scored
             .into_iter()
-            .filter(|(_, _, score)| *score == best)
+            .filter(|(_, _, phase)| *phase == best)
             .collect();
-        if tied.iter().any(|(_, spread, _)| !spread) {
-            tied.retain(|(_, spread, _)| !spread);
-        }
         let winners: Vec<_> = tied
             .iter()
             .filter(|(candidate, spread, _)| {

@@ -1,0 +1,4 @@
+// error: Java type arguments are erased at runtime.
+let raw: Any = MutableList<Text>()
+let numbers = raw as MutableList<Int>
+print(numbers)

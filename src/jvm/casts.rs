@@ -57,6 +57,16 @@ impl<'a> Emitter<'a> {
             ));
         }
         if !safe {
+            if !matches!(target, Kind::Nullable(_))
+                && (matches!(kind, Kind::Nullable(_) | Kind::Null))
+            {
+                // `checkcast` lets null through, so a non-null target checks it.
+                if !kind.is_reference() {
+                    self.box_value(method, kind);
+                }
+                self.guard_non_null(method, target, base);
+                return Ok(target);
+            }
             self.cast_top(method, kind, target, base);
             return Ok(target);
         }

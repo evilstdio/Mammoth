@@ -849,6 +849,10 @@ public class Caller {
             "This argument does not match the Java type",
         ),
         (
+            "import lib.Holder\nimport java.util.ArrayList\nlet both = ArrayList<Text>()\nprint(Holder.crossed(both, both))\n",
+            "This Java call is ambiguous.",
+        ),
+        (
             "import lib.Holder\nHolder.genericTie(null)\n",
             "This Java call is ambiguous.",
         ),

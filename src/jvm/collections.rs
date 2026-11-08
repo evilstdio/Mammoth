@@ -230,6 +230,18 @@ impl<'a> Emitter<'a> {
             .unwrap_or(Kind::Any)
     }
 
+    /// The type a key of this map must have. Java maps accept null keys.
+    fn map_key(&self, kind: Kind) -> Kind {
+        let key = self
+            .symbols
+            .types
+            .substitution(kind, "java/util/Map")
+            .get("K")
+            .copied()
+            .unwrap_or(Kind::Any);
+        key.nullable().unwrap_or(key)
+    }
+
     /// `map[key]` on a Java map that is on the stack.
     pub(super) fn map_get(
         &mut self,
@@ -241,8 +253,10 @@ impl<'a> Emitter<'a> {
     ) -> Result<Kind, Error> {
         let value = self.map_value(kind);
         method.stack.push(self.local_type(kind));
-        let key_kind = self.expression(method, key, base + 1)?;
-        self.box_element(method, key_kind);
+        let key_type = self.map_key(kind);
+        let key_kind = self.expression_as(method, key, base + 1, Some(key_type))?;
+        self.coerce(method, key, key_kind, key_type, base + 1)?;
+        self.box_element(method, key_type);
         method.stack.pop();
         method.max_stack = method.max_stack.max(base + 1 + key_kind.slots());
         let get = self.runtime_member(
@@ -279,8 +293,10 @@ impl<'a> Emitter<'a> {
         let element = self.map_value(kind);
         let receiver = self.local_type(kind);
         method.stack.push(receiver);
-        let key_kind = self.expression(method, key, 1)?;
-        self.box_element(method, key_kind);
+        let key_type = self.map_key(kind);
+        let key_kind = self.expression_as(method, key, 1, Some(key_type))?;
+        self.coerce(method, key, key_kind, key_type, 1)?;
+        self.box_element(method, key_type);
         let object = Local::Object(self.runtime_class("java/lang/Object"));
         method.stack.push(object);
         method.max_stack = method.max_stack.max(1 + key_kind.slots());

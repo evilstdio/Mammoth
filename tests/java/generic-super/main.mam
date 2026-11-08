@@ -265,3 +265,21 @@ class StaticReader(start: Text) extends Holder<Text>(start) {
     fun read(): Text { return PUBLIC_LABEL + protectedNames.get(0) }
 }
 if StaticReader("s").read() != "publicp" or StaticReader.PUBLIC_LABEL != "public" { throw IllegalStateException("inherited static fields") }
+
+// Null elements of Java arrays are caught when read as non-null values.
+let holes = Holder.holes()
+let maybe: Text? = holes[1]
+if maybe != null or holes[0] != "first" { throw IllegalStateException("array read") }
+var caught = 0
+try {
+    let bad: Text = holes[1]
+    print(bad)
+} catch (e: NullPointerException) { caught += 1 }
+try {
+    for hole in holes { caught += hole.length() * 0 }
+} catch (e: NullPointerException) { caught += 1 }
+if caught != 2 { throw IllegalStateException("array null guard") }
+
+// Java's phases: no boxing before boxing, no varargs before either.
+if Holder.phases(1) != "object" or Holder.boxingLater(1) != "long" { throw IllegalStateException("overload phases") }
+if Holder.narrowest(ArrayList<Text>()) != "collection" { throw IllegalStateException("most specific") }

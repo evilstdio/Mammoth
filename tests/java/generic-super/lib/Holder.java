@@ -160,6 +160,15 @@ public class Holder<T> {
     public static class SubHolder extends Holder<String> {
         public SubHolder() { super("sub"); }
     }
+    public static String[] holes() { return new String[] { "first", null }; }
+    public static String crossed(java.util.List<?> a, Object b) { return "list-object"; }
+    public static String crossed(java.util.Collection<?> a, java.util.List<?> b) { return "collection-list"; }
+    public static String phases(Object a) { return "object"; }
+    public static String phases(int... a) { return "varargs"; }
+    public static String boxingLater(long a) { return "long"; }
+    public static String boxingLater(Integer a) { return "integer"; }
+    public static String narrowest(Iterable<?> a) { return "iterable"; }
+    public static String narrowest(java.util.Collection<?> a) { return "collection"; }
     public static int backingSum() { int sum = 0; for (Integer value : backing) sum += value; return sum; }
 
 }

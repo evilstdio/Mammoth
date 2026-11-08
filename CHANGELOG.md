@@ -1,5 +1,15 @@
 # Changelog
 
+## Casts, maps, arrays and overloads, 2026-11-08
+
+- `as` to a non-null type now rejects null at runtime.
+- `as MutableList<T>` must be implied by the value's static type.
+- Map keys in `map[key]` and `map[key] = value` are checked against the map's key type.
+- Reading a non-null reference from an array checks for null, so null elements from Java arrays fail at the read.
+- Java overloads are chosen in javac's phases (subtyping, boxing, variable arity), then by specificity. Calls javac reports as ambiguous are now rejected instead of picking by conversion cost.
+- Stack traces keep the correct line for statements that start with a speculative check.
+- A line break now ends a call or index, so a `when` branch can start with `(` or `[`.
+
 ## Verifier fixes from fuzzing, 2026-11-08
 
 - A `when` or `if` value without an expected type, nested inside a call, now keeps earlier operands in its stack frames. Such programs previously failed JVM verification.

@@ -1,0 +1,29 @@
+// `as` to a non-null type checks null. A cast statement keeps its line number.
+open class A
+class B extends A
+fun nothing(): A? { return null }
+fun line(e: Exception): Int { return e.getStackTrace()[0].getLineNumber() }
+try {
+    let a: A = nothing() as A
+    print(a)
+} catch (e: NullPointerException) {
+    print("null rejected")
+}
+let kept: A? = nothing() as A?
+print(kept == null)
+let some: A? = B()
+print((some as B).toString().length() > 0)
+let boxed: Int? = 5
+print((boxed as Int) + 1)
+let none: Int? = null
+try {
+    print((none as Int) + 1)
+} catch (e: NullPointerException) {
+    print("null number rejected")
+}
+try {
+    let x: Any = "text"
+    print(x as B)
+} catch (e: ClassCastException) {
+    print(line(e))
+}

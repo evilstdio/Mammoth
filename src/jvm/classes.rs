@@ -397,7 +397,9 @@ impl<'a> Symbols<'a> {
                 "Type parameters are erased at runtime. Use a concrete type for is, as, or as?.",
             ));
         }
-        if self.java_parameterized(target) && !self.implied_java_target(target, subject) {
+        if (self.java_parameterized(target) || matches!(target.non_null(), Kind::MutableList(_)))
+            && !self.implied_java_target(target, subject)
+        {
             return Err(at(
                 annotation,
                 "Java type arguments are erased at runtime. Check only types whose arguments follow from the value's type, such as ArrayList<Text> for a Collection<Text>, or check the raw type such as ArrayList.",

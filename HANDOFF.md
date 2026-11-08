@@ -1,3 +1,15 @@
+# Latest: soundness and overload fixes from a new fuzzer (2026-11-08, session 3)
+
+- **Tools.** `difffuzz.py` (same random program in Mammoth and Java, stdout and crash status must match) and `soundfuzz.py` (grows programs from random, usually ill-typed statements; anything accepted must not raise a type or linkage error it did not ask for). Both are in the session scratchpad, not the repo. Differential runs had 0 problems on 420 programs.
+- **Fixed.**
+  - `x as T` to a non-null type let null through. It now checks (`casts.rs`).
+  - `x as MutableList<Int>` was an unchecked cast. It now follows the same "implied by the value's type" rule as Java generics (`classes.rs` `check_runtime_target`).
+  - `map[key]` and `map[key] = v` did not check the key type, so a wrong key could corrupt a typed map (`collections.rs` `map_key`). Null keys are still allowed.
+  - Stack-trace lines were lost when a statement began with a speculative probe (`Method::restore` dropped the entry at the snapshot offset). The state now keeps the entry count and last entry.
+  - Reading a non-null reference element from an array now checks null (`guard_array_element`), at `xs[i]` and in `for`. `let x: Text? = xs[i]` and `print(xs[i])` still see null.
+  - Java overload selection follows javac's phases: strict, boxing, variable arity, and then most specific (`interop.rs` `java_phase`). The cost total no longer picks a winner between unrelated candidates, so `crossed(list, list)` is ambiguous as in javac.
+- **Limits.** An array passed through a generic function (`first<T>(xs: List<T>): T`) is not element-checked. A `for` loop over an array with null elements raises at that element.
+
 # Latest: invalid bytecode from the semantic fuzzer fixed (2026-11-08, session 3)
 
 - **Stack frames.** `lambdas.rs` `value_or_nothing` passed stack depth 0 to nested calls, so a `when` or `if` value with no expected type dropped operands already on the stack from its frames. It now uses `method.stack.len()`. The earlier note that top-level code was safe was wrong: both forms failed.

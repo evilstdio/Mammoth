@@ -2325,7 +2325,33 @@ impl<'a> Emitter<'a> {
 
     fn guard_non_null(&mut self, method: &mut Method<'a>, kind: Kind, base: u16) {
         let class = self.instance_class(kind.non_null());
-        let (guard, message) = *self.null_guard.get_or_insert_with(|| {
+        let (guard, message) = self.null_guard_refs();
+        method.max_stack = method.max_stack.max(base + 2);
+        load_constant(&mut method.code, message);
+        instruction(&mut method.code, 0xb8, guard);
+        instruction(&mut method.code, 0xc0, class); // checkcast
+        if !kind.is_reference() {
+            self.unbox_element(method, kind, base);
+        }
+    }
+
+    /// A JVM array can come from Java with null elements, so reading a
+    /// non-null reference element checks it. The value stays on the stack.
+    fn guard_array_element(&mut self, method: &mut Method<'a>, element: Kind, base: u16) {
+        if !element.is_reference() || matches!(element, Kind::Nullable(_) | Kind::TypeParameter(..))
+        {
+            return;
+        }
+        let (guard, message) = self.null_guard_refs();
+        method.code.push(0x59); // dup
+        load_constant(&mut method.code, message);
+        instruction(&mut method.code, 0xb8, guard);
+        method.code.push(0x57); // pop
+        method.max_stack = method.max_stack.max(base + 3);
+    }
+
+    fn null_guard_refs(&mut self) -> (u16, u16) {
+        *self.null_guard.get_or_insert_with(|| {
             let objects = self.pool.class("java/util/Objects");
             let guard = self.pool.member(
                 10,
@@ -2335,14 +2361,7 @@ impl<'a> Emitter<'a> {
             );
             let text = self.pool.ascii("Expected a value, but got null.");
             (guard, self.pool.reference(8, &[text]))
-        });
-        method.max_stack = method.max_stack.max(base + 2);
-        load_constant(&mut method.code, message);
-        instruction(&mut method.code, 0xb8, guard);
-        instruction(&mut method.code, 0xc0, class); // checkcast
-        if !kind.is_reference() {
-            self.unbox_element(method, kind, base);
-        }
+        })
     }
 
     fn method_call_expected(
@@ -3209,6 +3228,9 @@ impl<'a> Emitter<'a> {
                     self.unbox_element(method, list.element(), base);
                 } else {
                     method.code.push(list.load());
+                    if !allow_null {
+                        self.guard_array_element(method, list.element(), base);
+                    }
                 }
                 Ok(list.element())
             }
@@ -3877,6 +3899,7 @@ impl<'a> Emitter<'a> {
         method.access(0x19, array);
         method.access(0x15, index);
         method.code.push(list.load());
+        self.guard_array_element(method, element, 1);
         method.access(element.store(), item);
         method.variables.push(Binding {
             name: name.text,
@@ -4501,6 +4524,8 @@ struct MethodState {
     variables_low: usize,
     type_facts: usize,
     code: usize,
+    line_count: usize,
+    last_line: Option<(u16, u16)>,
     locals: Vec<Local>,
     stack: Vec<Local>,
     variables: usize,
@@ -4604,6 +4629,8 @@ impl<'a> Method<'a> {
             variables_low: self.variables_low,
             type_facts: self.type_facts.len(),
             code: self.code.len(),
+            line_count: self.lines.len(),
+            last_line: self.lines.last().copied(),
             locals: self.locals.clone(),
             stack: self.stack.clone(),
             variables: self.variables.len(),
@@ -4618,8 +4645,9 @@ impl<'a> Method<'a> {
     /// Discards code emitted since `snapshot`.
     fn restore(&mut self, state: MethodState) {
         self.code.truncate(state.code);
-        self.lines
-            .retain(|&(offset, _)| usize::from(offset) < state.code);
+        // A statement's own entry sits at this offset and must survive.
+        self.lines.truncate(state.line_count.saturating_sub(1));
+        self.lines.extend(state.last_line);
         self.local_table.truncate(state.local_table);
         for entry in &mut self.local_table {
             if entry.end.is_some_and(|end| usize::from(end) > state.code) {
