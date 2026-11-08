@@ -1,0 +1,4 @@
+// error: This argument does not match
+import java.util.Collections
+let wrong = Collections.singletonList<Text>(5)
+print(wrong)

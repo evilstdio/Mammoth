@@ -1,0 +1,36 @@
+// Explicit type arguments on Java calls, lambda specificity, enum bounds, null inputs and for over Iterable.
+import java.util.HashMap
+import java.util.Collections
+import java.util.Comparator
+import java.util.EnumMap
+import java.util.Optional
+import java.util.ArrayList
+import java.util.Iterator
+import java.util.List as JList
+import java.util.concurrent.Executors
+let m = HashMap<Text, Int>()
+m.compute("a") { k: Text, v: Int? -> if v == null { 1 } else { v + 1 } }
+m.compute("a") { k: Text, v: Int? -> if v == null { 1 } else { v + 1 } }
+print(m.get("a"))
+enum E { A, B }
+print(E.A.getClass().isEnum())
+let em = EnumMap<E, Int>(E.class)
+em.put(E.B, 2)
+print(em.get(E.B) + 1)
+print(em)
+let empty = Collections.emptyList<Text>()
+print(empty.size())
+let boxes = ArrayList<Text>()
+boxes.add("b")
+boxes.add("a")
+boxes.sort(Comparator.naturalOrder<Text>().reversed())
+print(boxes.get(0))
+print(Optional.empty<Text>().orElseGet { "z" }.length())
+class Count(let n: Int) implements Iterable<Int> {
+    fun iterator(): Iterator<Int> { return JList.of(n, n + 1).iterator() }
+}
+for x in Count(4) { print(x + 1) }
+let e = Executors.newFixedThreadPool(1)
+print(e.submit { "x" }.get().length())
+e.submit { print("void") }.get()
+e.shutdown()

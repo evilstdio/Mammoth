@@ -1464,7 +1464,34 @@ impl<'a> Emitter<'a> {
 
     /// `Type.member(args)` on a Java class.
     #[allow(clippy::too_many_arguments)]
+    /// Splits `name<Text>` into the name and its type arguments.
+    fn explicit_java_call(&mut self, name: Name<'a>) -> Result<(Name<'a>, Vec<Kind>), Error> {
+        let (base, written) = super::native_generics::call_name(name);
+        let arguments = written
+            .unwrap_or_default()
+            .into_iter()
+            .map(|argument| super::resolve_type(&self.type_scope, argument))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((base, arguments))
+    }
+
     pub(super) fn java_static_call(
+        &mut self,
+        method: &mut Method<'a>,
+        class: &str,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+        expected: Option<Kind>,
+    ) -> Result<Option<Kind>, Error> {
+        let (name, explicit) = self.explicit_java_call(name)?;
+        let outer = std::mem::replace(&mut self.explicit_java_arguments, explicit);
+        let result = self.java_static_lookup(method, class, name, args, base, expected);
+        self.explicit_java_arguments = outer;
+        result
+    }
+
+    fn java_static_lookup(
         &mut self,
         method: &mut Method<'a>,
         class: &str,
@@ -1552,6 +1579,25 @@ impl<'a> Emitter<'a> {
 
     #[allow(clippy::too_many_arguments)]
     pub(super) fn java_instance_call_expected(
+        &mut self,
+        method: &mut Method<'a>,
+        kind: Kind,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+        allow_null: bool,
+        expected: Option<Kind>,
+    ) -> Result<Option<Kind>, Error> {
+        let (name, explicit) = self.explicit_java_call(name)?;
+        let outer = std::mem::replace(&mut self.explicit_java_arguments, explicit);
+        let result =
+            self.java_instance_lookup(method, kind, name, args, base, allow_null, expected);
+        self.explicit_java_arguments = outer;
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn java_instance_lookup(
         &mut self,
         method: &mut Method<'a>,
         kind: Kind,
@@ -2028,7 +2074,27 @@ impl<'a> Emitter<'a> {
             for variable in &signature.variables {
                 map.remove(variable);
             }
-            let mut constraints = std::collections::HashMap::new();
+            if !self.explicit_java_arguments.is_empty()
+                && self.explicit_java_arguments.len() != signature.variables.len()
+            {
+                return Err(at(
+                    name,
+                    "This call has the wrong number of type arguments.",
+                ));
+            }
+            let mut constraints: std::collections::HashMap<String, Vec<(Kind, i8)>> =
+                std::collections::HashMap::new();
+            for (variable, &kind) in signature
+                .variables
+                .iter()
+                .zip(&self.explicit_java_arguments)
+            {
+                // A written type argument is exact, so arguments must fit it.
+                constraints
+                    .entry(variable.clone())
+                    .or_default()
+                    .push((kind, 0));
+            }
             for (position, argument) in kinds.iter().enumerate() {
                 if let Argument::Value(kind) = argument
                     && let Some(parameter) = signature.argument(position, spread)
@@ -2388,9 +2454,29 @@ impl Emitter<'_> {
                 })
             })
             .collect();
-        if winners.len() != 1 {
-            return None;
+        if winners.len() == 1 {
+            return Some((winners[0].0, winners[0].1));
         }
-        Some((winners[0].0, winners[0].1))
+        // As in javac, a lambda parameter that returns a value is more
+        // specific than one returning void: `submit(Callable)` over
+        // `submit(Runnable)`.
+        let returning: Vec<_> = winners
+            .iter()
+            .filter(|(candidate, ..)| {
+                kinds
+                    .iter()
+                    .zip(&candidate.parameters)
+                    .all(|(argument, target)| {
+                        !matches!(argument, Argument::Lambda(_))
+                            || self.lambda_returns_value(target)
+                    })
+            })
+            .collect();
+        match returning.as_slice() {
+            [only] if kinds.iter().any(|kind| matches!(kind, Argument::Lambda(_))) => {
+                Some((only.0, only.1))
+            }
+            _ => None,
+        }
     }
 }

@@ -1,3 +1,14 @@
+# Latest: real-library call forms (2026-11-08, session 3)
+
+- **Battery.** `jdkcases.py` in the session scratchpad runs 122 common JDK usage snippets (streams, collections, Optional, java.time, files, concurrency, comparators). 111 pass. The 11 that do not: 6 use the Kotlin-style `Runnable { }` constructor form (write `let r: Runnable = { ... }` instead, which works); 2 use fully qualified names in expressions; `"ab".chars()` is a Mammoth builtin returning a list; `byte[]` is an opaque Java value with no `.size()` or indexing; an unannotated `Map.compute` lambda cannot compare its `Int` input to null and now says to write `v: Int?`.
+- **Fixed.**
+  - Explicit type arguments on Java calls: `Collections.emptyList<Text>()`, `Comparator.naturalOrder<Text>()`. They are exact constraints, so `singletonList<Text>(5)` is rejected (`interop.rs` `explicit_java_call`, `explicit_java_arguments`).
+  - `executor.submit { "x" }` picks `Callable`, since a lambda parameter returning a value is more specific than a void one, as in javac (`lambda_returns_value`).
+  - `for` over a Mammoth class implementing `Iterable` (`jvm.rs` for loop, via `java_generic_views`).
+  - Mammoth enums are `Enum<E>`, so `EnumMap<E, Int>` satisfies its bound (`project.rs`).
+  - A Java lambda input can be declared nullable: `{ k: Text, v: Int? -> ... }` (`lambda_input_fits`).
+- **Fabric.** `build`, `verifyMod` and the real-client `smokeTest` passed with the compiler at commit `849a06d` (before this milestone).
+
 # Latest: initialization order and control-flow checks (2026-11-08, session 3)
 
 - **Global order.** `globals.rs` `check_global_order` rejects a top-level statement that reaches, through bare function calls or constructors (field initializers and init blocks), a top-level variable declared later. Previously `Text` read as null and `Int` as 0. Lambdas are skipped because they run later. Calls through objects and methods are not followed, which is a known gap. Locals and parameters with the same name as a global are excluded.

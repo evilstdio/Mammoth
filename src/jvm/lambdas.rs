@@ -104,6 +104,16 @@ impl<'a> Emitter<'a> {
 
     /// Whether a Java parameter type can receive a lambda with `arity`
     /// parameters (`None` when the lambda did not list its parameters).
+    /// Whether a lambda passed for this parameter returns a value.
+    pub(super) fn lambda_returns_value(&self, target: &JType) -> bool {
+        let JType::Class(name) = target else {
+            return false;
+        };
+        let kind = self.symbols.types.java_kind(name);
+        self.lambda_target(Some(kind))
+            .is_some_and(|target| target.sam_result != JType::Void)
+    }
+
     pub(super) fn accepts_lambda(&self, target: &JType, arity: Option<usize>) -> bool {
         let JType::Class(name) = target else {
             return false;
@@ -139,7 +149,12 @@ impl<'a> Emitter<'a> {
     }
 
     fn lambda_input_fits(&self, declared: Kind, wanted: Kind, raw: bool) -> bool {
-        self.symbols.types.same_kind(declared, wanted) || raw || self.symbols.fits(wanted, declared)
+        self.symbols.types.same_kind(declared, wanted)
+            || raw
+            || self.symbols.fits(wanted, declared)
+            // Java can pass null for a boxed input, as Map.compute does.
+            || (matches!(declared, Kind::Nullable(_))
+                && self.symbols.types.same_kind(declared.non_null(), wanted))
     }
 
     /// Infer a Java SAM lambda's result while preserving the enclosing stack.

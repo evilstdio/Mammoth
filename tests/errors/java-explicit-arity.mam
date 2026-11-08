@@ -1,0 +1,3 @@
+// error: wrong number of type arguments
+import java.util.Collections
+print(Collections.emptyList<Int, Text>())

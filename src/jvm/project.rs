@@ -586,7 +586,9 @@ pub(super) fn resolve<'a>(
                     },
                 };
                 if class.enum_values.is_some() {
-                    java_super = Some(types.java_index("java/lang/Enum"));
+                    // Enum<E>, so E satisfies bounds such as the one on EnumMap.
+                    java_super =
+                        Some(types.java_generic("java/lang/Enum", vec![Kind::Object(index)]));
                 }
                 superclasses.push(superclass);
                 superclass_kinds.push(superclass_kind);

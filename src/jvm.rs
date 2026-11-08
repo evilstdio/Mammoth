@@ -1103,6 +1103,7 @@ fn new_emitter<'a>(
         line_table_name: None,
         bridge_offset: None,
         candidate_depth: 0,
+        explicit_java_arguments: Vec::new(),
         pending_fields: Vec::new(),
         pending_statics: Vec::new(),
     }
@@ -1794,6 +1795,9 @@ struct Emitter<'a> {
     bridge_offset: Option<usize>,
     /// How many overload candidates are re-probing their arguments.
     candidate_depth: u8,
+    /// Type arguments written at the Java call being resolved, as in
+    /// `Collections.emptyList<Text>()`.
+    explicit_java_arguments: Vec<Kind>,
     /// Instance fields whose starting values have not run yet, while a
     /// constructor runs field initializers and init blocks.
     pending_fields: Vec<&'a str>,
@@ -3728,7 +3732,11 @@ impl<'a> Emitter<'a> {
                 _ => {
                     return Err(Error {
                         offset: left.offset(),
-                        message: "Use == or != to compare a reference to null.",
+                        message: if matches!(comparison, Comparison::Eq | Comparison::Ne) {
+                            "This value cannot be null. If Java can pass null to a lambda parameter, declare it with a nullable type such as `value: Int?`."
+                        } else {
+                            "Use == or != to compare a reference to null."
+                        },
                     });
                 }
             }
@@ -3879,25 +3887,25 @@ impl<'a> Emitter<'a> {
             return self.loop_range(method, name, start, end, *inclusive, body);
         }
         let kind = self.expression(method, values, 0)?;
-        if matches!(kind, Kind::Java(_))
-            && self
+        if matches!(kind, Kind::Java(_)) || self.symbols.types.native_class(kind).is_some() {
+            let types = &self.symbols.types;
+            let view = self
                 .symbols
-                .types
-                .runtime_class_name(kind)
-                .is_some_and(|binary| {
-                    self.symbols
-                        .types
-                        .is_java_subclass(&binary, "java/lang/Iterable")
-                })
-        {
-            let element = self
-                .symbols
-                .types
-                .substitution(kind, "java/lang/Iterable")
-                .get("T")
-                .copied()
-                .unwrap_or(Kind::Any);
-            return self.loop_iterable(method, name, element, body);
+                .java_generic_views(kind)
+                .into_iter()
+                .find(|&view| {
+                    types
+                        .runtime_class_name(view)
+                        .is_some_and(|binary| types.is_java_subclass(&binary, "java/lang/Iterable"))
+                });
+            if let Some(view) = view {
+                let element = types
+                    .substitution(view, "java/lang/Iterable")
+                    .get("T")
+                    .copied()
+                    .unwrap_or(Kind::Any);
+                return self.loop_iterable(method, name, element, body);
+            }
         }
         if let Kind::MutableList(list) = kind {
             return self.loop_mutable(method, name, list, body);

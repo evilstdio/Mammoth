@@ -1,5 +1,13 @@
 # Changelog
 
+## Java call forms, 2026-11-08
+
+- Java calls accept explicit type arguments, such as `Collections.emptyList<Text>()`, and check arguments against them.
+- A lambda for an overloaded Java method prefers the parameter that returns a value, as in javac.
+- `for` works over Mammoth classes implementing `Iterable`.
+- Mammoth enums satisfy `Enum<E>` bounds, so `EnumMap` works.
+- Java lambda inputs can be declared nullable, as in `{ k: Text, v: Int? -> ... }`.
+
 ## Initialization order and control flow, 2026-11-08
 
 - A top-level statement that reaches a later top-level variable through function calls or constructors is rejected.
