@@ -1,5 +1,7 @@
 # Validation: 2026-11-08
 
+Re-run later on 2026-11-08 with the compiler after the array-read null checks and javac overload phases. `build`, `verifyMod` and `smokeTest` passed with every marker present. The JAR changed because array reads now check for null, and the SHA256 below is the new one.
+
 Re-run on 2026-11-08 with the compiler after the wildcard-capture, inherited-call, cast, initialization-order, boxed-number and bridge milestones. `build`, `verifyMod` and `smokeTest` passed again with every marker below present; the JAR changed (new SHA256 below) because the compiler's output changed.
 
 The actual Minecraft 1.21.1 development client launched with Fabric Loader 0.16.14, Fabric API 0.116.7+1.21.1, Java 21, and strict JVM verification (`-Xverify:all`). `smokeTest` passed and Minecraft shut down cleanly after its initial resource reload.
@@ -23,7 +25,7 @@ Runtime checks observed:
 
 Final JAR: `build/libs/mammoth-fabric-demo-0.1.0.jar`
 
-SHA256: `918305D53C55296CCE8F6406D1E72648CF187B64C5FBD0F4C348438B36F7463A`
+SHA256: `3A62CD15313804E0E41DE06629B13600BD0152CB776C87EED1810EC93B5629CB`
 
 This validates the development client and packaged bytecode. A normal launcher/profile run of the production JAR, physical keyboard input, item appearance/use in a saved world, dedicated server startup, and multiplayer remain untested. The item uses a vanilla bone texture. Its right-click `use` behavior (message and 20-tick cooldown) compiles to the remapped override but needs a world to exercise and has not been tested in game. No creative-tab insertion is included.
 

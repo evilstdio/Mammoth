@@ -16,6 +16,12 @@
 - Mutation fuzz with a debug compiler: 6300 inputs found one panic, now fixed.
 - The fuzz runs predate the final two compiler commits, which changed only global name tracking and static-field checks.
 
+**Final checks, on the last commit's source.**
+- `cargo test --release --offline`: unit 5, annotations 1, fuzz 1, programs 3, projects 9, all passing.
+- `cargo fmt --check` and `cargo clippy --offline --all-targets -- -D warnings` passed.
+- `target\\release\\mammoth.exe` was rebuilt from this source.
+- Fabric: `build`, `verifyMod` and the real-client `smokeTest` passed. The JAR is `3A62CD15...29CB`, and rebuilding with the final compiler gave the identical hash.
+
 **Known limitations.**
 - Top-level initialization order follows method calls by name, so a same-named method in another class can cause a false rejection. It does not follow lambdas. Indirect this-escape can still observe null or 0.
 - Arrays passed through generic functions are not element-checked. Raw Java parameters can pollute typed collections.

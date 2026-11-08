@@ -1,15 +1,15 @@
-[05:11:52] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Registered mammoth_demo:tusk
-[05:11:52] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Registered block mammoth_demo:glow_block and item mammoth_demo:glow_block
-[05:11:53] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Static Mixin executed: tag=static-ready
-[05:11:53] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Client event and G key registered
-[05:11:53] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Tusk behavior: maxCount=16, glint=true
-[05:11:53] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Glow block: luminance=12, hardness=1.5, item links block=true
-[05:11:53] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Stack trace source: Controls.mam:70
-[05:11:54] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] MinecraftClient.tick Mixin executed
-[05:11:54] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Shadow field read: itemUseCooldown=0
-[05:11:54] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Final shadow options field is present
-[05:11:54] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Unique initializers: budget=40, tag=tusk-ready
-[05:11:54] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Development smoke test queued a G key press
-[05:11:54] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] G key: enabled=true
-[05:11:58] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Accessor: cooldown=0->7, title starts with Minecraft=true
-[05:11:58] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] SMOKE PASS: item, event, keybind, and Mixin
+[14:35:20] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Registered mammoth_demo:tusk
+[14:35:20] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Registered block mammoth_demo:glow_block and item mammoth_demo:glow_block
+[14:35:21] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Static Mixin executed: tag=static-ready
+[14:35:21] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Client event and G key registered
+[14:35:21] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Tusk behavior: maxCount=16, glint=true
+[14:35:21] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Glow block: luminance=12, hardness=1.5, item links block=true
+[14:35:21] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Stack trace source: Controls.mam:70
+[14:35:24] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] MinecraftClient.tick Mixin executed
+[14:35:24] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Shadow field read: itemUseCooldown=0
+[14:35:24] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Final shadow options field is present
+[14:35:24] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Unique initializers: budget=40, tag=tusk-ready
+[14:35:24] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Development smoke test queued a G key press
+[14:35:24] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] G key: enabled=true
+[14:35:30] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] Accessor: cooldown=0->7, title starts with Minecraft=true
+[14:35:30] [Render thread/INFO] (Minecraft) [STDOUT]: [Mammoth] SMOKE PASS: item, event, keybind, and Mixin
