@@ -1,0 +1,4 @@
+// error: A static method cannot use
+class K { var a = 1
+ static init { a = 2 } }
+print(K().a)

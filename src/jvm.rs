@@ -2036,6 +2036,20 @@ impl<'a> Emitter<'a> {
                     let local = method.binding(*name);
                     let (expected, mutable, field) = if let Some(binding) = local {
                         (binding.kind, binding.mutable, None)
+                    } else if self.fields.contains_key(name.text)
+                        && method
+                            .binding(Name {
+                                text: "this",
+                                offset: 0,
+                            })
+                            .is_none()
+                        && self.current_class.is_some()
+                        && self.this_ready
+                    {
+                        return Err(at(
+                            *name,
+                            "A static method cannot use the object's fields. Pass the object as a parameter.",
+                        ));
                     } else if let Some(field) = self.fields.get(name.text) {
                         (field.kind, field.mutable, Some((field.index, field.erased)))
                     } else if self.symbols.java_fields.contains_key(name.text) {

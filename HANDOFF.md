@@ -27,7 +27,7 @@
 - **Unrelated equality.** `==` and `!=` between classes (or `Text`) with no subclass relation is rejected. Interfaces and generic types are not checked.
 - **Unreachable catch.** A `catch` after one for its parent class is rejected.
 - **Top-level `throw`** as the last statement no longer emits a dead `return`.
-- **Known gap found.** A function can call a top-level function value in a statement (`f(1)`) but not as an expression (`return f(1)`), because `collect_expr` does not record call names for globals. Recording them broke a class method with the same name as a global, so it needs lookup-order work.
+- **Top-level function values** can now be called inside expressions in other functions. A method of the current class with the same name takes priority (`call_value`).
 
 # Latest: soundness and overload fixes from a new fuzzer (2026-11-08, session 3)
 

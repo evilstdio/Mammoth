@@ -1,0 +1,4 @@
+// error: A static method cannot use
+class K { var a = 1
+ static fun f(x: Int) { a = 2 } }
+K.f(1)

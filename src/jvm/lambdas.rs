@@ -667,7 +667,13 @@ impl<'a> Emitter<'a> {
             binding.kind
         } else if let Some(field) = self.fields.get(name.text) {
             field.kind
-        } else if let Some(global) = self.symbols.global(name.text) {
+        } else if let Some(global) = self.symbols.global(name.text)
+            && matches!(global.kind, Kind::Function(_))
+            && self
+                .current_class
+                .is_none_or(|class| self.symbols.find_method(class, name.text).is_none())
+        {
+            // A method of the current class comes before a top-level value.
             global.kind
         } else {
             return Ok(None);

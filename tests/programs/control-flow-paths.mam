@@ -30,6 +30,16 @@ let later = { x: Int -> x + afterLambda() }
 let offset = 40
 fun afterLambda(): Int { return offset }
 print(later(2))
+// A top-level function value can be called inside an expression, and a
+// method of the same name inside a class comes first.
+let doubler: (Int) -> Int = { x: Int -> x * 2 }
+fun useDoubler(): Int { return doubler(4) + 1 }
+print(useDoubler())
+class HasDoubler {
+    fun doubler(x: Int): Int { return x + 100 }
+    fun go(): Int { return doubler(1) }
+}
+print(HasDoubler().go())
 // Comparing related classes and subclasses is allowed.
 open class A
 class B extends A
