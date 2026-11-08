@@ -3646,7 +3646,6 @@ impl<'a> Emitter<'a> {
     /// With two values of types `lhs` and `rhs` on the stack, emits what is
     /// needed to compare them and returns the (branch-if-true,
     /// branch-if-false) opcodes. `left` and `right` locate errors.
-    #[allow(clippy::too_many_arguments)]
     /// Whether two class types share no subclass relation. Interfaces and
     /// generic types are left out, since one object can be both.
     fn unrelated_classes(&self, lhs: Kind, rhs: Kind) -> bool {
@@ -3657,6 +3656,7 @@ impl<'a> Emitter<'a> {
             && !self.symbols.fits(rhs, lhs)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn compare_kinds(
         &mut self,
         method: &mut Method<'a>,
