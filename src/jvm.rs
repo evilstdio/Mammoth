@@ -2037,8 +2037,10 @@ impl<'a> Emitter<'a> {
                     falls_through = false;
                 }
                 Statement::When(name, subject, branches) => {
+                    let variables = method.variables.len();
                     falls_through =
                         self.when_statement(method, *name, subject.as_ref(), branches)?;
+                    method.truncate_variables(variables);
                 }
                 Statement::MethodCall(Expr::Safe(inner)) => {
                     if let Some(kind) = self.safe_access(method, inner, 0)? {
@@ -2375,6 +2377,30 @@ impl<'a> Emitter<'a> {
         base: u16,
         expected: Option<Kind>,
     ) -> Result<Option<Kind>, Error> {
+        if name.text == "Any" && args.is_empty() && !self.symbols.functions.contains_key("Any") {
+            let object = self.runtime_class("java/lang/Object");
+            let init = self.runtime_member("java/lang/Object", "<init>", "()V", 10);
+            method.max_stack = method.max_stack.max(base + 2);
+            instruction(&mut method.code, 0xbb, object); // new
+            method.code.push(0x59); // dup
+            instruction(&mut method.code, 0xb7, init); // invokespecial
+            return Ok(Some(Kind::Any));
+        }
+        if let ("__monitorEnter" | "__monitorExit", [lock]) = (name.text, args) {
+            let kind = self.expression(method, lock, base)?;
+            if !kind.is_reference() || matches!(kind, Kind::Nullable(_) | Kind::Null) {
+                return Err(Error {
+                    offset: lock.offset(),
+                    message: "Only an object that is not null can be used as a lock.",
+                });
+            }
+            method.code.push(if name.text == "__monitorEnter" {
+                0xc2
+            } else {
+                0xc3
+            });
+            return Ok(None);
+        }
         if let Some(kind) = self.collection_builder(method, name, args, base, expected)? {
             return Ok(Some(kind));
         }

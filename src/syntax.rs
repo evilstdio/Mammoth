@@ -3271,6 +3271,9 @@ impl<'a> Parser<'a> {
         if name.text == "throw" {
             return Ok(Statement::Throw(name, self.expression()?));
         }
+        if name.text == "synchronized" && self.rest_trimmed().starts_with('(') {
+            return self.synchronized(name, depth);
+        }
         if name.text == "try" {
             if depth >= 63 {
                 return Err(self.error("Blocks can be nested up to 64 levels."));
@@ -3565,6 +3568,39 @@ impl<'a> Parser<'a> {
             target @ (Expr::Field(..) | Expr::Index(..)) => self.member_assignment(target),
             _ => Err(self.error("Expected a function or method call.")),
         }
+    }
+
+    /// `synchronized(lock) { ... }` holds the lock in a hidden variable, takes
+    /// it, and releases it on every way out of the block.
+    fn synchronized(&mut self, keyword: Name<'a>, depth: usize) -> Result<Statement<'a>, Error> {
+        if depth >= 63 {
+            return Err(self.error("Blocks can be nested up to 64 levels."));
+        }
+        self.expect("(", "Expected '(' after synchronized.")?;
+        let lock = self.expression()?;
+        self.expect(")", "Expected ')' after the lock.")?;
+        let body = self.block(depth + 1)?;
+        let holder = Name {
+            text: Box::leak(format!("__lock{}", keyword.offset).into_boxed_str()),
+            offset: keyword.offset,
+        };
+        let monitor = |text: &'a str| {
+            Statement::Call(
+                Name {
+                    text,
+                    offset: keyword.offset,
+                },
+                vec![Expr::Variable(holder)],
+            )
+        };
+        self.extra_statements.push(monitor("__monitorEnter"));
+        self.extra_statements.push(Statement::Try(
+            keyword,
+            body,
+            Vec::new(),
+            Some(vec![monitor("__monitorExit")]),
+        ));
+        Ok(Statement::Binding(holder, lock, false, None))
     }
 
     /// `object.field = value` or `list[index] += value`, after the target.
@@ -4094,8 +4130,25 @@ impl<'a> Parser<'a> {
             return Err(self.error("Blocks can be nested up to 64 levels."));
         }
         self.skip_space();
+        let wrapped = self.rest().starts_with("(let ") || self.rest().starts_with("(val ");
         let subject = if self.rest().starts_with('{') {
             None
+        } else if wrapped || self.rest().starts_with("let ") || self.rest().starts_with("val ") {
+            // `when (let v = next()) { ... }` names the subject for its branches.
+            if wrapped {
+                self.offset += 1;
+            }
+            self.name()?;
+            let variable = self.binding()?;
+            self.expect("=", "Expected '=' after the subject's name.")?;
+            let value = if wrapped {
+                let value = self.expression()?;
+                self.expect(")", "Expected ')' after the subject.")?;
+                value
+            } else {
+                self.header_expression()?
+            };
+            Some(Expr::Named(variable, Box::new(value)))
         } else {
             Some(self.header_expression()?)
         };

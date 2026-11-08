@@ -1,0 +1,2 @@
+// error: used as a lock
+synchronized(1) { }

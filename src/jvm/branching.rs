@@ -24,6 +24,10 @@ impl<'a> Emitter<'a> {
         let Some(expr) = subject else {
             return Ok(None);
         };
+        let (expr, named) = match expr {
+            Expr::Named(label, value) => (&**value, Some(*label)),
+            other => (other, None),
+        };
         let base = method.stack.len() as u16;
         let kind = self.expression(method, expr, base)?;
         if kind == Kind::Null {
@@ -41,6 +45,17 @@ impl<'a> Emitter<'a> {
         };
         let slot = method.local(self.local_type(kind));
         method.access(kind.store(), slot);
+        let variable = if let Some(label) = named {
+            method.variables.push(super::Binding {
+                name: label.text,
+                slot,
+                kind,
+                mutable: false,
+            });
+            Some(slot)
+        } else {
+            variable
+        };
         Ok(Some(Subject {
             slot,
             kind,

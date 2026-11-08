@@ -1,0 +1,6 @@
+// error: not been defined
+when (let v = 1) {
+    2 -> print(1)
+    else -> print(2)
+}
+print(v)

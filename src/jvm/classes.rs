@@ -1518,6 +1518,7 @@ impl<'a> Symbols<'a> {
                 }
                 kind
             }
+            Expr::Call(name, args) if name.text == "Any" && args.is_empty() => Kind::Any,
             Expr::Call(name, args) => {
                 let (base, explicit) = super::native_generics::call_name(*name);
                 if self.functions.contains_key(base.text) {

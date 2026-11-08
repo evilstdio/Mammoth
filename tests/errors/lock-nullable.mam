@@ -1,0 +1,3 @@
+// error: used as a lock
+let a: Any? = null
+synchronized(a) { }

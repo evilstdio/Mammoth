@@ -1,0 +1,24 @@
+fun g(): Any = "abc"
+print(when (let v = g()) {
+    is Text -> v.length
+    else -> 0
+})
+when let n = 1 + 1 {
+    2 -> print(n * 10)
+    else -> print("other")
+}
+let lock = Any()
+var c = 0
+fun f(): Int {
+    synchronized(lock) {
+        c += 1
+        return c
+    }
+}
+print(f())
+synchronized(lock) { print("in") }
+try { synchronized(lock) { throw RuntimeException("x") } } catch (e: RuntimeException) { print(Thread.holdsLock(lock)) }
+class K { private var n = 0
+  fun inc(): Int { synchronized(this) { n += 1 }
+   return n } }
+print(K().inc())
