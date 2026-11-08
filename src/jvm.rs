@@ -607,6 +607,7 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
             .or_else(|| match name.text {
                 "String" => Some(Kind::Text),
                 "Object" => Some(Kind::Any),
+                text if text.contains('.') => types.qualified_java_class(text),
                 _ => types.implicit_java_class(name.text),
             })
             .ok_or_else(|| {
@@ -1140,6 +1141,7 @@ fn new_emitter<'a>(
         explicit_java_arguments: Vec::new(),
         in_extension: false,
         inner_ready: false,
+        unit_lambdas: HashSet::new(),
         pending_fields: Vec::new(),
         pending_statics: Vec::new(),
     }
@@ -1884,6 +1886,8 @@ struct Emitter<'a> {
     in_extension: bool,
     /// The next inner class created already has its outer object as an argument.
     inner_ready: bool,
+    /// Lambdas with no value passed where a generic result is expected.
+    unit_lambdas: HashSet<usize>,
     /// Instance fields whose starting values have not run yet, while a
     /// constructor runs field initializers and init blocks.
     pending_fields: Vec<&'a str>,
@@ -1960,7 +1964,10 @@ impl<'a> Emitter<'a> {
         statements: &'a [Statement<'a>],
     ) -> Result<bool, Error> {
         let mut falls_through = true;
+        let mut previous: Option<&'a Statement<'a>> = None;
         for (position, statement) in statements.iter().enumerate() {
+            Self::forget_assigned(method, previous);
+            previous = Some(statement);
             if !falls_through {
                 return Err(Error {
                     offset: statement.offset(),
@@ -2097,6 +2104,7 @@ impl<'a> Emitter<'a> {
                 }
                 Statement::MethodCall(_) => unreachable!("parser only creates method calls here"),
                 Statement::For(name, values, body) => {
+                    Self::forget_in_loop(method, body);
                     self.loop_over(method, *name, values, body)?
                 }
                 Statement::Binding(name, expr, mutable, annotation) => {
@@ -2281,6 +2289,7 @@ impl<'a> Emitter<'a> {
                     falls_through = result?;
                 }
                 Statement::DoWhile(name, body, condition) => {
+                    Self::forget_in_loop(method, body);
                     let header = method.code.len();
                     method.frame(method.locals.len());
                     method.loops.push(LoopFrame::new(None));
@@ -2304,6 +2313,7 @@ impl<'a> Emitter<'a> {
                     }
                 }
                 Statement::While(name, condition, body) => {
+                    Self::forget_in_loop(method, body);
                     let header = method.code.len();
                     method.frame(method.locals.len());
                     let endless = matches!(condition, Expr::Bool(_, true));
@@ -2345,6 +2355,7 @@ impl<'a> Emitter<'a> {
                 });
             }
         }
+        Self::forget_assigned(method, previous);
         Ok(falls_through)
     }
 
@@ -3296,6 +3307,17 @@ impl<'a> Emitter<'a> {
             }
             if field.kind != field.erased {
                 self.cast_top(method, field.erased, field.kind, base);
+            }
+            if !field.mutable
+                && !field.lateinit
+                && matches!(field.kind, Kind::Nullable(_))
+                && method.field_is_checked(0, name.text)
+            {
+                let kind = field.kind.non_null();
+                if !kind.is_reference() {
+                    self.unbox_element(method, kind, base);
+                }
+                return Ok(kind);
             }
             return Ok(field.kind);
         }
@@ -4429,6 +4451,7 @@ impl<'a> Emitter<'a> {
                             | Kind::Java(_)
                             | Kind::Interface(_)
                             | Kind::AppliedInterface(_)
+                            | Kind::TypeParameter(_)
                     )
                 {
                     // `a < b` asks `a.compareTo(b) < 0`.
@@ -5450,6 +5473,9 @@ impl Kind {
 /// Element types that `ListKind` stores by number, such as `List<Int>` in
 /// `List<List<Int>>`. A `Kind` is a plain value, so one table can serve
 /// every program the compiler handles.
+/// Fact numbers from here up stand for fields rather than local slots.
+const FIELD_FACTS: u16 = 60000;
+
 const FIELD_BEFORE_START: &str = "This field is read before its starting value is set, so it would still be null or zero. Declare it above this line.";
 
 static NESTED_ELEMENTS: std::sync::Mutex<Vec<Kind>> = std::sync::Mutex::new(Vec::new());
@@ -5600,7 +5626,7 @@ struct MethodState {
     locals: Vec<Local>,
     stack: Vec<Local>,
     variables: usize,
-    non_null_slots: usize,
+    non_null_slots: Vec<u16>,
     frames: Vec<u8>,
     frame_count: u16,
     next_frame_base: usize,
@@ -5630,6 +5656,8 @@ struct Method<'a> {
     /// Names a lambda body copied from the enclosing method.
     captured: Vec<&'a str>,
     non_null_slots: Vec<u16>,
+    /// Fields known by a fact number, as (variable slot, field name).
+    field_facts: std::cell::RefCell<Vec<(u16, &'a str)>>,
     loops: Vec<LoopFrame>,
     /// Labels of enclosing loops, with the index each loop will have.
     loop_labels: Vec<(usize, &'a str)>,
@@ -5673,6 +5701,7 @@ impl<'a> Method<'a> {
             boxed_slots: Vec::new(),
             captured: Vec::new(),
             non_null_slots: Vec::new(),
+            field_facts: std::cell::RefCell::new(Vec::new()),
             loops: Vec::new(),
             loop_labels: Vec::new(),
             tries: Vec::new(),
@@ -5713,7 +5742,7 @@ impl<'a> Method<'a> {
             locals: self.locals.clone(),
             stack: self.stack.clone(),
             variables: self.variables.len(),
-            non_null_slots: self.non_null_slots.len(),
+            non_null_slots: self.non_null_slots.clone(),
             frames: self.frames.clone(),
             frame_count: self.frame_count,
             next_frame_base: self.next_frame_base,
@@ -5739,7 +5768,7 @@ impl<'a> Method<'a> {
         self.stack = state.stack;
         self.variables.truncate(state.variables);
         self.variables_low = state.variables_low.min(state.variables);
-        self.non_null_slots.truncate(state.non_null_slots);
+        self.non_null_slots = state.non_null_slots;
         self.frames = state.frames;
         self.frame_count = state.frame_count;
         self.next_frame_base = state.next_frame_base;
@@ -5797,6 +5826,39 @@ impl<'a> Method<'a> {
         }
     }
 
+    /// The fact number for "field `name` of the variable in `slot` is not null".
+    fn field_fact(&self, slot: u16, name: &'a str) -> Option<u16> {
+        let mut known = self.field_facts.borrow_mut();
+        let position = known
+            .iter()
+            .position(|entry| *entry == (slot, name))
+            .unwrap_or_else(|| {
+                known.push((slot, name));
+                known.len() - 1
+            });
+        u16::try_from(position).ok()?.checked_add(FIELD_FACTS)
+    }
+
+    /// Whether a check has shown that this field of this variable is not null.
+    fn field_is_checked(&self, slot: u16, name: &'a str) -> bool {
+        let known = self.field_facts.borrow();
+        known
+            .iter()
+            .position(|entry| *entry == (slot, name))
+            .and_then(|position| u16::try_from(position).ok())
+            .and_then(|position| position.checked_add(FIELD_FACTS))
+            .is_some_and(|id| self.non_null_slots.contains(&id))
+    }
+
+    /// Forgets what was known about the variable in `slot`.
+    fn forget_facts(&mut self, slot: u16) {
+        for fact in &mut self.non_null_slots {
+            if *fact == slot {
+                *fact = u16::MAX;
+            }
+        }
+    }
+
     fn non_null_facts(&self, condition: &Condition<'a>, when: bool) -> Vec<u16> {
         let mut slots = Vec::new();
         self.collect_non_null_facts(condition, when, &mut slots);
@@ -5817,17 +5879,45 @@ impl<'a> Method<'a> {
                     (Comparison::Eq, false) | (Comparison::Ne, true)
                 ) =>
             {
+                let this = Name {
+                    text: "this",
+                    offset: 0,
+                };
                 let name = match (left.as_ref(), right.as_ref()) {
                     (Expr::Variable(name), Expr::Null(_))
                     | (Expr::Null(_), Expr::Variable(name)) => *name,
+                    (Expr::Field(object, field), Expr::Null(_))
+                    | (Expr::Null(_), Expr::Field(object, field)) => {
+                        // A read-only field of a read-only variable stays as checked.
+                        if let Expr::Variable(owner) = object.as_ref()
+                            && let Some(binding) = self.binding(*owner)
+                            && !binding.mutable
+                            && !self.boxed_slots.contains(&binding.slot)
+                            && let Some(id) = self.field_fact(binding.slot, field.text)
+                        {
+                            slots.push(id);
+                        }
+                        return;
+                    }
                     _ => return,
                 };
-                // A later assignment must not invalidate the fact established by this check.
-                if let Some(binding) = self.binding(name)
-                    && !binding.mutable
-                    && matches!(binding.kind, Kind::Nullable(_))
-                {
-                    slots.push(binding.slot);
+                // An assignment invalidates this fact when it is emitted, and
+                // a variable that a lambda can change never gets one.
+                match self.binding(name) {
+                    Some(binding) => {
+                        if matches!(binding.kind, Kind::Nullable(_))
+                            && !self.boxed_slots.contains(&binding.slot)
+                        {
+                            slots.push(binding.slot);
+                        }
+                    }
+                    None => {
+                        if self.binding(this).is_some()
+                            && let Some(id) = self.field_fact(0, name.text)
+                        {
+                            slots.push(id);
+                        }
+                    }
                 }
             }
             _ => {}

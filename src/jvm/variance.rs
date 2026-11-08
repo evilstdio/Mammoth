@@ -98,6 +98,23 @@ impl<'a> Types<'a> {
         kind
     }
 
+    /// The Java class written in full, such as `java.util.Map.Entry`.
+    pub(super) fn qualified_java_class(&self, text: &str) -> Option<Kind> {
+        let mut binary = text.replace('.', "/");
+        loop {
+            if self.java_class(&binary).is_some() {
+                return Some(self.java_kind(&binary));
+            }
+            let split = binary.rfind('/')?;
+            binary.replace_range(split..=split, "$");
+        }
+    }
+
+    /// Whether `kind` is a type parameter of the built-in library.
+    pub(super) fn is_library_parameter(&self, kind: Kind) -> bool {
+        matches!(kind, Kind::TypeParameter(index) if self.parameters.borrow()[index].starts_with("__"))
+    }
+
     pub(super) fn is_star(&self, kind: Kind) -> bool {
         matches!(kind.non_null(), Kind::TypeParameter(index) if self.parameters.borrow()[index] == "*")
     }

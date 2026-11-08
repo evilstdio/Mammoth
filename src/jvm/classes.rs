@@ -2,6 +2,7 @@
 //! `this` and `super`.
 
 use super::defaults::DefaultHost;
+use crate::syntax::Statement;
 use std::collections::{HashMap, HashSet};
 
 use super::{
@@ -1822,7 +1823,26 @@ impl<'a> Emitter<'a> {
         }
         let allow_null = std::mem::take(&mut self.allow_null);
         let kind = self.expression(method, receiver, base)?;
-        self.field_on(method, kind, name, base, allow_null)
+        let result = self.field_on(method, kind, name, base, allow_null)?;
+        // A read-only field already checked against null needs no second check.
+        if matches!(result, Kind::Nullable(_))
+            && let Expr::Variable(owner) = receiver
+            && let Some(binding) = method.binding(*owner)
+            && !binding.mutable
+            && method.field_is_checked(binding.slot, name.text)
+            && let Some(class) = self.symbols.types.native_class(binding.kind.non_null())
+            && self
+                .symbols
+                .find_field(class, name.text)
+                .is_some_and(|(_, field)| !field.mutable && !field.lateinit)
+        {
+            let plain = result.non_null();
+            if !plain.is_reference() {
+                self.unbox_element(method, plain, base);
+            }
+            return Ok(plain);
+        }
+        Ok(result)
     }
 
     /// Reads field `name` of a receiver of type `kind` that is already on the stack.
@@ -2204,6 +2224,29 @@ impl<'a> Emitter<'a> {
         self.inner_ready = true;
         self.call_expected(method, name, full, base, expected)
             .map(Some)
+    }
+
+    /// After `previous` assigns a local variable, what was known about it ends.
+    pub(super) fn forget_assigned(method: &mut Method<'a>, previous: Option<&'a Statement<'a>>) {
+        if let Some(Statement::Assign(name, _)) = previous
+            && let Some(binding) = method.binding(*name)
+        {
+            method.forget_facts(binding.slot);
+        }
+    }
+
+    /// Facts about a variable that a loop assigns cannot be used in the loop,
+    /// because a later turn sees the assigned value.
+    pub(super) fn forget_in_loop(method: &mut Method<'a>, body: &'a [Statement<'a>]) {
+        let slots: Vec<u16> = method
+            .variables
+            .iter()
+            .filter(|binding| binding.mutable && super::globals::assigns(body, binding.name))
+            .map(|binding| binding.slot)
+            .collect();
+        for slot in slots {
+            method.forget_facts(slot);
+        }
     }
 
     /// `name = value` inside a class whose property `name` has a setter.

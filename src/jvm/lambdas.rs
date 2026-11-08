@@ -397,7 +397,17 @@ impl<'a> Emitter<'a> {
         if let Some(value) = &lambda.value {
             self.mark_line(&mut body, value.offset());
         }
-        let result = if falls_through {
+        let result = if falls_through && self.unit_lambdas.contains(&lambda.offset) {
+            if let Some(value) = &lambda.value
+                && let Some(kind) = self.value_or_nothing(&mut body, value)?
+            {
+                body.code.push(kind.pop_opcode());
+            }
+            body.code.push(0x01); // aconst_null
+            body.code.push(0xb0); // areturn
+            body.max_stack = body.max_stack.max(1);
+            declared_result.flatten()
+        } else if falls_through {
             match (&lambda.value, declared_result) {
                 (Some(value), Some(Some(result))) => {
                     let kind = self.expression_as(&mut body, value, 0, Some(result))?;

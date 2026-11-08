@@ -1,0 +1,2 @@
+// error: not been defined
+let x: java.util.Nope = 1

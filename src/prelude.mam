@@ -1234,3 +1234,31 @@ fun Iterable<__T>.asSequence<__T>(): Sequence<__T> {
 fun generateSequence<__T>(seed: __T?, step: (__T) -> __T?): Sequence<__T> {
     return Sequence<__T>({ __SeqGenerate<__T>(seed, step) })
 }
+
+fun Text.equals(other: Text?, ignoreCase: Bool): Bool {
+    if other == null { return false }
+    if ignoreCase { return this.equalsIgnoreCase(other) }
+    return this == other
+}
+
+fun Text.withIndex(): MutableList<__Indexed<Char>> {
+    let out = MutableList<__Indexed<Char>>()
+    var index = 0
+    for ch in this {
+        out.add(__Indexed<Char>(index, ch))
+        index += 1
+    }
+    return out
+}
+
+fun Iterable<__T>.slice<__T>(positions: Iterable<Int>): MutableList<__T> {
+    let items = MutableList<__T>()
+    for item in this { items.add(item) }
+    let out = MutableList<__T>()
+    for position in positions { out.add(items[position]) }
+    return out
+}
+
+fun Iterable<__T>.forEach<__T>(action: (__T) -> Unit) {
+    for item in this { action(item) }
+}

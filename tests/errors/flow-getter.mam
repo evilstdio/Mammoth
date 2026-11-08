@@ -1,0 +1,8 @@
+// error: Check for null
+class K {
+    let a: Text? get() = null
+    fun f(): Int {
+        if a != null { return a.length }
+        return 0
+    }
+}

@@ -1,0 +1,4 @@
+// error: Cannot infer
+fun f<T>(l: MutableList<T>): T = l[0]
+let l: MutableList<Int?> = mutableListOf(null)
+print(f(l).hashCode())

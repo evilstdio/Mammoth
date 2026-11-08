@@ -117,6 +117,18 @@ impl<'a> Emitter<'a> {
                 instruction(&mut method.code, if when { yes } else { no }, 0);
                 Ok(vec![branch])
             }
+            WhenCondition::Contains(values) => {
+                let name = Name {
+                    text: "contains",
+                    offset: values.offset(),
+                };
+                let call: &'a Expr<'a> = Box::leak(Box::new(Expr::MethodCall(
+                    Box::new(values.clone()),
+                    name,
+                    vec![Expr::Temp(subject.kind, subject.slot)],
+                )));
+                self.branch_when(method, call, when)
+            }
             WhenCondition::Is(annotation) => {
                 if !subject.kind.is_reference() {
                     return Err(at(

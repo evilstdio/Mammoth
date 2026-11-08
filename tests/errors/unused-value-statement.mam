@@ -1,0 +1,4 @@
+// error: not used
+fun f() {
+    "x"
+}

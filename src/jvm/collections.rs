@@ -154,7 +154,10 @@ impl<'a> Emitter<'a> {
             method
                 .stack
                 .extend([Local::Object(class), Local::Object(class)]);
-            let actual = self.expression(method, value, base + 2)?;
+            let actual = match element_type {
+                Some(list) => self.expression_as(method, value, base + 2, Some(list.element()))?,
+                None => self.expression(method, value, base + 2)?,
+            };
             let list = element_type
                 .or_else(|| ListKind::for_element(actual))
                 .ok_or_else(|| Error {

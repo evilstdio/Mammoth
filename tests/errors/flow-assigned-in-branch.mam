@@ -1,0 +1,8 @@
+// error: Check for null
+fun f() {
+    var a: Text? = "x"
+    if a != null {
+        a = null
+        print(a.length)
+    }
+}

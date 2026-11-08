@@ -1,0 +1,3 @@
+// error: Arithmetic needs
+let l: MutableList<Int?> = mutableListOf(1, null)
+print(l.map { it + 1 })

@@ -1,0 +1,49 @@
+"x".let { print(it) }
+print("a".let { print(it) })
+class R implements AutoCloseable { override fun close() { print("closed") } }
+R().use { print("in") }
+[1, 2].forEach { print(it) }
+(1 + 2).toString().let { print(it) }
+fun <A, B> pipe(a: A, f: (A) -> B): B = f(a)
+print(pipe(1) { it + 1 })
+let fs: MutableList<(Int) -> Int> = mutableListOf({ it + 1 }, { it * 2 })
+print(fs.map { it(3) })
+class S<T: Comparable<T>>(let a: T, let b: T) { fun max(): T = if a > b { a } else { b } }
+print(S(1, 2).max())
+print("abc".equals("ABC", true))
+for (i, c) in "ab".withIndex() { print(i) }
+print(listOf(1, 2, 3).slice(0..1))
+print(when (3) {
+ in listOf(1, 3) -> "l"
+ not in listOf(4) -> "m"
+ else -> "n"
+})
+let l: MutableList<Int?> = mutableListOf(1, null)
+print(l.map { it ?: 0 })
+print(l.filter { it != null }.size)
+print(l.mapNotNull { it })
+print(l.filterNotNull())
+print(l.first())
+class R2(let n: Int) implements Iterable<Int> {
+ override fun iterator(): java.util.Iterator<Int> = mutableListOf(n).iterator()
+}
+for x in R2(2) { print(x) }
+print(R2(3).map { it + 1 })
+try { error("z") } catch (e: java.lang.IllegalStateException) { print(e.message) }
+let e: java.util.Map.Entry<Text, Int>? = null
+print(e == null)
+class K(let a: Text?, let b: Int?) {
+    fun f(): Int { if a != null and b != null { return a.length + b }
+        return 0 }
+}
+print(K("ab", 1).f())
+fun sum(h: Int?): Int {
+    var c = h
+    var t = 0
+    while c != null {
+        t += c
+        c = if c > 2 { null } else { c + 1 }
+    }
+    return t
+}
+print(sum(1))

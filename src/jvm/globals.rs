@@ -340,17 +340,24 @@ pub(super) fn collect_statements<'a>(statements: &'a [Statement<'a>], used: &mut
     }
 }
 
+fn collect_condition<'a>(condition: &'a super::WhenCondition<'a>, used: &mut HashSet<&'a str>) {
+    match condition {
+        super::WhenCondition::Value(expr) | super::WhenCondition::Contains(expr) => {
+            collect_expr(expr, used);
+        }
+        super::WhenCondition::In(start, end, _) => {
+            collect_expr(start, used);
+            collect_expr(end, used);
+        }
+        super::WhenCondition::Not(inner) => collect_condition(inner, used),
+        super::WhenCondition::Is(_) => {}
+    }
+}
+
 fn collect_branches<'a>(branches: &'a [super::WhenBranch<'a>], used: &mut HashSet<&'a str>) {
     for branch in branches {
         for condition in &branch.conditions {
-            match condition {
-                super::WhenCondition::Value(expr) => collect_expr(expr, used),
-                super::WhenCondition::In(start, end, _) => {
-                    collect_expr(start, used);
-                    collect_expr(end, used);
-                }
-                super::WhenCondition::Is(_) | super::WhenCondition::Not(_) => {}
-            }
+            collect_condition(condition, used);
         }
         collect_statements(&branch.body, used);
         if let Some(value) = &branch.value {
@@ -399,7 +406,7 @@ pub(super) fn lambda_assigns(statements: &[Statement<'_>], name: &str) -> bool {
 }
 
 /// Whether `statements` (including nested blocks and lambdas) assign `name`.
-fn assigns(statements: &[Statement<'_>], name: &str) -> bool {
+pub(super) fn assigns(statements: &[Statement<'_>], name: &str) -> bool {
     let mut names = HashSet::new();
     collect_statements(statements, &mut names);
     if !names.contains(name) {
@@ -521,6 +528,7 @@ fn lambda_statement<'a>(statement: &'a Statement<'a>, used: &mut dyn FnMut(&'a L
                     match condition {
                         super::WhenCondition::Value(expr) => exprs.push(expr),
                         super::WhenCondition::In(start, end, _) => exprs.extend([start, end]),
+                        super::WhenCondition::Contains(values) => exprs.push(values),
                         super::WhenCondition::Is(_) | super::WhenCondition::Not(_) => {}
                     }
                 }

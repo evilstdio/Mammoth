@@ -1,0 +1,9 @@
+// error: Check for null
+class K(let a: Text?)
+fun f() {
+    var k = K("x")
+    if k.a != null {
+        k = K(null)
+        print(k.a.length)
+    }
+}

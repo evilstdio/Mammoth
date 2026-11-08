@@ -1,0 +1,2 @@
+// error: no method
+class S<T>(let a: T) { fun lt(o: T): Bool = a < o }

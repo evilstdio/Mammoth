@@ -310,7 +310,12 @@ impl Types<'_> {
                     .zip(self.class_type_parameters(&owner))
                 {
                     if let Some(&right) = actual.get(&name) {
-                        self.infer_parameters(left, right, map);
+                        // The library's own operations work on nullable items.
+                        if matches!(right, Kind::Nullable(_)) && self.is_library_parameter(left) {
+                            map.entry(left).or_insert(right);
+                        } else {
+                            self.infer_parameters(left, right, map);
+                        }
                     }
                 }
             }
@@ -559,6 +564,16 @@ impl<'a> Emitter<'a> {
                 self.infer_lambda_result = false;
                 let kind = result?;
                 self.symbols.infer_from(pattern, kind, &mut map);
+                // A block with no value makes a result type parameter nothing useful.
+                if let Kind::Function(produced) = kind
+                    && self.symbols.types.function_type(produced).result.is_none()
+                    && let Some(parameter) = function.result
+                    && matches!(parameter, Kind::TypeParameter(_))
+                    && !map.contains_key(&parameter)
+                {
+                    map.insert(parameter, Kind::Any.nullable().unwrap());
+                    self.unit_lambdas.insert(lambda.offset);
+                }
                 method.code.push(0x57);
             }
             Ok(())

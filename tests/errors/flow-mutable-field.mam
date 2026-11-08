@@ -1,0 +1,4 @@
+// error: Check for null
+class K(var a: Text?)
+let k = K("x")
+if k.a != null { print(k.a.length) }

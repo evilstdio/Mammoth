@@ -305,6 +305,8 @@ pub enum WhenCondition<'a> {
     Is(Name<'a>),
     /// `in start..end` or `in start until end`.
     In(Expr<'a>, Expr<'a>, bool),
+    /// `in values`, for anything with a `contains` method.
+    Contains(Expr<'a>),
 }
 
 #[derive(Clone)]
@@ -1186,6 +1188,11 @@ fn parse_with<'a>(
     };
     parser.skip_space();
     while !parser.rest().is_empty() {
+        if let Some(statement) = parser.value_statement()? {
+            program.body.push(statement);
+            parser.skip_space();
+            continue;
+        }
         let annotations = parser.annotations()?;
         let previous = (
             program.classes.len(),
@@ -2700,6 +2707,19 @@ impl<'a> Parser<'a> {
 
     fn function(&mut self, has_body: bool) -> Result<Function<'a>, Error> {
         self.skip_space();
+        let mut type_parameters = Vec::new();
+        let mut bounds = Vec::new();
+        if self.take("<") {
+            loop {
+                type_parameters.push(self.name()?);
+                bounds.push(self.bound_list()?);
+                if self.take(">") {
+                    break;
+                }
+                self.expect(",", "Expected ',' or '>' after a type parameter.")?;
+            }
+            self.skip_space();
+        }
         let start = self.offset;
         if self.top_level_function || !self.current_type.is_empty() {
             self.function_start = start;
@@ -2736,8 +2756,6 @@ impl<'a> Parser<'a> {
             }
             None => (name, None),
         };
-        let mut type_parameters = Vec::new();
-        let mut bounds = Vec::new();
         if self.take("<") {
             loop {
                 type_parameters.push(self.name()?);
@@ -3177,6 +3195,22 @@ impl<'a> Parser<'a> {
             });
         }
         let mut name = self.name()?;
+        if name.text.starts_with(|ch: char| ch.is_ascii_lowercase())
+            && self.rest().starts_with('.')
+            && name.text.len() <= 8
+            && matches!(name.text, "java" | "javax" | "net" | "org" | "com" | "io")
+        {
+            // A fully qualified Java type such as java.util.Iterator.
+            while self.rest().starts_with('.')
+                && let Some(part) = identifier(&self.rest()[1..], self.offset + 1)
+            {
+                self.offset += 1 + part.text.len();
+            }
+            name = Name {
+                text: &self.source[name.offset..self.offset],
+                offset: name.offset,
+            };
+        }
         while self.rest().starts_with('.') {
             let Some(inner) = identifier(&self.rest()[1..], self.offset + 1) else {
                 break;
@@ -3241,6 +3275,10 @@ impl<'a> Parser<'a> {
             if self.rest().is_empty() {
                 return Err(self.error("Expected '}' to close the block."));
             }
+            if let Some(statement) = self.value_statement()? {
+                body.push(statement);
+                continue;
+            }
             let name = self.name()?;
             body.append(&mut self.statement_list(name, depth)?);
         }
@@ -3298,7 +3336,7 @@ impl<'a> Parser<'a> {
                 } else {
                     let variable = self.binding()?;
                     let kind = if self.take(":") {
-                        Some(self.name()?)
+                        Some(self.annotation()?)
                     } else {
                         None
                     };
@@ -3608,6 +3646,27 @@ impl<'a> Parser<'a> {
         Ok(Statement::Binding(holder, lock, false, None))
     }
 
+    /// A statement that starts with a value, such as `"x".toInt()`.
+    fn value_statement(&mut self) -> Result<Option<Statement<'a>>, Error> {
+        let rest = self.rest_trimmed();
+        if !rest.starts_with(|ch: char| matches!(ch, '"' | '(' | '[') || ch.is_ascii_digit()) {
+            return Ok(None);
+        }
+        let value = self.expression()?;
+        let is_call = match &value {
+            Expr::MethodCall(..) => true,
+            Expr::Safe(inner) => matches!(inner.as_ref(), Expr::MethodCall(..)),
+            _ => false,
+        };
+        if !is_call {
+            return Err(Error {
+                offset: value.offset(),
+                message: "This value is not used. Call a method on it, assign it, or remove it.",
+            });
+        }
+        Ok(Some(Statement::MethodCall(value)))
+    }
+
     /// `object.field = value` or `list[index] += value`, after the target.
     fn member_assignment(&mut self, target: Expr<'a>) -> Result<Statement<'a>, Error> {
         if let Some(operator) = self.step_operator() {
@@ -3719,7 +3778,7 @@ impl<'a> Parser<'a> {
             let parenthesized = self.take("(");
             let variable = self.binding()?;
             let kind = if self.take(":") {
-                Some(self.name()?)
+                Some(self.annotation()?)
             } else {
                 None
             };
@@ -4209,14 +4268,19 @@ impl<'a> Parser<'a> {
                     } else if subject.is_some() && self.take_word("in") {
                         let start = self.arithmetic(0, depth + 1)?;
                         let inclusive = if self.take("..") {
-                            true
+                            Some(true)
                         } else if self.take_word("until") {
-                            false
+                            Some(false)
                         } else {
-                            return Err(self.error("Expected .. or until in the range."));
+                            None
                         };
-                        let end = self.arithmetic(0, depth + 1)?;
-                        WhenCondition::In(start, end, inclusive)
+                        match inclusive {
+                            Some(inclusive) => {
+                                let end = self.arithmetic(0, depth + 1)?;
+                                WhenCondition::In(start, end, inclusive)
+                            }
+                            None => WhenCondition::Contains(start),
+                        }
                     } else {
                         WhenCondition::Value(self.logical(0, depth + 1)?)
                     };
