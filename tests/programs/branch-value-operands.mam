@@ -1,0 +1,56 @@
+// A branch value nested inside a call must keep every operand already on the
+// stack in its verification frames: receivers, earlier arguments, wide numbers.
+fun id(n: Int): Int { return n }
+fun pair(a: Long, b: Int, c: Double): Text { return "{a}/{b}/{c}" }
+class Acc(var total: Int) {
+    fun add(a: Int, b: Int): Acc { total = total + a * b
+        return this }
+}
+var flag = 3
+print(if flag > 9 { id(-4) } else { id(when (flag % 3) { 0 -> flag
+    else -> -flag }) })
+print(pair(9000000000, if flag > 1 { id(when flag { 3 -> 30
+    else -> 31 }) } else { 2 }, 1.5))
+print(Acc(1).add(id(if flag == 3 { 2 } else { 3 }), when flag { 3 -> id(if flag > 0 { 5 } else { 6 })
+    else -> 7 }).total)
+let longs = 5000000000 + when flag { 3 -> if flag > 1 { 1 } else { 2 }
+    else -> 3 }
+print(longs)
+print("t{id(if flag > 1 { id(4) } else { id(5) })}")
+let items = [id(if flag > 1 { 1 } else { 2 }), when flag { 3 -> id(9)
+    else -> id(8) }]
+print(items[if flag > 1 { id(1) } else { 0 }])
+items[id(when flag { 3 -> 0
+    else -> 1 })] = if flag < 1 { 7 } else { id(6) }
+print(items[0])
+fun chain(n: Int): Int {
+    return id(id(id(when n { 1 -> if n > 0 { id(10) } else { id(11) }
+        else -> when { n > 5 -> id(12)
+            else -> id(13) } })))
+}
+print("{chain(1)} {chain(9)} {chain(0)}")
+
+// A slot freed by a shared lambda variable is not shared when it is reused.
+if flag > 0 {
+    var shared = 1
+    let bump = { x: Int -> shared += x
+        shared }
+    print(bump(2))
+}
+if flag > 0 {
+    let notShared = ["a", "b"]
+    let f = { x: Int -> x + 1 }
+    print(notShared[1])
+    print(f(1))
+}
+var i = 0
+while i < 2 {
+    i += 1
+    var counter = i
+    let inc = { x: Int -> counter += x
+        counter }
+    print(inc(10))
+    print(counter)
+}
+let after = 41
+print(after + 1)

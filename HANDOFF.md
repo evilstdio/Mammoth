@@ -1,3 +1,10 @@
+# Latest: invalid bytecode from the semantic fuzzer fixed (2026-11-08, session 3)
+
+- **Stack frames.** `lambdas.rs` `value_or_nothing` passed stack depth 0 to nested calls, so a `when` or `if` value with no expected type dropped operands already on the stack from its frames. It now uses `method.stack.len()`. The earlier note that top-level code was safe was wrong: both forms failed.
+- **Shared lambda variables.** `Method::boxed_slots` kept slots after their binding left scope, so a later local in the same slot was read as a shared one-item array. `Method::local` now drops entries at or above the new slot.
+- **Validation.** `tests/programs/branch-value-operands`. The debug test suite passes, which also runs the `base == method.stack.len()` assertion in `expression`. The semantic fuzzer had 0 problems on seeds 1 to 4, 80 programs each, against the debug compiler; before the fixes about 8% failed verification.
+- **Git.** Local repository only, no remote. Identity `sss47 <sss47@users.invalid>` is set for this repository. `main` holds the baseline, and work is on branch `compiler-correctness`. Commits carry no AI attribution or co-author trailers, at the user's request.
+
 # Session summary: overnight 2026-11-08 (read this first)
 
 Milestones, newest last. Each has its own "Latest:" entry below with details.
@@ -55,17 +62,6 @@ Milestones, newest last. Each has its own "Latest:" entry below with details.
 - Compound assignment to Java fields is not supported.
 - Generic default methods cannot be called through `super.` when the superclass inherits them.
 - A top-level Mammoth function shadows an inherited Java static method of the same name.
-
-**UNFIXED BUG (found last, highest priority).** The semantic fuzzer (`scratchpad/semfuzz.py`, not in the repo) found invalid bytecode. This program fails `-Xverify:all` with "Inconsistent stackmap frames at branch target 28":
-```text
-fun g1(n: Int): Int { return n }
-if true {
-  var v16 = g1(1)
-  print(if not (v16 >= v16) { g1(-4) } else { g1(when (-5 % 3) { 0 -> v16
-    else -> v16 }) })
-}
-```
-The same expression at top level, outside the `if` block, verifies. Suspect: frames recorded inside a `when` value nested in a call argument nested in an `if` value, inside a block scope (locals and stack at the merge). Seed 1 of the fuzzer (60 programs) also produced a "Bad local variable type" `VerifyError` (slot 1 int versus reference). The generator's "closing quote" failures are generator bugs: it puts a multi-line `when` inside a template. Fix the generator by using `int_expr(3)` in templates.
 
 **Next concrete tasks.**
 1. A type-directed semantic fuzzer: generate well-typed programs mixing generics, lambdas and exceptions, and run them under `-Xverify:all`.

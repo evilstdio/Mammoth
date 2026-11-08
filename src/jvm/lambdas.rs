@@ -575,6 +575,8 @@ impl<'a> Emitter<'a> {
         method: &mut Method<'a>,
         value: &'a Expr<'a>,
     ) -> Result<Option<Kind>, Error> {
+        // A branch value can be nested inside a call with operands waiting.
+        let base = method.stack.len() as u16;
         match value {
             Expr::Call(name, args)
                 if name.text == "print" && !self.symbols.functions.contains_key("print") =>
@@ -582,15 +584,15 @@ impl<'a> Emitter<'a> {
                 self.print_call(method, *name, args)?;
                 Ok(None)
             }
-            Expr::Call(name, args) => self.call(method, *name, args, 0),
+            Expr::Call(name, args) => self.call(method, *name, args, base),
             Expr::MethodCall(receiver, name, args) => {
-                self.method_call(method, receiver, *name, args, 0)
+                self.method_call(method, receiver, *name, args, base)
             }
             Expr::When(offset, subject, branches) => {
-                self.when_value(method, *offset, subject.as_deref(), branches, None, 0)
+                self.when_value(method, *offset, subject.as_deref(), branches, None, base)
             }
-            Expr::Safe(inner) => self.safe_access(method, inner, 0),
-            _ => self.expression(method, value, 0).map(Some),
+            Expr::Safe(inner) => self.safe_access(method, inner, base),
+            _ => self.expression(method, value, base).map(Some),
         }
     }
 

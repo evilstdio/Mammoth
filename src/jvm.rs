@@ -4641,6 +4641,8 @@ impl<'a> Method<'a> {
 
     fn local(&mut self, kind: Local) -> u16 {
         let index = self.locals.len() as u16;
+        // A slot at or above this one belonged to a binding now out of scope.
+        self.boxed_slots.retain(|&slot| slot < index);
         self.locals.push(kind);
         if matches!(kind, Local::Double | Local::Long) {
             self.locals.push(Local::WideTail);

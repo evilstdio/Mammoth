@@ -1,5 +1,10 @@
 # Changelog
 
+## Verifier fixes from fuzzing, 2026-11-08
+
+- A `when` or `if` value without an expected type, nested inside a call, now keeps earlier operands in its stack frames. Such programs previously failed JVM verification.
+- A local variable that reuses the slot of an out-of-scope variable shared with a lambda is no longer treated as shared.
+
 ## Exhaustive when over enums, 2026-11-08
 
 - A `when` value without `else` is accepted when its non-null enum subject (Mammoth `enum_values`, or a Java class with `ACC_ENUM` and its enum constant fields) is covered by `Type.CONSTANT` branch values. The fall-through path throws `IncompatibleClassChangeError`.
