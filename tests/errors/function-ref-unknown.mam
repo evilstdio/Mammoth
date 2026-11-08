@@ -1,0 +1,2 @@
+// error: Use :: with a function declared
+print(listOf(1).map(::missing))

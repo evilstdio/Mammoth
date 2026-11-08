@@ -1,0 +1,3 @@
+// error: Expected Text here
+typealias Name = Text
+let n: Name = 1

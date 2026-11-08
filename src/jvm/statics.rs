@@ -91,13 +91,7 @@ impl<'a> Emitter<'a> {
             .iter()
             .any(|function| function.name.text == name.text && function.private);
         self.check_static_access(owner, private, name)?;
-        let args = self.complete_args(
-            method,
-            name,
-            &signature.parameters,
-            args,
-            DefaultHost::Static(owner),
-        )?;
+        let args = self.complete_args(method, name, signature, args, DefaultHost::Static(owner))?;
         self.call_arguments(method, name, args, signature, base)?;
         let class_index = self.object_class(Kind::Object(owner));
         let reference = self

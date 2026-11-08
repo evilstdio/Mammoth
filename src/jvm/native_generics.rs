@@ -395,13 +395,7 @@ impl<'a> Emitter<'a> {
             }
             return Ok(None);
         }
-        let args = self.complete_args(
-            method,
-            full_name,
-            &signature.parameters,
-            args,
-            DefaultHost::Function,
-        )?;
+        let args = self.complete_args(method, full_name, signature, args, DefaultHost::Function)?;
         let map = self.infer_call(method, full_name, args, base, signature, expected)?;
         self.adapted_arguments(method, args, base, signature, &map)?;
         let reference = if let Some(target) = self.symbols.imports.get(name.text) {

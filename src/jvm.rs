@@ -647,6 +647,8 @@ fn resolve_functions<'a>(
         if external {
             signature.check_java(name)?;
         }
+        let mut signature = signature;
+        signature.vararg = function.vararg;
         names.insert(name.text, signature);
     }
     Ok(names)
@@ -690,6 +692,8 @@ struct Signature<'a> {
     result: Option<Kind>,
     descriptor: String,
     slots: u16,
+    /// Whether the last parameter was declared `vararg`.
+    vararg: bool,
 }
 
 impl<'a> Signature<'a> {
@@ -732,6 +736,7 @@ impl<'a> Signature<'a> {
             result,
             descriptor,
             slots,
+            vararg: false,
         })
     }
 
@@ -1226,7 +1231,7 @@ fn emit_class<'a>(
             let args = emitter.complete_args(
                 &mut constructor,
                 *parent_name,
-                &parent_signature.parameters,
+                parent_signature,
                 args,
                 DefaultHost::Constructor(parent),
             )?;
@@ -2340,7 +2345,7 @@ impl<'a> Emitter<'a> {
                 Kind::Object(class) => self.complete_args(
                     method,
                     name,
-                    &signature.parameters,
+                    signature,
                     args,
                     DefaultHost::Constructor(class),
                 )?,
@@ -2376,13 +2381,7 @@ impl<'a> Emitter<'a> {
             }
             return Err(at(name, "This function or class has not been defined."));
         };
-        let args = self.complete_args(
-            method,
-            name,
-            &signature.parameters,
-            args,
-            DefaultHost::Function,
-        )?;
+        let args = self.complete_args(method, name, signature, args, DefaultHost::Function)?;
         self.call_arguments(method, name, args, signature, base)?;
         let foreign = self.symbols.java.get(name.text);
         if let Some(target) = foreign.or_else(|| self.symbols.imports.get(name.text)) {
@@ -2664,13 +2663,8 @@ impl<'a> Emitter<'a> {
             }
             Kind::Object(class) => {
                 let signature = self.find_class_method(class, name)?;
-                let args = self.complete_args(
-                    method,
-                    name,
-                    &signature.parameters,
-                    args,
-                    DefaultHost::Instance(kind),
-                )?;
+                let args =
+                    self.complete_args(method, name, signature, args, DefaultHost::Instance(kind))?;
                 method.stack.push(self.local_type(kind));
                 self.call_arguments(method, name, args, signature, base + 1)?;
                 method.stack.pop();
@@ -2700,13 +2694,8 @@ impl<'a> Emitter<'a> {
         let signature = methods
             .get(name.text)
             .ok_or_else(|| at(name, "This type has no method with that name."))?;
-        let args = self.complete_args(
-            method,
-            name,
-            &signature.parameters,
-            args,
-            DefaultHost::Instance(kind),
-        )?;
+        let args =
+            self.complete_args(method, name, signature, args, DefaultHost::Instance(kind))?;
         method.stack.push(self.local_type(kind));
         self.call_arguments(method, name, args, signature, base + 1)?;
         method.stack.pop();
@@ -3488,6 +3477,10 @@ impl<'a> Emitter<'a> {
                 let check: &'a Expr<'a> = Box::leak(Box::new(check));
                 self.expression(method, check, base)
             }
+            Expr::Spread(inner) => Err(Error {
+                offset: inner.offset(),
+                message: "Use *items only as the last argument of a vararg parameter.",
+            }),
             Expr::Named(label, _) => Err(at(
                 *label,
                 "Named arguments work only in calls to functions written in Mammoth.",

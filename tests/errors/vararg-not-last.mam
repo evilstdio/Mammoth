@@ -1,0 +1,2 @@
+// error: must be the last one
+fun f(vararg a: Int, b: Int) { }

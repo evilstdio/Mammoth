@@ -509,3 +509,4 @@ fun __mapOf<__K, __V>(pairs: MutableList<Pair<__K, __V>>): __LinkedHashMap<__K, 
     for pair in pairs { out.put(pair.first, pair.second) }
     return out
 }
+fun Text.format(vararg items: Any): Text = Text.format(this, items)

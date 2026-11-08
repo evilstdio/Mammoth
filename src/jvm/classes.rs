@@ -699,6 +699,20 @@ impl<'a> Symbols<'a> {
         Ok(())
     }
 
+    /// Whether an override differs only by returning a subtype, which a
+    /// bridge method keeps callable through the parent's type.
+    fn narrows_result(&self, signature: &Signature<'a>, overridden: &Signature<'a>) -> bool {
+        let (Some(actual), Some(parent)) = (signature.result, overridden.result) else {
+            return false;
+        };
+        if !actual.is_reference() || !parent.is_reference() || !self.fits(actual, parent) {
+            return false;
+        }
+        let mut relaxed = overridden.clone();
+        relaxed.result = Some(actual);
+        same_signature(&self.types, signature, &relaxed)
+    }
+
     /// Checks overrides, abstract methods, and interfaces after the project
     /// resolver has rejected inheritance cycles.
     pub(super) fn check_classes(&self, program: &Program<'a>) -> Result<(), Error> {
@@ -817,7 +831,9 @@ impl<'a> Symbols<'a> {
                         ));
                     }
                     let overridden = &self.inherited_signature(index, owner, overridden);
-                    if !same_signature(&self.types, signature, overridden) {
+                    if !same_signature(&self.types, signature, overridden)
+                        && !self.narrows_result(signature, overridden)
+                    {
                         return Err(at(
                             method.name,
                             "This method must have the same parameter and result types as the method it overrides.",
@@ -1405,7 +1421,9 @@ impl<'a> Symbols<'a> {
         Some(match expr {
             Expr::Named(_, value) => return self.static_kind(value, scope),
             Expr::Temp(kind, _) => *kind,
-            Expr::StaticHelper(..) | Expr::Jump(_) | Expr::Progression(..) => return None,
+            Expr::StaticHelper(..) | Expr::Jump(_) | Expr::Progression(..) | Expr::Spread(_) => {
+                return None;
+            }
             Expr::InRange(..) => Kind::Bool,
             Expr::Int(..) => Kind::Int,
             Expr::Long(..) => Kind::Long,
@@ -1978,13 +1996,8 @@ impl<'a> Emitter<'a> {
         }
         let kind = Kind::Object(class);
         method.access(0x19, 0);
-        let args = self.complete_args(
-            method,
-            name,
-            &signature.parameters,
-            args,
-            DefaultHost::Instance(kind),
-        )?;
+        let args =
+            self.complete_args(method, name, signature, args, DefaultHost::Instance(kind))?;
         method.stack.push(self.local_type(kind));
         self.call_arguments(method, name, args, signature, base + 1)?;
         method.stack.pop();

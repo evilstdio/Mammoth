@@ -285,6 +285,10 @@ pub(super) fn resolve<'a>(
                     .iter()
                     .chain(program.java.iter().map(|binding| &binding.function))
             };
+            for (alias, target) in &program.aliases {
+                let kind = resolve_type(&scope.types, *target)?;
+                declare_type(&mut scope.types, *alias, kind)?;
+            }
             scope.functions = resolve_functions(top_level(), 255, &scope.types, false)?;
             for function in &program.functions {
                 if let Some(plain) = function.extension_of {

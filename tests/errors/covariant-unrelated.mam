@@ -1,0 +1,3 @@
+// error: same parameter and result types
+open class A { open fun f(): A = this }
+class B extends A { override fun f(): Text = "x" }

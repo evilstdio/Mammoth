@@ -544,7 +544,7 @@ fn lambda_expr<'a>(expr: &'a Expr<'a>, used: &mut dyn FnMut(&'a Lambda<'a>)) {
 
 pub(super) fn collect_expr<'a>(expr: &'a Expr<'a>, used: &mut HashSet<&'a str>) {
     match expr {
-        Expr::Named(_, value) => collect_expr(value, used),
+        Expr::Named(_, value) | Expr::Spread(value) => collect_expr(value, used),
         Expr::Progression(start, end, _, _, step) => {
             collect_expr(start, used);
             collect_expr(end, used);

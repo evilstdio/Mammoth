@@ -73,17 +73,60 @@ impl<'a> Emitter<'a> {
         Ok(Expr::Temp(kind, slot))
     }
 
+    /// Gathers the arguments of a `vararg` parameter into one list.
+    fn complete_varargs(
+        &mut self,
+        method: &mut Method<'a>,
+        name: Name<'a>,
+        signature: &Signature<'a>,
+        args: &'a [Expr<'a>],
+        host: DefaultHost,
+    ) -> Result<&'a [Expr<'a>], Error> {
+        let fixed = signature.parameters.len() - 1;
+        let mut plain = signature.clone();
+        plain.vararg = false;
+        // `f(1, *rest)` passes an existing list.
+        if args.len() == fixed + 1
+            && let Expr::Spread(inner) = &args[fixed]
+        {
+            let mut direct = args[..fixed].to_vec();
+            direct.push((**inner).clone());
+            let direct: &'a [Expr<'a>] = Box::leak(direct.into_boxed_slice());
+            return self.complete_args(method, name, &plain, direct, host);
+        }
+        if args
+            .iter()
+            .any(|arg| matches!(arg, Expr::Named(..) | Expr::Spread(_)))
+        {
+            return Err(at(
+                name,
+                "Pass a vararg parameter's values by position, or one list as *items.",
+            ));
+        }
+        let count = args.len().min(fixed);
+        let mut full = args[..count].to_vec();
+        if args.len() >= fixed {
+            full.push(Expr::List(name.offset, args[fixed..].to_vec()));
+        }
+        let full: &'a [Expr<'a>] = Box::leak(full.into_boxed_slice());
+        self.complete_args(method, name, &plain, full, host)
+    }
+
     /// Returns `args` in parameter order with every omitted argument filled
     /// in. A call that already lists each parameter is returned unchanged.
     pub(super) fn complete_args(
         &mut self,
         method: &mut Method<'a>,
         name: Name<'a>,
-        parameters: &[(Name<'a>, Kind)],
+        signature: &Signature<'a>,
         args: &'a [Expr<'a>],
         host: DefaultHost,
     ) -> Result<&'a [Expr<'a>], Error> {
+        let parameters = signature.parameters.as_slice();
         let named = args.iter().any(|arg| matches!(arg, Expr::Named(..)));
+        if signature.vararg {
+            return self.complete_varargs(method, name, signature, args, host);
+        }
         if args.len() == parameters.len() && !named {
             return Ok(args);
         }

@@ -61,7 +61,7 @@ impl<'a> Emitter<'a> {
             let args = self.complete_args(
                 &mut clinit,
                 *name,
-                &signature.parameters,
+                signature,
                 args,
                 DefaultHost::Constructor(index),
             )?;

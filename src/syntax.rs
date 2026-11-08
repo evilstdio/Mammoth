@@ -51,6 +51,8 @@ pub struct Program<'a> {
     pub classes: Vec<Class<'a>>,
     pub functions: Vec<Function<'a>>,
     pub body: Vec<Statement<'a>>,
+    /// `typealias Name = Type`.
+    pub aliases: Vec<(Name<'a>, Name<'a>)>,
 }
 
 pub struct Import<'a> {
@@ -172,6 +174,8 @@ pub struct Function<'a> {
     pub extension_of: Option<&'a str>,
     /// Whether this came from the built-in library rather than the program.
     pub in_prelude: bool,
+    /// Whether the last parameter was written `vararg`.
+    pub vararg: bool,
 }
 
 pub struct Annotation<'a> {
@@ -415,6 +419,8 @@ pub enum Expr<'a> {
     InRange(Box<Expr<'a>>, Box<Expr<'a>>, bool),
     /// `parameter = value` in a call.
     Named(Name<'a>, Box<Expr<'a>>),
+    /// `*items`, passing a list to a vararg parameter.
+    Spread(Box<Expr<'a>>),
     /// `return`, `throw`, `break` or `continue` where a value could go, such
     /// as `value ?: return 0`. It never produces a value.
     Jump(Box<Statement<'a>>),
@@ -437,6 +443,7 @@ impl Expr<'_> {
             | Self::List(offset, _)
             | Self::Null(offset) => *offset,
             Self::Named(name, _) | Self::StaticHelper(_, name, _) => name.offset,
+            Self::Spread(inner) => inner.offset(),
             Self::Temp(..) => 0,
             Self::Progression(start, ..) | Self::InRange(start, ..) => start.offset(),
             Self::Jump(statement) => statement.offset(),
@@ -513,6 +520,7 @@ fn add_data_members<'a>(class: &mut Class<'a>) {
         is_override: false,
         extension_of: None,
         in_prelude: false,
+        vararg: false,
     };
     let declared = |methods: &[Function<'a>], name: &str| {
         methods.iter().any(|method| method.name.text == name)
@@ -678,18 +686,25 @@ pub fn parse(source: &str) -> Result<Program<'_>, Error> {
 }
 
 fn parse_source(source: &str) -> Result<Program<'_>, Error> {
-    let (program, nested, dotted) = parse_with(source, Vec::new(), true)?;
+    let (program, nested, dotted) = parse_with(source, Vec::new(), Vec::new(), true)?;
     if nested.is_empty() && !dotted {
         return Ok(program);
     }
-    // Now that every nested type is known, `Outer.Inner` can be read.
-    Ok(parse_with(source, nested, false)?.0)
+    // Now that every nested type and function is known, `Outer.Inner` and
+    // `::name` can be read.
+    let arities = program
+        .functions
+        .iter()
+        .map(|function| (function.name.text, function.parameters.len()))
+        .collect();
+    Ok(parse_with(source, nested, arities, false)?.0)
 }
 
 #[allow(clippy::type_complexity)]
 fn parse_with<'a>(
     source: &'a str,
     nested_names: Vec<(&'a str, &'a str)>,
+    arities: Vec<(&'a str, usize)>,
     discovering: bool,
 ) -> Result<(Program<'a>, Vec<(&'a str, &'a str)>, bool), Error> {
     let mut parser = Parser {
@@ -704,6 +719,8 @@ fn parse_with<'a>(
         nested_found: Vec::new(),
         discovering,
         saw_dotted_type: false,
+        saw_vararg: false,
+        arities,
         nested_classes: Vec::new(),
         nested_interfaces: Vec::new(),
     };
@@ -721,6 +738,7 @@ fn parse_with<'a>(
         classes: Vec::new(),
         functions: Vec::new(),
         body: Vec::new(),
+        aliases: Vec::new(),
     };
     parser.skip_space();
     while !parser.rest().is_empty() {
@@ -768,6 +786,12 @@ fn parse_with<'a>(
             program.java_classes.push(parser.java_class(false)?);
         } else if name.text == "java" && parser.take_word("interface") {
             program.java_classes.push(parser.java_class(true)?);
+        } else if name.text == "typealias" && identifier(parser.rest_trimmed(), 0).is_some() {
+            let alias = parser.binding()?;
+            if !parser.take_assignment() {
+                return Err(parser.error("Expected '=' after the type alias name."));
+            }
+            program.aliases.push((alias, parser.annotation()?));
         } else if name.text == "fun" {
             parser.top_level_function = true;
             program.functions.push(parser.function(true)?);
@@ -846,6 +870,9 @@ struct Parser<'a> {
     /// knowing which nested types exist.
     discovering: bool,
     saw_dotted_type: bool,
+    saw_vararg: bool,
+    /// How many parameters each top-level function has, from an earlier parse.
+    arities: Vec<(&'a str, usize)>,
     nested_classes: Vec<Class<'a>>,
     nested_interfaces: Vec<Interface<'a>>,
 }
@@ -1554,6 +1581,7 @@ impl<'a> Parser<'a> {
         }
         self.expect("(", "Expected '(' after the function name.")?;
         let mut parameters = self.parameters()?;
+        let vararg = std::mem::take(&mut self.saw_vararg);
         if let Some(receiver) = receiver {
             parameters.insert(
                 0,
@@ -1608,6 +1636,7 @@ impl<'a> Parser<'a> {
             is_override: false,
             extension_of,
             in_prelude: false,
+            vararg,
         })
     }
 
@@ -1650,6 +1679,7 @@ impl<'a> Parser<'a> {
                         is_override: false,
                         extension_of: None,
                         in_prelude: false,
+                        vararg: false,
                     });
                 }
                 "new" => {
@@ -1708,10 +1738,19 @@ impl<'a> Parser<'a> {
 
     fn parameters(&mut self) -> Result<Vec<(Name<'a>, Name<'a>)>, Error> {
         let mut index = 0;
+        self.saw_vararg = false;
         self.list(")", |parser| {
+            let is_vararg = parser.take_word("vararg");
+            if parser.saw_vararg {
+                return Err(parser.error("A vararg parameter must be the last one."));
+            }
+            parser.saw_vararg = is_vararg;
             let parameter = parser.binding()?;
             parser.expect(":", "Expected ':' followed by the parameter type.")?;
-            let annotation = parser.annotation()?;
+            let mut annotation = parser.annotation()?;
+            if is_vararg {
+                annotation.text = Box::leak(format!("List<{}>", annotation.text).into_boxed_str());
+            }
             parser.default_value(index)?;
             index += 1;
             Ok((parameter, annotation))
@@ -1797,6 +1836,7 @@ impl<'a> Parser<'a> {
                     is_override: false,
                     extension_of: None,
                     in_prelude: false,
+                    vararg: false,
                 }
             })
             .collect()
@@ -1806,6 +1846,10 @@ impl<'a> Parser<'a> {
     fn argument(&mut self, depth: usize) -> Result<Expr<'a>, Error> {
         self.skip_space();
         let start = self.offset;
+        if self.rest().starts_with('*') {
+            self.offset += 1;
+            return Ok(Expr::Spread(Box::new(self.logical(0, depth)?)));
+        }
         if let Some(label) = identifier(self.rest(), self.offset) {
             self.offset += label.text.len();
             if self.take_assignment() {
@@ -2929,6 +2973,36 @@ impl<'a> Parser<'a> {
             self.expect(")", "Expected ')' to close the expression.")?;
             return Ok(inner);
         }
+        if self.rest().starts_with("::") {
+            self.offset += 2;
+            let target = self.name()?;
+            if self.discovering {
+                // The second parse knows how many parameters it has.
+                self.saw_dotted_type = true;
+                return Ok(Expr::Null(offset));
+            }
+            let Some(&(_, count)) = self.arities.iter().find(|(name, _)| *name == target.text)
+            else {
+                return Err(at_name(
+                    target,
+                    "Use :: with a function declared in this file.",
+                ));
+            };
+            let names: Vec<Name<'a>> = (0..count)
+                .map(|index| Name {
+                    text: Box::leak(format!("__arg{index}").into_boxed_str()),
+                    offset,
+                })
+                .collect();
+            let arguments = names.iter().map(|name| Expr::Variable(*name)).collect();
+            return Ok(Expr::Lambda(Box::new(Lambda {
+                offset,
+                parameters: names.into_iter().map(|name| (name, None)).collect(),
+                explicit: true,
+                body: Vec::new(),
+                value: Some(Box::new(Expr::Call(target, arguments))),
+            })));
+        }
         if self.take("\"") {
             if self.rest().starts_with("\"\"") {
                 self.offset += 2;
@@ -3193,6 +3267,8 @@ impl<'a> Parser<'a> {
             nested_found: Vec::new(),
             discovering: self.discovering,
             saw_dotted_type: false,
+            saw_vararg: false,
+            arities: self.arities.clone(),
             nested_classes: Vec::new(),
             nested_interfaces: Vec::new(),
         };
@@ -3242,6 +3318,13 @@ impl<'a> Parser<'a> {
         }
         self.offset += 1;
         Ok(Expr::Char(offset, units[0]))
+    }
+}
+
+fn at_name(name: Name<'_>, message: &'static str) -> Error {
+    Error {
+        offset: name.offset,
+        message,
     }
 }
 

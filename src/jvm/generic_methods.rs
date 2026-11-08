@@ -63,7 +63,7 @@ impl<'a> Emitter<'a> {
         call.args = self.complete_args(
             method,
             call.name,
-            &signature.parameters,
+            signature,
             call.args,
             DefaultHost::Instance(call.receiver),
         )?;

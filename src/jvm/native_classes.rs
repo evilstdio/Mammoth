@@ -315,7 +315,7 @@ impl<'a> Emitter<'a> {
         let args = self.complete_args(
             method,
             name,
-            &signature.parameters,
+            signature,
             args,
             DefaultHost::Constructor(class),
         )?;
@@ -357,13 +357,8 @@ impl<'a> Emitter<'a> {
         let signature = symbols.interfaces[interface]
             .get(name.text)
             .ok_or_else(|| at(name, "This type has no method with that name."))?;
-        let args = self.complete_args(
-            method,
-            name,
-            &signature.parameters,
-            args,
-            DefaultHost::Instance(kind),
-        )?;
+        let args =
+            self.complete_args(method, name, signature, args, DefaultHost::Instance(kind))?;
         let map = self.symbols.types.class_map(kind);
         method.push_stack(self.local_type(kind));
         self.adapted_arguments(method, args, base + 1, signature, &map)?;
@@ -407,13 +402,8 @@ impl<'a> Emitter<'a> {
                 .java_inherited_call(method, kind, class, name, args, base, allow_null, None);
         }
         let signature = self.find_class_method(class, name)?;
-        let args = self.complete_args(
-            method,
-            name,
-            &signature.parameters,
-            args,
-            DefaultHost::Instance(kind),
-        )?;
+        let args =
+            self.complete_args(method, name, signature, args, DefaultHost::Instance(kind))?;
         let owner = self.symbols.find_method(class, name.text).unwrap().0;
         let map = self.symbols.member_map(kind, owner);
         method.push_stack(self.local_type(kind));

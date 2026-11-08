@@ -1,0 +1,70 @@
+// Variable arguments, function references, type aliases, covariant overrides.
+fun total(vararg numbers: Int): Int {
+    var sum = 0
+    for n in numbers { sum += n }
+    return sum
+}
+print(total())
+print(total(1))
+print(total(1, 2, 3))
+let some = [4, 5]
+print(total(*some))
+
+fun label(prefix: Text, vararg parts: Text): Text = prefix + ":" + parts.joinToString("-")
+print(label("a"))
+print(label("a", "b", "c"))
+class Log {
+    let lines = mutableListOf<Text>()
+    fun add(vararg items: Text): Int {
+        for item in items { lines.add(item) }
+        return lines.size()
+    }
+    static fun sum(vararg values: Long): Long {
+        var t = 0L
+        for v in values { t += v }
+        return t
+    }
+}
+print(Log().add("x", "y"))
+print(Log.sum(1L, 2L))
+
+print("%d and %s".format(1, "two"))
+print("plain".format())
+
+fun double(x: Int): Int = x * 2
+fun add(a: Int, b: Int): Int = a + b
+fun isEven(x: Int): Bool = x % 2 == 0
+print(listOf(1, 2, 3).map(::double))
+print(listOf(1, 2, 3).filter(::isEven))
+print(listOf(1, 2, 3).fold(0, ::add))
+let f: (Int) -> Int = ::double
+print(f(21))
+
+typealias Names = MutableList<Text>
+typealias Handler = (Text) -> Int
+typealias Id = Long
+let names: Names = mutableListOf("a")
+print(names.size())
+let handler: Handler = { it.length() }
+print(handler("abc"))
+fun nextId(id: Id): Id = id + 1L
+print(nextId(1L))
+
+// An override may return a subtype.
+open class Animal {
+    open fun self2(): Animal = this
+    open fun name(): Text = "animal"
+}
+class Dog extends Animal {
+    override fun self2(): Dog = this
+    override fun name(): Text = "dog"
+    fun bark(): Text = "woof"
+}
+print(Dog().self2().bark())
+let animal: Animal = Dog()
+print(animal.self2().name())
+open class Maker { open fun make(): Any = "text" }
+class TextMaker extends Maker { override fun make(): Text = "made" }
+print(TextMaker().make().length())
+let maker: Maker = TextMaker()
+print(maker.make())

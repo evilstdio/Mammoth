@@ -1,0 +1,3 @@
+// error: Pass a vararg
+fun f(vararg a: Int) { }
+f(a = 1)
