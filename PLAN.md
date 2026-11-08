@@ -106,7 +106,7 @@ The compiler now has three independent checks beyond its example tests: a differ
 
 Open correctness work, in order:
 
-1. Follow method calls in the top-level initialization-order check, and consider this-escape from initializers.
+1. Consider this-escape from initializers.
 2. Element checks for arrays passed through generic functions.
 3. Wildcard types written in Mammoth source, so conservatively rejected wildcard programs can be expressed.
 4. `byte[]` as a usable list type, and `goto_w` for branches over 32 KB.

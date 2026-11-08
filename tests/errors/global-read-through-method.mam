@@ -1,0 +1,6 @@
+// error: declared further down
+class Reader {
+    fun get(): Int { return limit.length() }
+}
+print(Reader().get())
+let limit = "x"

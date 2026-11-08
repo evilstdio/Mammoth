@@ -1476,7 +1476,7 @@ Lambdas can be passed where a Java generic parameter is erased to `Object`, and 
 
 - Reading a non-null reference from a list, such as `items[i]` or a `for` loop, checks for null, since a Java array can contain null. Use `let value: Text? = items[i]` to allow it. A list passed through a generic function is not checked element by element.
 - `value as Text` throws if `value` is null. Use `as Text?` to keep null.
-- A top-level statement cannot reach a variable declared later through the functions and constructors it calls. Calls through objects and lambdas are not followed.
+- A top-level statement cannot reach a variable declared later through the functions, constructors and methods it calls. Methods are matched by name, and lambdas are not followed.
 - Mammoth has no `Byte` or `Short` type, so an `Int` can be passed to Java `byte` and `short` parameters after any `int` overload. The value is truncated as a Java cast would.
 - Call a generic Java method with explicit type arguments like `Collections.emptyList<Text>()`. Arguments must fit them.
 

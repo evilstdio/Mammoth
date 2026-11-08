@@ -50,3 +50,14 @@ print(a != A())
 try { throw IllegalStateException("x") }
 catch (e: IllegalStateException) { print("specific") }
 catch (e: RuntimeException) { print("general") }
+// A method reading a global is fine once the global is declared.
+class LateReader {
+    fun get(): Int { return readyLater + 1 }
+}
+let readyLater = 2
+print(LateReader().get())
+class Shadows(let readyEarly: Int) {
+    fun peek(): Int { return readyEarly }
+}
+print(Shadows(3).peek())
+let readyEarly = 9
