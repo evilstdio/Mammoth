@@ -733,7 +733,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         .iter()
         .any(|text| source.contains(text));
     if !destructuring
-        && !source.contains("Pair(")
+        && !calls_function(source, "Pair")
         && !in_code(source, " in ")
         && !in_code(source, " to ")
         && !source.contains("Triple(")
@@ -782,7 +782,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
     let needs_pair = !user_pair
         && (calls_member(source, "zip")
             || calls_member(source, "partition")
-            || source.contains("Pair(")
+            || calls_function(source, "Pair")
             || in_code(source, " to ")
             || calls_member(source, "toList")
             || calls_member(source, "associate")

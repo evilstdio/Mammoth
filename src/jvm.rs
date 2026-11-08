@@ -1514,6 +1514,7 @@ fn emit_class<'a>(
             }
         }
     }
+    emitter.line_starts = program_lines;
     if let Some(index) = owner {
         emitter.bridge_offset = Some(symbols.class_declarations[index].name.offset);
         for name in symbols.inherited_bridge_names(index) {

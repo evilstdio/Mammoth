@@ -64,6 +64,8 @@ tasks.register('unpackMammoth', Sync) {
 sourceSets.main.output.dir(mammothClasses, builtBy: 'unpackMammoth')
 sourceSets.main.output.classesDirs.setFrom(mammothClasses)
 tasks.named('classes') { dependsOn 'unpackMammoth' }
+// The compiled classes must decide whether the jar is current.
+tasks.named('jar') { inputs.dir(mammothClasses) }
 
 processResources {
     inputs.property 'version', project.version
