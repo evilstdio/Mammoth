@@ -3,7 +3,7 @@
 //! always wins. Only names that some extension declares reach this module, so
 //! other method calls pay nothing.
 
-use super::{Emitter, Error, Expr, Kind, Method, Name};
+use super::{Emitter, Error, Expr, Kind, Method, Name, at};
 
 impl<'a> Emitter<'a> {
     /// The hidden function for extension `name` that accepts a `receiver`.
@@ -16,7 +16,14 @@ impl<'a> Emitter<'a> {
                 let mut map = std::collections::HashMap::new();
                 symbols.infer_from(declared, receiver, &mut map);
                 let target = symbols.types.replace_parameters(declared, &map);
-                !symbols.types.contains_parameter(target)
+                symbols.functions[*hidden]
+                    .type_parameters
+                    .iter()
+                    .filter(|(_, parameter)| {
+                        let probe = std::collections::HashMap::from([(*parameter, Kind::Any)]);
+                        symbols.types.replace_parameters(declared, &probe) != declared
+                    })
+                    .all(|(_, parameter)| map.contains_key(parameter))
                     && (symbols.types.same_kind(target, receiver)
                         || (!exact && symbols.fits(receiver, target)))
             } else if exact {
@@ -44,6 +51,71 @@ impl<'a> Emitter<'a> {
             })
             .or_else(|| candidates.iter().find(|hidden| fits(hidden, false)))
             .copied()
+    }
+
+    /// `listOf(1, 2)`, `mutableListOf`, `setOf` and `mapOf("a" to 1)`, unless
+    /// the program declares a function with that name.
+    pub(super) fn collection_builder(
+        &mut self,
+        method: &mut Method<'a>,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+        expected: Option<Kind>,
+    ) -> Result<Option<Kind>, Error> {
+        let (plain, explicit) = super::native_generics::call_name(name);
+        if !matches!(
+            plain.text,
+            "listOf" | "mutableListOf" | "setOf" | "mapOf" | "mutableMapOf"
+        ) || self.symbols.functions.contains_key(plain.text)
+            || method.binding(plain).is_some()
+        {
+            return Ok(None);
+        }
+        let named = |text: &'a str| Name {
+            text,
+            offset: name.offset,
+        };
+        let list = || Expr::List(name.offset, args.to_vec());
+        let is_map = matches!(plain.text, "mapOf" | "mutableMapOf");
+        let call = if args.is_empty() {
+            let written = name.text.get(plain.text.len()..).unwrap_or("");
+            if explicit.is_none() {
+                if !is_map && plain.text != "setOf" {
+                    // The destination's type gives the element type.
+                    let element = match expected.map(Kind::non_null) {
+                        Some(Kind::MutableList(list)) => Some(list),
+                        _ => None,
+                    };
+                    return self
+                        .mutable_list(method, args, base, element, name.offset)
+                        .map(Some);
+                }
+                return Err(at(
+                    name,
+                    "Give the types of an empty collection, such as setOf<Int>().",
+                ));
+            }
+            let class = match plain.text {
+                "listOf" | "mutableListOf" => "MutableList",
+                "setOf" => "__LinkedHashSet",
+                _ => "__LinkedHashMap",
+            };
+            let text: &'a str = Box::leak(format!("{class}{written}").into_boxed_str());
+            Expr::Call(named(text), Vec::new())
+        } else if is_map {
+            let pairs = Expr::MethodCall(Box::new(list()), named("toMutableList"), Vec::new());
+            Expr::Call(named("__mapOf"), vec![pairs])
+        } else {
+            let method_name = if plain.text == "setOf" {
+                "toSet"
+            } else {
+                "toMutableList"
+            };
+            Expr::MethodCall(Box::new(list()), named(method_name), Vec::new())
+        };
+        let call: &'a Expr<'a> = Box::leak(Box::new(call));
+        self.expression_as(method, call, base, expected).map(Some)
     }
 
     /// Calls the extension `name` on the receiver already on the stack.

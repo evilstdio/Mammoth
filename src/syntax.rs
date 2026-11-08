@@ -593,9 +593,19 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
     if !destructuring
         && !source.contains("Pair(")
         && !source.contains(" in ")
-        && !["repeat", "maxOf", "minOf"]
-            .iter()
-            .any(|name| calls_function(source, name))
+        && !source.contains(" to ")
+        && ![
+            "repeat",
+            "maxOf",
+            "minOf",
+            "listOf",
+            "mutableListOf",
+            "setOf",
+            "mapOf",
+            "mutableMapOf",
+        ]
+        .iter()
+        .any(|name| calls_function(source, name))
         && !extensions.iter().any(|name| calls_member(source, name))
     {
         return;
@@ -604,7 +614,11 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
     let user_pair = program
         .classes
         .iter()
-        .any(|class| class.name.text == "Pair");
+        .any(|class| class.name.text == "Pair")
+        || program
+            .interfaces
+            .iter()
+            .any(|interface| interface.name.text == "Pair");
     let destructures = ["let (", "var (", "for ("]
         .iter()
         .any(|text| source.contains(text));
@@ -617,15 +631,19 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
                 name == "toMutableList"
                     || (destructures && name.starts_with("component"))
                     || (name == "contains" && source.contains(" in "))
+                    || (name == "toSet" && calls_function(source, "setOf"))
                     || (calls_member(source, name) && !(needs_pair && user_pair))
             })
         })
         .map(|function| function.name.text)
         .collect();
+    let needs_map = calls_function(source, "mapOf") || calls_function(source, "mutableMapOf");
     let needs_pair = !user_pair
         && (calls_member(source, "zip")
             || calls_member(source, "partition")
-            || source.contains("Pair("));
+            || source.contains("Pair(")
+            || source.contains(" to ")
+            || needs_map);
     let needs_indexed = calls_member(source, "withIndex");
     for class in parsed.classes {
         if (class.name.text == "Pair" && needs_pair)
@@ -635,7 +653,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         }
     }
     let keep = |name: &str| {
-        name.starts_with("__")
+        (name.starts_with("__") && (name != "__mapOf" || needs_map))
             || matches!(name, "repeat" | "maxOf" | "minOf") && calls_function(source, name)
             || wanted.iter().any(|wanted| {
                 name == *wanted
@@ -660,6 +678,20 @@ pub fn parse(source: &str) -> Result<Program<'_>, Error> {
 }
 
 fn parse_source(source: &str) -> Result<Program<'_>, Error> {
+    let (program, nested, dotted) = parse_with(source, Vec::new(), true)?;
+    if nested.is_empty() && !dotted {
+        return Ok(program);
+    }
+    // Now that every nested type is known, `Outer.Inner` can be read.
+    Ok(parse_with(source, nested, false)?.0)
+}
+
+#[allow(clippy::type_complexity)]
+fn parse_with<'a>(
+    source: &'a str,
+    nested_names: Vec<(&'a str, &'a str)>,
+    discovering: bool,
+) -> Result<(Program<'a>, Vec<(&'a str, &'a str)>, bool), Error> {
     let mut parser = Parser {
         source,
         offset: 0,
@@ -668,6 +700,12 @@ fn parse_source(source: &str) -> Result<Program<'_>, Error> {
         finished_helpers: Vec::new(),
         top_level_function: false,
         extra_statements: Vec::new(),
+        nested_names,
+        nested_found: Vec::new(),
+        discovering,
+        saw_dotted_type: false,
+        nested_classes: Vec::new(),
+        nested_interfaces: Vec::new(),
     };
     let mut program = Program {
         source_name: String::new(),
@@ -740,24 +778,7 @@ fn parse_source(source: &str) -> Result<Program<'_>, Error> {
         } else if name.text == "abstract" && parser.take_word("class") {
             program.classes.push(parser.class(true, false, false)?);
         } else if name.text == "object" && identifier(parser.rest_trimmed(), 0).is_some() {
-            let mut class = parser.class(false, false, false)?;
-            class.is_object = true;
-            let instance = Name {
-                text: "INSTANCE",
-                offset: class.name.offset,
-            };
-            class
-                .static_initializers
-                .insert(0, Initializer::Field(class.static_fields.len()));
-            class.static_fields.push(Field {
-                annotations: Vec::new(),
-                protected: false,
-                name: instance,
-                annotation: Some(class.name),
-                value: Some(Expr::Call(class.name, Vec::new())),
-                mutable: false,
-                private: false,
-            });
+            let class = parser.object_declaration()?;
             program.classes.push(class);
         } else if name.text == "sealed" && parser.take_word("class") {
             let mut class = parser.class(true, false, false)?;
@@ -797,7 +818,9 @@ fn parse_source(source: &str) -> Result<Program<'_>, Error> {
         }
         parser.skip_space();
     }
-    Ok(program)
+    program.classes.append(&mut parser.nested_classes);
+    program.interfaces.append(&mut parser.nested_interfaces);
+    Ok((program, parser.nested_found, parser.saw_dotted_type))
 }
 
 struct Parser<'a> {
@@ -815,6 +838,16 @@ struct Parser<'a> {
     top_level_function: bool,
     /// Statements that follow the one just parsed, from destructuring.
     extra_statements: Vec<Statement<'a>>,
+    /// Types declared inside other types, as `(outer, inner)`, from an
+    /// earlier parse of this file.
+    nested_names: Vec<(&'a str, &'a str)>,
+    nested_found: Vec<(&'a str, &'a str)>,
+    /// The first parse of a file, which accepts `A.B` as a type before
+    /// knowing which nested types exist.
+    discovering: bool,
+    saw_dotted_type: bool,
+    nested_classes: Vec<Class<'a>>,
+    nested_interfaces: Vec<Interface<'a>>,
 }
 
 impl<'a> Parser<'a> {
@@ -1296,6 +1329,13 @@ impl<'a> Parser<'a> {
                 }
                 member = self.name()?;
             }
+            if matches!(
+                member.text,
+                "class" | "data" | "enum" | "sealed" | "object" | "interface"
+            ) {
+                self.nested_type(member, abstract_member, name)?;
+                continue;
+            }
             if is_static {
                 if protected || abstract_member || is_override || exported {
                     return Err(Error {
@@ -1774,7 +1814,16 @@ impl<'a> Parser<'a> {
             }
             self.offset = start;
         }
-        self.logical(0, depth)
+        let first = self.logical(0, depth)?;
+        if !self.newline_ahead() && self.take_word("to") {
+            let second = self.logical(0, depth)?;
+            let pair = Name {
+                text: "Pair",
+                offset: first.offset(),
+            };
+            return Ok(Expr::Call(pair, vec![first, second]));
+        }
+        Ok(first)
     }
 
     /// Reads an optional `out` or `in` before an interface type parameter.
@@ -1848,7 +1897,20 @@ impl<'a> Parser<'a> {
                 offset: start,
             });
         }
-        let name = self.name()?;
+        let mut name = self.name()?;
+        while self.rest().starts_with('.') {
+            let Some(inner) = identifier(&self.rest()[1..], self.offset + 1) else {
+                break;
+            };
+            let guessed =
+                self.discovering && inner.text.chars().next().is_some_and(char::is_uppercase);
+            if !guessed && !self.is_nested(name.text, inner.text) {
+                break;
+            }
+            self.saw_dotted_type |= guessed;
+            self.offset += 1 + inner.text.len();
+            name = inner;
+        }
         let mut end = self.offset;
         if self.rest().starts_with('<') {
             self.offset += 1;
@@ -2195,6 +2257,84 @@ impl<'a> Parser<'a> {
         let mut statements = vec![first];
         statements.append(&mut self.extra_statements);
         Ok(statements)
+    }
+
+    /// `object Name ...`, after the word `object`.
+    fn object_declaration(&mut self) -> Result<Class<'a>, Error> {
+        let mut class = self.class(false, false, false)?;
+        class.is_object = true;
+        let instance = Name {
+            text: "INSTANCE",
+            offset: class.name.offset,
+        };
+        class
+            .static_initializers
+            .insert(0, Initializer::Field(class.static_fields.len()));
+        class.static_fields.push(Field {
+            annotations: Vec::new(),
+            protected: false,
+            name: instance,
+            annotation: Some(class.name),
+            value: Some(Expr::Call(class.name, Vec::new())),
+            mutable: false,
+            private: false,
+        });
+        Ok(class)
+    }
+
+    /// A class, enum, object or interface declared inside `outer`. It is
+    /// compiled as a top-level type and can be named with or without `outer`.
+    fn nested_type(
+        &mut self,
+        word: Name<'a>,
+        is_abstract: bool,
+        outer: Name<'a>,
+    ) -> Result<(), Error> {
+        let mut interface = None;
+        let mut class = None;
+        match word.text {
+            "class" => class = Some(self.class(is_abstract, false, false)?),
+            "data" => {
+                self.take_word("class");
+                let mut declared = self.class(false, true, false)?;
+                add_data_members(&mut declared);
+                class = Some(declared);
+            }
+            "enum" => {
+                self.take_word("class");
+                class = Some(self.class(false, false, true)?);
+            }
+            "sealed" => {
+                if self.take_word("interface") {
+                    let mut declared = self.interface()?;
+                    declared.is_sealed = true;
+                    interface = Some(declared);
+                } else {
+                    self.take_word("class");
+                    let mut declared = self.class(true, false, false)?;
+                    declared.is_sealed = true;
+                    class = Some(declared);
+                }
+            }
+            "object" => class = Some(self.object_declaration()?),
+            _ => interface = Some(self.interface()?),
+        }
+        if let Some(class) = class {
+            self.nested_found.push((outer.text, class.name.text));
+            self.nested_classes.push(class);
+        }
+        if let Some(interface) = interface {
+            self.nested_found.push((outer.text, interface.name.text));
+            self.nested_interfaces.push(interface);
+        }
+        Ok(())
+    }
+
+    fn is_nested(&self, outer: &str, inner: &str) -> bool {
+        let inner = inner.split('<').next().unwrap_or(inner);
+        self.nested_names
+            .iter()
+            .any(|(o, i)| *o == outer && *i == inner)
     }
 
     fn rest_trimmed(&mut self) -> &'a str {
@@ -2733,6 +2873,21 @@ impl<'a> Parser<'a> {
                 } else {
                     name
                 };
+                // `Outer.Inner` names a nested type.
+                if let Expr::Variable(outer) = &receiver
+                    && self.is_nested(outer.text, name.text)
+                {
+                    receiver = if !self.newline_ahead() && self.take("(") {
+                        let mut args = self.list(")", |parser| parser.argument(nested + 1))?;
+                        if let Some(lambda) = self.trailing_lambda(nested + 1)? {
+                            args.push(lambda);
+                        }
+                        Expr::Call(name, args)
+                    } else {
+                        Expr::Variable(name)
+                    };
+                    continue;
+                }
                 if !self.newline_ahead() && self.take("(") {
                     let mut args = self.list(")", |parser| parser.argument(nested + 1))?;
                     if let Some(lambda) = self.trailing_lambda(nested + 1)? {
@@ -2889,7 +3044,9 @@ impl<'a> Parser<'a> {
                         self.expect(",", "")?;
                     }
                 })();
-                if parsed.is_ok() && self.rest().starts_with('(') {
+                let lambda_follows =
+                    !self.in_header && self.rest().trim_start_matches(' ').starts_with('{');
+                if parsed.is_ok() && (self.rest().starts_with('(') || lambda_follows) {
                     name = Name {
                         text: &self.source[offset..self.offset],
                         offset,
@@ -3032,6 +3189,12 @@ impl<'a> Parser<'a> {
             finished_helpers: Vec::new(),
             top_level_function: false,
             extra_statements: Vec::new(),
+            nested_names: self.nested_names.clone(),
+            nested_found: Vec::new(),
+            discovering: self.discovering,
+            saw_dotted_type: false,
+            nested_classes: Vec::new(),
+            nested_interfaces: Vec::new(),
         };
         let expr = inner.logical(0, 1).ok()?;
         inner.skip_space();

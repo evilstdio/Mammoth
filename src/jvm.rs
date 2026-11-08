@@ -2231,6 +2231,9 @@ impl<'a> Emitter<'a> {
         base: u16,
         expected: Option<Kind>,
     ) -> Result<Option<Kind>, Error> {
+        if let Some(kind) = self.collection_builder(method, name, args, base, expected)? {
+            return Ok(Some(kind));
+        }
         if let Some(class) = self.current_class
             && !self.symbols.functions.contains_key(name.text)
             && let Some(result) = self.static_call(method, class, name, args, base)?

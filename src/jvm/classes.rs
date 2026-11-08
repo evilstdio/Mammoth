@@ -1445,9 +1445,16 @@ impl<'a> Symbols<'a> {
                 kind
             }
             Expr::Call(name, args) => {
-                let (base, _) = super::native_generics::call_name(*name);
+                let (base, explicit) = super::native_generics::call_name(*name);
                 if self.functions.contains_key(base.text) {
                     return self.generic_result(*name, args, scope);
+                }
+                if matches!(base.text, "listOf" | "mutableListOf") {
+                    let element = match explicit.as_deref() {
+                        Some([element]) => resolve_type(&self.types, *element).ok()?,
+                        _ => self.static_kind(args.first()?, scope)?,
+                    };
+                    return Some(Kind::MutableList(ListKind::for_element(element)?));
                 }
                 if matches!(self.types.names.get(base.text), Some(Kind::Object(_))) {
                     return self.constructor_result(*name, args, scope);

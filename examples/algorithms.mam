@@ -1,0 +1,220 @@
+// Graph search, memoization, matrices, text statistics and a bank simulation.
+import java.util.ArrayDeque
+import java.util.HashMap
+import java.util.LinkedHashMap
+import java.util.PriorityQueue
+
+// A weighted graph with Dijkstra, breadth-first search and topological order.
+data class Edge(let to: Text, let weight: Int)
+data class Visit(let node: Text, let distance: Int) implements Comparable<Visit> {
+    override fun compareTo(other: Visit): Int = distance - other.distance
+}
+
+class Graph {
+    private let edges = LinkedHashMap<Text, MutableList<Edge>>()
+
+    fun connect(from: Text, to: Text, weight: Int = 1): Graph {
+        edges.getOrPut(from) { mutableListOf() }.add(Edge(to, weight))
+        edges.getOrPut(to) { mutableListOf() }
+        return this
+    }
+
+    fun nodes(): MutableList<Text> = edges.keySet().toMutableList()
+
+    fun neighbors(node: Text): MutableList<Edge> = edges.get(node)
+
+    fun shortest(start: Text): LinkedHashMap<Text, Int> {
+        let best = LinkedHashMap<Text, Int>()
+        let queue = PriorityQueue<Visit>()
+        queue.add(Visit(start, 0))
+        while not queue.isEmpty() {
+            let (node, distance) = queue.poll()
+            if node in best { continue }
+            best.put(node, distance)
+            for edge in neighbors(node) {
+                if edge.to not in best { queue.add(Visit(edge.to, distance + edge.weight)) }
+            }
+        }
+        return best
+    }
+
+    fun breadthFirst(start: Text): MutableList<Text> {
+        let order = mutableListOf(start)
+        let seen = setOf(start)
+        let queue = ArrayDeque<Text>()
+        queue.add(start)
+        while not queue.isEmpty() {
+            let node = queue.remove()
+            for edge in neighbors(node) {
+                if seen.add(edge.to) {
+                    order.add(edge.to)
+                    queue.add(edge.to)
+                }
+            }
+        }
+        return order
+    }
+
+    fun topological(): MutableList<Text> {
+        let incoming = HashMap<Text, Int>()
+        for node in nodes() { incoming.put(node, 0) }
+        for node in nodes() {
+            for edge in neighbors(node) { incoming.put(edge.to, incoming.get(edge.to) + 1) }
+        }
+        let ready = nodes().filter { incoming.get(it) == 0 }
+        let out = MutableList<Text>()
+        while ready.isNotEmpty() {
+            let node = ready.removeAt(0)
+            out.add(node)
+            for edge in neighbors(node) {
+                let left = incoming.get(edge.to) - 1
+                incoming.put(edge.to, left)
+                if left == 0 { ready.add(edge.to) }
+            }
+        }
+        if out.size() != nodes().size() { throw IllegalStateException("The graph has a cycle.") }
+        return out
+    }
+}
+
+let graph = Graph()
+    .connect("a", "b", 4)
+    .connect("a", "c", 1)
+    .connect("c", "b", 2)
+    .connect("b", "d", weight = 5)
+print(graph.shortest("a"))
+print(graph.breadthFirst("a"))
+print(graph.topological())
+try {
+    Graph().connect("x", "y").connect("y", "x").topological()
+} catch (e: IllegalStateException) {
+    print(e.getMessage())
+}
+
+// A generic stack and a memoizing wrapper.
+class Stack<T> {
+    private let items = MutableList<T>()
+    fun push(item: T): Stack<T> {
+        items.add(item)
+        return this
+    }
+    fun pop(): T? = if items.size() == 0 { null } else { items.removeAt(items.size() - 1) }
+    fun size(): Int = items.size()
+}
+let stack = Stack<Text>().push("a").push("b")
+print(stack.pop())
+print(stack.size())
+print(Stack<Int>().pop() ?: -1)
+
+fun memoize<A, B>(compute: (A) -> B): (A) -> B {
+    let cache = HashMap<A, B>()
+    return { key: A -> cache.getOrPut(key) { compute(key) } }
+}
+var calls = 0
+let slowSquare = memoize<Int, Int> { n ->
+    calls += 1
+    n * n
+}
+print(slowSquare(4) + slowSquare(4))
+print(calls)
+
+fun fib(n: Int, cache: HashMap<Int, Long>): Long {
+    if n < 2 { return n.toLong() }
+    let known: Long? = cache.get(n)
+    if known != null { return requireValue(known) }
+    let result = fib(n - 1, cache) + fib(n - 2, cache)
+    cache.put(n, result)
+    return result
+}
+
+print(fib(50, HashMap<Int, Long>()))
+
+// Matrices as nested lists.
+fun multiply(a: List<List<Int>>, b: List<List<Int>>): MutableList<MutableList<Int>> {
+    let result = MutableList<MutableList<Int>>()
+    for row in 0 until a.size() {
+        let line = MutableList<Int>()
+        for column in 0 until b[0].size() {
+            var sum = 0
+            for k in 0 until b.size() { sum += a[row][k] * b[k][column] }
+            line.add(sum)
+        }
+        result.add(line)
+    }
+    return result
+}
+print(multiply([[1, 2], [3, 4]], [[0, 1], [1, 0]]))
+
+// Word statistics.
+let text = "the quick brown fox jumps over the lazy dog the end"
+let counts = text.split(" ").toMutableList().groupBy { it }.mapValues { it.size() }
+print(counts.get("the"))
+let top = counts.entrySet().toMutableList().sortedByDescending { it.getValue() }.first()
+print("{top.getKey()} {top.getValue()}")
+print(text.split(" ").toMutableList().map { it.length() }.maxOrNull())
+print(text.split(" ").toMutableList().filter { it.length() > 4 }.map { it.toUpperCase() }.joinToString(separator = "/"))
+
+// A small bank with custom errors, interfaces and history.
+class InsufficientFunds(let needed: Long) extends RuntimeException("short by {needed}")
+
+sealed interface Event
+data class Deposited(let amount: Long) implements Event
+data class Withdrew(let amount: Long) implements Event
+object Closed implements Event
+
+interface Auditor { fun record(account: Text, event: Event) }
+
+class Log implements Auditor {
+    let lines = mutableListOf<Text>()
+    override fun record(account: Text, event: Event) {
+        lines.add(account + ": " + when event {
+            is Deposited -> "+{event.amount}"
+            is Withdrew -> "-{event.amount}"
+            Closed -> "closed"
+        })
+    }
+}
+
+open class Account(let id: Text, protected var balance: Long, let auditor: Auditor) {
+    fun current(): Long = balance
+    open fun deposit(amount: Long) {
+        require(amount > 0L, "A deposit must be positive.")
+        balance += amount
+        auditor.record(id, Deposited(amount))
+    }
+    open fun withdraw(amount: Long) {
+        if amount > balance { throw InsufficientFunds(amount - balance) }
+        balance -= amount
+        auditor.record(id, Withdrew(amount))
+    }
+    fun close() { auditor.record(id, Closed) }
+}
+
+class Savings(id: Text, balance: Long, auditor: Auditor, let bonus: Long = 1L) extends Account(id, balance, auditor) {
+    override fun deposit(amount: Long) {
+        super.deposit(amount + bonus)
+    }
+}
+
+fun require(condition: Bool, message: Text) {
+    if not condition { throw IllegalArgumentException(message) }
+}
+
+let log = Log()
+let savings = Savings("s1", 100L, log)
+savings.deposit(10L)
+savings.withdraw(5L)
+try {
+    savings.withdraw(1000L)
+} catch (e: InsufficientFunds) {
+    print(e.getMessage())
+    print(e.needed)
+}
+try {
+    savings.deposit(-5L)
+} catch (e: IllegalArgumentException) {
+    print(e.getMessage())
+}
+savings.close()
+print(savings.current())
+print(log.lines)

@@ -1,0 +1,65 @@
+// Nested types and collection builders.
+sealed class Expr {
+    class Num(let value: Int) extends Expr
+    class Add(let left: Expr, let right: Expr) extends Expr
+    object Zero extends Expr
+}
+
+fun eval(expr: Expr): Int = when expr {
+    is Expr.Num -> expr.value
+    is Expr.Add -> eval(expr.left) + eval(expr.right)
+    Expr.Zero -> 0
+}
+print(eval(Expr.Add(Expr.Num(2), Expr.Add(Expr.Zero, Expr.Num(5)))))
+
+class Outer(let label: Text) {
+    data class Config(let size: Int = 1)
+    enum Color { RED, BLUE }
+    interface Handler { fun handle(): Text }
+    object Registry { var count = 0 }
+
+    fun config(): Config = Config(4)
+    fun color(): Color = Color.BLUE
+}
+let config: Outer.Config = Outer("a").config()
+print(config)
+print(Outer.Config().copy(size = 2))
+print(Outer("b").color() == Outer.Color.BLUE)
+print(Outer.Color.RED)
+Outer.Registry.count = 3
+print(Outer.Registry.count)
+class Impl implements Outer.Handler {
+    override fun handle(): Text = "handled"
+}
+let handler: Outer.Handler = Impl()
+print(handler.handle())
+
+// Builders.
+let numbers = listOf(1, 2, 3)
+print(numbers.size())
+print(numbers.map { it * it })
+numbers.add(4)
+print(numbers.sum())
+let words = mutableListOf("a", "b")
+words.add("c")
+print(words.joinToString(""))
+let empty: MutableList<Text> = listOf()
+print(empty.size())
+print(listOf<Int>().size())
+let unique = setOf(1, 1, 2)
+print(unique.size())
+print(2 in unique)
+let ages = mapOf("ann" to 30, "bo" to 25)
+print(ages.get("ann") + 1)
+print(ages.size())
+for (name, age) in ages { print("{name}={age}") }
+let extra = mutableMapOf(1 to "one")
+extra.put(2, "two")
+print(extra.size())
+print(mapOf<Text, Int>().size())
+let pair = Pair(1 + 1, "x" + "y")
+print(pair)
+fun takesPair(p: Pair<Text, Int>): Int = p.first.length() + p.second
+print(takesPair(Pair("ab", 1)))
+print(listOf(listOf(1), listOf(2, 3)).map { it.size() })
+print(listOf("x", "yy").associateBy { it.length() }.get(2))

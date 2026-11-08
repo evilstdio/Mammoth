@@ -1,0 +1,2 @@
+// error: Give the types of an empty collection
+print(setOf())
