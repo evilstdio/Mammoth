@@ -15,7 +15,7 @@
 - Soundness fuzz: 0 unexplained failures on 150 grown programs after the last soundness fix, 75 of them with random class declarations. A later final run is recorded below if it finished.
 - Mutation fuzz with a debug compiler: 6300 inputs found one panic, now fixed.
 - A further differential run of 150 programs and soundness run of 20 grown programs also had 0 problems.
-- These fuzz runs predate the last few compiler commits (global name tracking, static-field checks, the method-following order check, `byte[]` lists). The seeded differential test in `cargo test` covers the final source, but the larger fuzzers were not re-run on it.
+- On the final compiler (commit `b539fc5`): differential 0 problems on 100 programs, soundness 0 unexplained failures on 20 grown programs. The earlier, larger runs predate the last few compiler commits. The mutation fuzz was not re-run on the final compiler.
 
 **Final checks, on the last commit's source.**
 - `cargo test --release --offline`: unit 5, annotations 1, fuzz 1, programs 3, projects 9, all passing.
