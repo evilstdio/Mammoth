@@ -1,0 +1,2 @@
+// error: Generic code cannot create
+fun g<T>(n: Int, v: T): List<T> = List<T>(n) { v }

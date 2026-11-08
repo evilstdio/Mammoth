@@ -1,0 +1,2 @@
+// error: Expected an Int
+print(listOf("a").sumOf { it })

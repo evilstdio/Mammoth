@@ -94,6 +94,20 @@ impl<'a> Emitter<'a> {
                 .map(Some);
         }
         let is_map = matches!(plain.text, "mapOf" | "mutableMapOf");
+        if explicit.is_none()
+            && !args.is_empty()
+            && matches!(plain.text, "listOf" | "mutableListOf")
+        {
+            let element = match expected.map(Kind::non_null) {
+                Some(Kind::MutableList(list)) => Some(list),
+                _ => self.element_with_nulls(method, args),
+            };
+            if element.is_some() {
+                return self
+                    .mutable_list(method, args, base, element, name.offset)
+                    .map(Some);
+            }
+        }
         let call = if args.is_empty() {
             let written = name.text.get(plain.text.len()..).unwrap_or("");
             if explicit.is_none() {
@@ -132,6 +146,23 @@ impl<'a> Emitter<'a> {
         };
         let call: &'a Expr<'a> = Box::leak(Box::new(call));
         self.expression_as(method, call, base, expected).map(Some)
+    }
+
+    /// The nullable element type of `listOf(1, null)`, when an item is `null`.
+    fn element_with_nulls(
+        &mut self,
+        method: &mut Method<'a>,
+        args: &'a [Expr<'a>],
+    ) -> Option<super::ListKind> {
+        if !args.iter().any(|arg| matches!(arg, Expr::Null(_))) {
+            return None;
+        }
+        let first = args.iter().find(|arg| !matches!(arg, Expr::Null(_)))?;
+        let saved = method.snapshot();
+        let base = method.stack.len() as u16;
+        let kind = self.expression(method, first, base);
+        method.restore(saved);
+        super::ListKind::for_element(kind.ok()?.nullable()?)
     }
 
     /// Calls the extension `name` on the receiver already on the stack.

@@ -722,6 +722,10 @@ const PRELUDE_FUNCTIONS: &[&str] = &[
     "TODO",
     "with",
     "buildString",
+    "compareBy",
+    "compareByDescending",
+    "buildList",
+    "readLine",
 ];
 
 /// Whether `source` has a bare call of `name`, as `name(` or `name {`.
@@ -830,6 +834,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         .any(|text| source.contains(text));
     if !destructuring
         && !calls_function(source, "Pair")
+        && !in_code(source, "List<")
         && !in_code(source, " in ")
         && !in_code(source, " to ")
         && !source.contains("Triple(")
@@ -855,7 +860,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         .any(|text| source.contains(text));
     let list_operators =
         (source.contains(" + ") || source.contains(" - ") || source.contains("+="))
-            && ["MutableList", "listOf", "ArrayList", "setOf"]
+            && ["MutableList", "listOf", "ArrayList", "setOf", "mapOf"]
                 .iter()
                 .any(|text| source.contains(text));
     let wanted: Vec<&str> = parsed
@@ -865,6 +870,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             function.extension_of.is_some_and(|name| {
                 let needs_pair = matches!(name, "zip" | "partition");
                 name == "toMutableList"
+                    || (name.starts_with("__sumOf") && calls_member(source, "sumOf"))
                     || (destructures && name.starts_with("component"))
                     || (name == "contains" && in_code(source, " in "))
                     || (matches!(name, "plus" | "minus") && list_operators)
@@ -897,8 +903,12 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             program.classes.push(class);
         }
     }
+    let sized_blocks = in_code(source, "List<");
     let keep = |name: &str| {
-        (name.starts_with("__") && !name.contains("$ext$") && (name != "__mapOf" || needs_map))
+        (name.starts_with("__")
+            && !name.contains("$ext$")
+            && (name != "__mapOf" || needs_map)
+            && (!(name.starts_with("__fill") || name == "__growList") || sized_blocks))
             || (PRELUDE_FUNCTIONS.contains(&name.split("$default$").next().unwrap_or(name))
                 && calls_function(source, name.split("$default$").next().unwrap_or(name)))
             || wanted.iter().any(|wanted| {
@@ -909,7 +919,15 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             })
     };
     for mut function in parsed.functions {
-        if keep(function.name.text) && !declared.contains(&function.name.text) {
+        // A map operation over the library's Pair goes when Pair does.
+        let wants_pair = function
+            .parameters
+            .iter()
+            .any(|(_, kind)| kind.text.starts_with("Pair<"));
+        if keep(function.name.text)
+            && !declared.contains(&function.name.text)
+            && (!wants_pair || needs_pair)
+        {
             function.in_prelude = true;
             program.functions.push(function);
         }
@@ -4502,7 +4520,10 @@ impl<'a> Parser<'a> {
             if !matches!(name.text, "true" | "false" | "null" | "this")
                 && let Some(lambda) = self.trailing_lambda(depth + 1)?
             {
-                let lambda = if name.text == "buildString" {
+                let lambda = if matches!(
+                    name.text.split('<').next(),
+                    Some("buildString" | "buildList")
+                ) {
                     with_receiver(lambda)
                 } else {
                     lambda

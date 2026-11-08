@@ -1,0 +1,35 @@
+let a = List<Int>(3) { it * 2 }
+print(a[2])
+let b = List<Int>(4)
+b[0] = 9
+print(b.size + b[0])
+let c = List<Text>(2) { i -> "s" + i.toString() }
+print(c[1])
+let d = List<Text?>(2)
+print(d[0] == null)
+let m = MutableList<Int>(3) { it + 1 }
+m.add(7)
+print(m)
+fun f(n: Int): Int { return n + List<Int>(n) { x -> x * x }[n - 1] }
+print(f(3))
+print(1 + List<Long>(2) { 5L }.size)
+data class V(let n: Int) { fun unaryMinus(): V = V(-n) }
+print(-V(1))
+print(listOf(1.5).sumOf { it * 2 })
+print(listOf(1).sumOf { it * 2 })
+print(listOf(2).sumOf { 3L })
+print(listOf(listOf(1.5, 2.5)).sumOf { inner -> inner.sumOf { x -> x } })
+print(listOf(2, 1).sortedWith(compareBy { it }))
+print(listOf("bb", "a").sortedWith(compareByDescending { it.length }))
+print(listOf(1).shuffled().size)
+print(mapOf("a" to 1) + ("b" to 2))
+let bl: MutableList<Int> = buildList { add(1)
+  add(2) }
+print(bl)
+print(buildList<Text> { add("q") })
+let a2: MutableList<Int?> = mutableListOf(1, null)
+print(a2.filterNotNull())
+print(listOf(3,1,2).sortedWith { a, b -> b - a })
+print(listOf(3,1,2).sortedWith({ a: Int, b: Int -> b - a }))
+print(listOf(1, null, 3))
+print(mutableListOf(null, "a")[0] == null)

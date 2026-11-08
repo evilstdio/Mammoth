@@ -1,0 +1,2 @@
+// error: give a block
+let a = List<Text>(3)

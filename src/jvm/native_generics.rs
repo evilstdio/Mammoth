@@ -512,6 +512,13 @@ impl<'a> Emitter<'a> {
                     continue;
                 }
                 let Kind::Function(index) = pattern else {
+                    // A Java functional interface whose types are already known.
+                    let target = self.symbols.types.replace_parameters(pattern, &map);
+                    if matches!(target.non_null(), Kind::Java(_))
+                        && !self.symbols.types.contains_parameter(target)
+                    {
+                        continue;
+                    }
                     return Err(at(name, "A lambda needs a function parameter type here."));
                 };
                 let function = self.symbols.types.function_type(index);

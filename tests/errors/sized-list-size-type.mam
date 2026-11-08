@@ -1,0 +1,2 @@
+// error: Expected an Int
+let a = List<Int>("x")

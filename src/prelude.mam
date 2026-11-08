@@ -5,6 +5,9 @@ import java.util.LinkedHashSet as __LinkedHashSet
 import java.util.Map as __Map
 import java.util.Map.Entry as __Entry
 import java.util.NoSuchElementException as __NoSuchElement
+import java.util.Collections as M__Collections
+import java.util.Comparator as __Comparator
+import java.io.ByteArrayOutputStream as __ByteOutput
 
 fun List<__T>.toMutableList<__T>(): MutableList<__T> {
     let out = MutableList<__T>()
@@ -177,6 +180,16 @@ fun Iterable<__T>.sumOf<__T>(selector: (__T) -> Int): Int {
     for item in this { total += selector(item) }
     return total
 }
+fun Iterable<__T>.__sumOfLong<__T>(selector: (__T) -> Long): Long {
+    var total = 0L
+    for item in this { total += selector(item) }
+    return total
+}
+fun Iterable<__T>.__sumOfDouble<__T>(selector: (__T) -> Double): Double {
+    var total = 0.0
+    for item in this { total += selector(item) }
+    return total
+}
 fun Iterable<Int>.average(): Double {
     var total = 0.0
     var count = 0
@@ -286,6 +299,23 @@ fun Iterable<__T>.sortedByDescending<__T, __K: Comparable<__K>>(selector: (__T) 
     let out = MutableList<__T>()
     for item in this { out.add(item) }
     return __mergeSort(out, { a: __T, b: __T -> selector(b).compareTo(selector(a)) })
+}
+fun Iterable<__T>.sortedWith<__T>(comparator: __Comparator<__T>): MutableList<__T> {
+    let out = MutableList<__T>()
+    for item in this { out.add(item) }
+    return __mergeSort(out, { a: __T, b: __T -> comparator.compare(a, b) })
+}
+fun compareBy<__T, __K: Comparable<__K>>(selector: (__T) -> __K): __Comparator<__T> {
+    return { a: __T, b: __T -> selector(a).compareTo(selector(b)) }
+}
+fun compareByDescending<__T, __K: Comparable<__K>>(selector: (__T) -> __K): __Comparator<__T> {
+    return { a: __T, b: __T -> selector(b).compareTo(selector(a)) }
+}
+fun Iterable<__T>.shuffled<__T>(): MutableList<__T> {
+    let out = MutableList<__T>()
+    for item in this { out.add(item) }
+    M__Collections.shuffle(out)
+    return out
 }
 fun Iterable<__T>.reversed<__T>(): MutableList<__T> {
     let items = MutableList<__T>()
@@ -803,11 +833,6 @@ fun __Map<__K, __V>.toList<__K, __V>(): MutableList<Pair<__K, __V>> {
     for entry in this.entrySet() { out.add(Pair(entry.getKey(), entry.getValue())) }
     return out
 }
-fun Iterable<__T>.sortedWith<__T>(compare: (__T, __T) -> Int): MutableList<__T> {
-    let out = MutableList<__T>()
-    for item in this { out.add(item) }
-    return __mergeSort(out, compare)
-}
 fun Iterable<__T>.asReversed<__T>(): MutableList<__T> {
     let items = MutableList<__T>()
     for item in this { items.add(0, item) }
@@ -825,3 +850,90 @@ fun __T.use<__T: AutoCloseable, __R>(block: (__T) -> __R): __R {
 fun Int.xor(other: Int): Int = this ^ other
 fun Int.shl(bits: Int): Int = this shl bits
 fun Int.shr(bits: Int): Int = this shr bits
+
+fun buildList<__T>(block: (MutableList<__T>) -> Unit): MutableList<__T> {
+    let out = MutableList<__T>()
+    block(out)
+    return out
+}
+
+fun readLine(): Text? {
+    let bytes = __ByteOutput()
+    var next = System.in.read()
+    if next < 0 { return null }
+    while next >= 0 and next != 10 {
+        if next != 13 { bytes.write(next) }
+        next = System.in.read()
+    }
+    return bytes.toString()
+}
+
+fun __Map<__K, __V>.plus<__K, __V>(entry: Pair<__K, __V>): __LinkedHashMap<__K, __V> {
+    let out = __LinkedHashMap<__K, __V>(this)
+    out.put(entry.first, entry.second)
+    return out
+}
+
+fun __fillInt(items: List<Int>, make: (Int) -> Int): List<Int> {
+    var index = 0
+    while index < items.size {
+        items[index] = make(index)
+        index += 1
+    }
+    return items
+}
+
+fun __fillLong(items: List<Long>, make: (Int) -> Long): List<Long> {
+    var index = 0
+    while index < items.size {
+        items[index] = make(index)
+        index += 1
+    }
+    return items
+}
+
+fun __fillDouble(items: List<Double>, make: (Int) -> Double): List<Double> {
+    var index = 0
+    while index < items.size {
+        items[index] = make(index)
+        index += 1
+    }
+    return items
+}
+
+fun __fillBool(items: List<Bool>, make: (Int) -> Bool): List<Bool> {
+    var index = 0
+    while index < items.size {
+        items[index] = make(index)
+        index += 1
+    }
+    return items
+}
+
+fun __fillChar(items: List<Char>, make: (Int) -> Char): List<Char> {
+    var index = 0
+    while index < items.size {
+        items[index] = make(index)
+        index += 1
+    }
+    return items
+}
+
+fun __fillItems<__T>(items: List<__T>, make: (Int) -> __T): List<__T> {
+    var index = 0
+    while index < items.size {
+        items[index] = make(index)
+        index += 1
+    }
+    return items
+}
+
+fun __growList<__T>(size: Int, make: (Int) -> __T): MutableList<__T> {
+    let out = MutableList<__T>()
+    var index = 0
+    while index < size {
+        out.add(make(index))
+        index += 1
+    }
+    return out
+}

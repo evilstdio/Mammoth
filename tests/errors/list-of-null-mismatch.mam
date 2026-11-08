@@ -1,0 +1,2 @@
+// error: Expected an Int
+let x: MutableList<Int> = mutableListOf(1, null)

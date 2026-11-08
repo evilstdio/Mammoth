@@ -2341,6 +2341,9 @@ impl<'a> Emitter<'a> {
         if let Some(kind) = self.collection_builder(method, name, args, base, expected)? {
             return Ok(Some(kind));
         }
+        if let Some(kind) = self.sized_collection(method, name, args, base)? {
+            return Ok(Some(kind));
+        }
         if !self.symbols.overloads.is_empty()
             && method.binding(name).is_none()
             && let Some(chosen) = self.overloaded_function(method, name, args)?
@@ -2570,6 +2573,21 @@ impl<'a> Emitter<'a> {
     }
 
     fn method_call_expected(
+        &mut self,
+        method: &mut Method<'a>,
+        receiver: &'a Expr<'a>,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+        expected: Option<Kind>,
+    ) -> Result<Option<Kind>, Error> {
+        if name.text == "sumOf" {
+            return self.sum_of(method, receiver, name, args, base);
+        }
+        self.method_call_resolved(method, receiver, name, args, base, expected)
+    }
+
+    fn method_call_resolved(
         &mut self,
         method: &mut Method<'a>,
         receiver: &'a Expr<'a>,
@@ -3770,6 +3788,18 @@ impl<'a> Emitter<'a> {
                     Kind::Int => 0x74,    // ineg
                     Kind::Long => 0x75,   // lneg
                     Kind::Double => 0x77, // dneg
+                    other if self.has_unary_minus(other) => {
+                        let negate = Name {
+                            text: "unaryMinus",
+                            offset: *offset,
+                        };
+                        return self
+                            .call_method_on(method, other, negate, &[], base, false)?
+                            .ok_or(Error {
+                                offset: *offset,
+                                message: "unaryMinus must return a value.",
+                            });
+                    }
                     _ => {
                         return Err(Error {
                             offset: *offset,

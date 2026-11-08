@@ -5,6 +5,124 @@ use super::{
 
 const ITERATOR: &str = "java/util/Iterator";
 impl<'a> Emitter<'a> {
+    /// `sumOf` adds whatever its block returns: an Int, a Long or a Double.
+    pub(super) fn sum_of(
+        &mut self,
+        method: &mut Method<'a>,
+        receiver: &'a Expr<'a>,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+    ) -> Result<Option<Kind>, Error> {
+        let saved = method.snapshot();
+        let first = self.method_call_resolved(method, receiver, name, args, base, None);
+        if first.is_ok() {
+            return first;
+        }
+        method.restore(saved);
+        for text in ["__sumOfLong", "__sumOfDouble"] {
+            let saved = method.snapshot();
+            let attempt = Name {
+                text,
+                offset: name.offset,
+            };
+            let result = self.method_call_resolved(method, receiver, attempt, args, base, None);
+            if result.is_ok() {
+                return result;
+            }
+            method.restore(saved);
+        }
+        first
+    }
+
+    /// Whether values of `kind` have a Mammoth `unaryMinus` method.
+    pub(super) fn has_unary_minus(&self, kind: Kind) -> bool {
+        self.symbols
+            .types
+            .native_class(kind.non_null())
+            .is_some_and(|class| self.symbols.find_method(class, "unaryMinus").is_some())
+    }
+
+    /// `List<Int>(size)`, `List<Text>(size) { ... }` and
+    /// `MutableList<Int>(size) { ... }`. A block runs in the library's fill
+    /// functions, as an ordinary lambda.
+    pub(super) fn sized_collection(
+        &mut self,
+        method: &mut Method<'a>,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        base: u16,
+    ) -> Result<Option<Kind>, Error> {
+        let growable = name.text.starts_with("MutableList<");
+        if !growable && !name.text.starts_with("List<") {
+            return Ok(None);
+        }
+        if growable && args.len() != 2 {
+            return Ok(None);
+        }
+        let Ok(kind) = super::resolve_type(&self.type_scope, name) else {
+            return Ok(None);
+        };
+        let element = match kind {
+            Kind::List(list) | Kind::MutableList(list) => list.element(),
+            _ => return Ok(None),
+        };
+        if !growable && self.symbols.types.contains_parameter(element) {
+            return Err(at(
+                name,
+                "Generic code cannot create a List<T>, because the element type is erased. Take the list as a parameter, or use MutableList<T>.",
+            ));
+        }
+        let fill = match args {
+            [_, Expr::Lambda(_)] => true,
+            // The second argument of the library's own raw allocation.
+            [_, Expr::Bool(..)] | [_] => false,
+            _ => {
+                return Err(at(
+                    name,
+                    "Give a size and an optional block, such as List<Int>(3) { it * 2 }.",
+                ));
+            }
+        };
+        if fill {
+            let named = |text: String| Name {
+                text: Box::leak(text.into_boxed_str()),
+                offset: name.offset,
+            };
+            let suffix = name.text.split_once('<').map_or("", |(_, rest)| rest);
+            let call = if growable {
+                Expr::Call(named(format!("__growList<{suffix}")), args.to_vec())
+            } else {
+                let function = match element {
+                    Kind::Int => "__fillInt".to_owned(),
+                    Kind::Long => "__fillLong".to_owned(),
+                    Kind::Double => "__fillDouble".to_owned(),
+                    Kind::Bool => "__fillBool".to_owned(),
+                    Kind::Char => "__fillChar".to_owned(),
+                    _ => format!("__fillItems<{suffix}"),
+                };
+                let raw = Expr::Call(name, vec![args[0].clone(), Expr::Bool(name.offset, true)]);
+                Expr::Call(named(function), vec![raw, args[1].clone()])
+            };
+            let call: &'a Expr<'a> = Box::leak(Box::new(call));
+            return self.expression_as(method, call, base, Some(kind)).map(Some);
+        }
+        if args.len() == 1 && element.is_reference() && element == element.non_null() {
+            return Err(at(
+                name,
+                "These items cannot be null, so give a block that makes each one, such as List<Text>(3) { \"\" }.",
+            ));
+        }
+        let actual = self.expression_as(method, &args[0], base, Some(Kind::Int))?;
+        self.coerce(method, &args[0], actual, Kind::Int, base)?;
+        let Kind::List(list) = kind else {
+            unreachable!("only blocks reach this for a mutable list")
+        };
+        method.max_stack = method.max_stack.max(base + 1);
+        self.new_array(method, list);
+        Ok(Some(kind))
+    }
+
     pub(super) fn is_mutable_list_constructor(&self, name: Name<'_>) -> bool {
         name.text == "mutableList"
             && !self.symbols.functions.contains_key(name.text)
