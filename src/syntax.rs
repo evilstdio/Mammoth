@@ -686,8 +686,9 @@ pub fn parse(source: &str) -> Result<Program<'_>, Error> {
 }
 
 fn parse_source(source: &str) -> Result<Program<'_>, Error> {
-    let (program, nested, dotted) = parse_with(source, Vec::new(), Vec::new(), true)?;
-    if nested.is_empty() && !dotted {
+    let (program, nested, dotted, properties) =
+        parse_with(source, Vec::new(), Vec::new(), Vec::new(), true)?;
+    if nested.is_empty() && !dotted && properties.is_empty() {
         return Ok(program);
     }
     // Now that every nested type and function is known, `Outer.Inner` and
@@ -697,7 +698,7 @@ fn parse_source(source: &str) -> Result<Program<'_>, Error> {
         .iter()
         .map(|function| (function.name.text, function.parameters.len()))
         .collect();
-    Ok(parse_with(source, nested, arities, false)?.0)
+    Ok(parse_with(source, nested, arities, properties, false)?.0)
 }
 
 #[allow(clippy::type_complexity)]
@@ -705,8 +706,9 @@ fn parse_with<'a>(
     source: &'a str,
     nested_names: Vec<(&'a str, &'a str)>,
     arities: Vec<(&'a str, usize)>,
+    interface_properties: Vec<&'a str>,
     discovering: bool,
-) -> Result<(Program<'a>, Vec<(&'a str, &'a str)>, bool), Error> {
+) -> Result<(Program<'a>, Vec<(&'a str, &'a str)>, bool, Vec<&'a str>), Error> {
     let mut parser = Parser {
         source,
         offset: 0,
@@ -720,6 +722,8 @@ fn parse_with<'a>(
         discovering,
         saw_dotted_type: false,
         saw_vararg: false,
+        interface_properties,
+        properties_found: Vec::new(),
         arities,
         nested_classes: Vec::new(),
         nested_interfaces: Vec::new(),
@@ -844,7 +848,12 @@ fn parse_with<'a>(
     }
     program.classes.append(&mut parser.nested_classes);
     program.interfaces.append(&mut parser.nested_interfaces);
-    Ok((program, parser.nested_found, parser.saw_dotted_type))
+    Ok((
+        program,
+        parser.nested_found,
+        parser.saw_dotted_type,
+        parser.properties_found,
+    ))
 }
 
 struct Parser<'a> {
@@ -871,6 +880,9 @@ struct Parser<'a> {
     discovering: bool,
     saw_dotted_type: bool,
     saw_vararg: bool,
+    /// Property names declared by interfaces, from an earlier parse.
+    interface_properties: Vec<&'a str>,
+    properties_found: Vec<&'a str>,
     /// How many parameters each top-level function has, from an earlier parse.
     arities: Vec<(&'a str, usize)>,
     nested_classes: Vec<Class<'a>>,
@@ -1112,6 +1124,32 @@ impl<'a> Parser<'a> {
         while has_body && !self.take("}") {
             let annotations = self.annotations()?;
             let is_override = self.take_word("override");
+            if self.take_word("let") || self.take_word("val") {
+                // A property is a method its implementers answer with a field.
+                let property = self.binding()?;
+                self.expect(":", "Expected ':' followed by the property type.")?;
+                let annotation = self.annotation()?;
+                self.properties_found.push(property.text);
+                methods.push(Function {
+                    annotations,
+                    type_parameters: Vec::new(),
+                    bounds: Vec::new(),
+                    exported: false,
+                    foreign_name: None,
+                    name: property,
+                    parameters: Vec::new(),
+                    result: Some(annotation),
+                    body: Vec::new(),
+                    private: false,
+                    protected: false,
+                    is_abstract: true,
+                    is_override,
+                    extension_of: None,
+                    in_prelude: false,
+                    vararg: false,
+                });
+                continue;
+            }
             if !self.take_word("fun") {
                 return Err(self.error("Expected a method signature or '}' in the interface."));
             }
@@ -1122,6 +1160,8 @@ impl<'a> Parser<'a> {
             if self.rest().starts_with('{') {
                 // A default method: implementing classes inherit this body.
                 method.body = self.block(0)?;
+            } else if self.take_assignment() {
+                method.body = vec![Statement::Return(method.name, Some(self.expression()?))];
             } else {
                 method.is_abstract = true;
             }
@@ -1275,8 +1315,8 @@ impl<'a> Parser<'a> {
                 is_abstract,
                 is_sealed: false,
                 is_object: false,
+                methods: self.property_getters(&fields, &[]),
                 fields,
-                methods: Vec::new(),
                 static_fields: Vec::new(),
                 static_methods: constructor_helpers,
                 static_initializers: Vec::new(),
@@ -1510,6 +1550,8 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        let getters = self.property_getters(&fields, &methods);
+        methods.extend(getters);
         Ok(Class {
             annotations: Vec::new(),
             type_parameters,
@@ -2379,6 +2421,63 @@ impl<'a> Parser<'a> {
         self.nested_names
             .iter()
             .any(|(o, i)| *o == outer && *i == inner)
+    }
+
+    /// Methods that answer interface properties with this class's fields.
+    fn property_getters(
+        &self,
+        fields: &[Field<'a>],
+        methods: &[Function<'a>],
+    ) -> Vec<Function<'a>> {
+        fields
+            .iter()
+            .filter(|field| {
+                !field.private
+                    && self.interface_properties.contains(&field.name.text)
+                    && !methods
+                        .iter()
+                        .any(|method| method.name.text == field.name.text)
+            })
+            .filter_map(|field| {
+                let result = field.annotation.or_else(|| {
+                    let text = match field.value.as_ref()? {
+                        Expr::Int(..) => "Int",
+                        Expr::Long(..) => "Long",
+                        Expr::Double(..) => "Double",
+                        Expr::Bool(..) => "Bool",
+                        Expr::Text(..) => "Text",
+                        _ => return None,
+                    };
+                    Some(Name {
+                        text,
+                        offset: field.name.offset,
+                    })
+                })?;
+                let this = Name {
+                    text: "this",
+                    offset: field.name.offset,
+                };
+                let value = Expr::Field(Box::new(Expr::Variable(this)), field.name);
+                Some(Function {
+                    annotations: Vec::new(),
+                    type_parameters: Vec::new(),
+                    bounds: Vec::new(),
+                    exported: false,
+                    foreign_name: None,
+                    name: field.name,
+                    parameters: Vec::new(),
+                    result: Some(result),
+                    body: vec![Statement::Return(field.name, Some(value))],
+                    private: false,
+                    protected: false,
+                    is_abstract: false,
+                    is_override: false,
+                    extension_of: None,
+                    in_prelude: false,
+                    vararg: false,
+                })
+            })
+            .collect()
     }
 
     fn rest_trimmed(&mut self) -> &'a str {
@@ -3268,6 +3367,8 @@ impl<'a> Parser<'a> {
             discovering: self.discovering,
             saw_dotted_type: false,
             saw_vararg: false,
+            interface_properties: self.interface_properties.clone(),
+            properties_found: Vec::new(),
             arities: self.arities.clone(),
             nested_classes: Vec::new(),
             nested_interfaces: Vec::new(),

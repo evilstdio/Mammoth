@@ -132,6 +132,22 @@ impl<'a> Emitter<'a> {
     ) -> Result<Option<Option<Kind>>, Error> {
         let (plain, _) = super::native_generics::call_name(name);
         let Some(hidden) = self.find_extension(plain.text, receiver) else {
+            // A fixed list reaches collection operations by copying it first.
+            if let Kind::List(list) = receiver
+                && self
+                    .find_extension(plain.text, Kind::MutableList(list))
+                    .is_some()
+            {
+                let copy = Name {
+                    text: "toMutableList",
+                    offset: name.offset,
+                };
+                if let Some(Some(copied)) =
+                    self.extension_on_stack(method, receiver, copy, &[], base, None)?
+                {
+                    return self.extension_on_stack(method, copied, name, args, base, expected);
+                }
+            }
             return Ok(None);
         };
         let slot = method.local(self.local_type(receiver));

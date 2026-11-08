@@ -1743,7 +1743,59 @@ impl<'a> Emitter<'a> {
     }
 
     /// Reads field `name` of a receiver of type `kind` that is already on the stack.
+    /// Reads a field, or failing that calls `name()` or `getName()`, so
+    /// `list.size` and a Java bean's `person.name` work like properties.
     pub(super) fn field_on(
+        &mut self,
+        method: &mut Method<'a>,
+        kind: Kind,
+        name: Name<'a>,
+        base: u16,
+        allow_null: bool,
+    ) -> Result<Kind, Error> {
+        let start = method.code.len();
+        match self.declared_field_on(method, kind, name, base, allow_null) {
+            Err(error) if method.code.len() == start && !matches!(kind, Kind::Nullable(_)) => self
+                .property_call(method, kind, name, base, allow_null)
+                .unwrap_or(Err(error)),
+            result => result,
+        }
+    }
+
+    /// `None` when the receiver has no method that can stand for the property.
+    fn property_call(
+        &mut self,
+        method: &mut Method<'a>,
+        kind: Kind,
+        name: Name<'a>,
+        base: u16,
+        allow_null: bool,
+    ) -> Option<Result<Kind, Error>> {
+        let mut capital = name.text.chars();
+        let first = capital.next()?.to_ascii_uppercase();
+        let getter: &'a str = Box::leak(format!("get{first}{}", capital.as_str()).into_boxed_str());
+        for text in [name.text, getter] {
+            let target = Name {
+                text,
+                offset: name.offset,
+            };
+            let attempt = method.snapshot();
+            match self.call_method_on(method, kind, target, &[], base, allow_null) {
+                Ok(Some(result)) => return Some(Ok(result)),
+                _ => method.restore(attempt),
+            }
+        }
+        let attempt = method.snapshot();
+        match self.extension_on_stack(method, kind, name, &[], base, None) {
+            Ok(Some(Some(result))) => Some(Ok(result)),
+            _ => {
+                method.restore(attempt);
+                None
+            }
+        }
+    }
+
+    fn declared_field_on(
         &mut self,
         method: &mut Method<'a>,
         kind: Kind,

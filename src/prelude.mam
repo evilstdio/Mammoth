@@ -510,3 +510,24 @@ fun __mapOf<__K, __V>(pairs: MutableList<Pair<__K, __V>>): __LinkedHashMap<__K, 
     return out
 }
 fun Text.format(vararg items: Any): Text = Text.format(this, items)
+fun __T.let<__T, __R>(block: (__T) -> __R): __R = block(this)
+fun __T.also<__T>(block: (__T) -> Unit): __T {
+    block(this)
+    return this
+}
+fun __T.takeIf<__T>(predicate: (__T) -> Bool): __T? = if predicate(this) { this } else { null }
+fun __T.takeUnless<__T>(predicate: (__T) -> Bool): __T? = if predicate(this) { null } else { this }
+fun Iterable<__T>.indices<__T>(): MutableList<Int> {
+    let out = MutableList<Int>()
+    var index = 0
+    for item in this {
+        out.add(index)
+        index += 1
+    }
+    return out
+}
+fun Iterable<__T>.lastIndex<__T>(): Int {
+    var index = -1
+    for item in this { index += 1 }
+    return index
+}

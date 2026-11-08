@@ -1,0 +1,55 @@
+// Property-style access, interface properties and scope functions.
+import java.awt.Point
+import java.util.ArrayList
+
+let items = mutableListOf(1, 2, 3)
+print(items.size)
+print("hello".length)
+print([1, 2].size)
+let java = ArrayList<Text>()
+java.add("a")
+print(java.size)
+print(java.isEmpty)
+for i in items.indices { print(i) }
+print(items.lastIndex)
+for i in [7, 8].indices { print(i) }
+
+class Person(let name: Text) {
+    fun getAge(): Int = 30
+    fun isAdult(): Bool = true
+}
+let person = Person("ann")
+print(person.name)
+print(person.age)
+print(person.isAdult)
+print(Point(3, 4).location.x)
+
+interface Named {
+    let name: Text
+    let age: Int
+    fun label(): Text = "{name} ({age})"
+}
+class User(let name: Text, let age: Int) implements Named
+class Pet(let name: Text) implements Named {
+    let age = 2
+}
+fun show(thing: Named): Text = thing.label() + " " + thing.name
+print(show(User("bo", 9)))
+print(User("cy", 1).name)
+let named: Named = User("di", 5)
+print(named.age + 1)
+print(named.name.length)
+
+// Scope functions.
+print("abc".let { it.length * 2 })
+print(5.let { it + 1 })
+let maybe: Text? = "yes"
+print(maybe?.let { it.toUpperCase() })
+let nothing: Text? = null
+print(nothing?.let { it.length } ?: -1)
+let list = mutableListOf<Int>().also { it.add(1) }
+print(list)
+print(5.takeIf { it > 3 })
+print(5.takeIf { it > 9 })
+print("x".takeUnless { it == "x" })
+print(person.let { it.name + "!" })

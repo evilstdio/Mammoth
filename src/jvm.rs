@@ -3043,6 +3043,15 @@ impl<'a> Emitter<'a> {
             let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
             return self.field_access(method, receiver, name, base);
         }
+        // Inside an interface's default method, a property is a method call.
+        if self.current_class.is_none() && !self.in_extension && method.binding(this).is_some() {
+            let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
+            let attempt = method.snapshot();
+            if let Ok(Some(kind)) = self.method_call(method, receiver, name, &[], base) {
+                return Ok(kind);
+            }
+            method.restore(attempt);
+        }
         if let Some(&Kind::Object(class)) = self.type_scope.names.get(name.text)
             && self.symbols.class_declarations[class].is_object
         {
