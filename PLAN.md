@@ -87,7 +87,7 @@ Generated class files now carry SourceFile and LineNumberTable data (real `.mam`
 
 ## Language gaps still open (November 2026)
 
-`inner` classes, class delegation with `by`, `Float`/`Byte`/`Short` as Mammoth types, sequences, coroutines, reified type parameters, `synchronized`, non-local returns. Tooling gaps: no language server, no language specification, no package manager.
+`Float`/`Byte`/`Short` as Mammoth types, coroutines, reified type parameters, non-local returns, `is` narrowing for fields and `var`s. Tooling gaps: no language server, no language specification, no package manager.
 
 ## Production-readiness queue (highest priority first)
 

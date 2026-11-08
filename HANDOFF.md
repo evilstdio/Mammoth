@@ -12,9 +12,14 @@ Work continues on branch `compiler-correctness`, local only, identity `sss47 <ss
 - **Ranges as values** are eager lists through `__rangeTo`, `__rangeUntil` and `__rangeDown`.
 - Library imports used as static call receivers must start with an uppercase letter, hence `M__Collections`.
 
+- **Inner classes** (`classes.rs` `outer_path`, `create_inner`, `inner_on_receiver`, `labeled_this`). The class gets a hidden first parameter and field `__outer`, and an outer class with inner classes emits private members as package-private. **Delegation** (`add_delegated_methods`) writes forwarders at the end of parsing. **Enum value bodies** (`add_enum_value_methods`) fold into `if this == E.A` tests in the enum's own method.
+- **Flow typing** (`jvm.rs` `collect_non_null_facts`, `forget_facts`, `field_fact`, `classes.rs` `forget_assigned`, `forget_in_loop`). Facts live in `non_null_slots`. Field facts use numbers from `FIELD_FACTS` up. An assignment turns a fact into `u16::MAX`, and loops drop facts about what they assign before the loop is compiled. `MethodState` keeps a copy of the facts, so probing cannot lose them.
+- **Lambdas with no value** where a generic result is expected are listed in `unit_lambdas` and return null.
+- Library type parameters are named `__*` and are the only ones that may bind a nullable element (`is_library_parameter`). Prelude generics must therefore not rely on `__T` being non-null.
+
 **Fabric.** `build` and `verifyMod` passed and produced JAR `3A62CD15...29CB`, the hash already smoke-tested. If a build seems stale, delete `build/libs`, `build/devlibs` and `build/loom-cache/remapped_working` under `examples/fabric-demo`.
 
-**Known limits.** No coroutines, no `inner` classes, no class delegation with `by`, no `Float`, `Byte`, `Short` or unsigned types in Mammoth source, no reified type parameters, no `synchronized`, non-local `return` from lambdas is not supported (a plain `return` leaves the lambda). See the object expression limits in the README. Top-level `obj.fail()` methods returning `Nothing` are not treated as jumps.
+**Known limits.** No coroutines, no `Float`, `Byte`, `Short` or unsigned types in Mammoth source, no reified type parameters, `is` does not narrow fields or `var`s, non-local `return` from lambdas is not supported (a plain `return` leaves the lambda). See the object expression limits in the README. Top-level `obj.fail()` methods returning `Nothing` are not treated as jumps.
 
 **Probes.** `tests/fuzz/kotlin_probe.py` and `tests/fuzz/probe2.py` list everyday constructs, `tests/fuzz/advcases5.py` and `advcases6.py` are adversarial batteries for this session.
 

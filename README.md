@@ -998,6 +998,22 @@ Classes can mark type parameters `out` or `in`, with the same rules as interface
 
 `1..3` used as a value is a `MutableList<Int>` holding those numbers. Loops and `in` over a written range do not build a list. `infix fun` names can be written between their operands, `fun f(): Nothing` never returns and can be used wherever a value is expected, `return@forEach` leaves a lambda, and `{ (a, b) -> ... }` unpacks its parameter. `Regex`, `compareBy`, `sortedWith`, `shuffled`, `buildList`, `readLine`, `distinctBy`, `filterKeys`, `mapKeys`, `union`, `intersect`, `subtract`, `coerceIn`, `trimMargin` and `sumOf` for `Long` and `Double` are in the library. `mapValues` and `mapKeys` receive the value or key rather than an entry.
 
+### More class and flow features
+
+An `inner class` holds a reference to the object that made it. Its code can use the outer object's members by name, including private ones, and `this@Outer` names the outer object. Create one inside the outer class with `Inner()`, or from outside with `outer.Inner()`. An inner class of a generic class is not supported yet, and an inner class cannot have default constructor values, more constructors or static members yet.
+
+`implements I by value` forwards every abstract method of `I` to `value`. The interface must be declared in the same file and have no type parameters. Methods the class writes itself win.
+
+An enum value can have its own methods: `Red { override fun label(): Text = "r" }`. Every value must override an `abstract` method, and each override writes the same parameter names as the enum's method.
+
+Null checks now reach local `var`s and read-only fields. After `if a != null`, `a` can be used without another check until it is assigned. A variable that a lambda can change never narrows, and a loop that assigns a variable drops what was known about it. `k.a` narrows when `k` is a `let` and `a` is a plain read-only field. Properties with accessors never narrow, because reading them runs code.
+
+`let Text.first: Char get() = this[0]` declares an extension property. `when (let v = next()) { ... }` names the subject for its branches. `synchronized(lock) { ... }` locks an object. `Any()` makes a plain object. `k?.a = 1` assigns only when `k` is not null. `in values` works in `when` for anything with `contains`. `super.f()` reaches an interface's default method when one implemented interface has it. A statement can start with a value, such as `"x".let { print(it) }`.
+
+The library has lazy sequences: `asSequence()`, `generateSequence`, and on a sequence `map`, `filter`, `take`, `drop`, `takeWhile` and `toList`. Every other operation on an `Iterable` also works on a sequence, by consuming it. Library operations work on lists of nullable items, so `list.map { it ?: 0 }` works when `list` is a `MutableList<Int?>`. Generic functions you write still reject nullable items as type arguments.
+
+Java types can be written in full, as in `java.util.Iterator<Int>`, and `catch (e: java.io.IOException)`.
+
 ### Objects
 
 `object Counter { var total = 0 }` declares a single instance, used by name: `Counter.total`. It can implement interfaces and extend classes.

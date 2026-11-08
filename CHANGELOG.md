@@ -11,6 +11,10 @@
 - Infix functions, `Nothing`, ranges as values, `return@label`, destructuring lambda parameters, `Type::member`, `::Class`, `unaryMinus`, `E.entries`, `name` and `ordinal` inside enums.
 - Library: `Regex`, comparators, `shuffled`, `buildList`, `readLine`, `filterKeys`, `mapKeys`, `distinctBy`, set operations, `coerce*`, `rem`, `trimMargin`, `first`/`last`/`firstOrNull` with a predicate, `joinToString` with a transform, `sumOf` for `Long` and `Double`, `Map + Pair`, `mutableSetOf`.
 - A lambda can be passed to a Mammoth parameter of a Java functional type, and a nullable function value can be called after a null check.
+- Inner classes and `this@Outer`, class delegation with `by`, enum value bodies, extension properties, lazy sequences, `when (let v = ...)`, `synchronized`, `Any()`, `k?.a = v`, statements that start with a value, `fun <T> name`, fully qualified Java types.
+- Null checks narrow local `var`s and read-only fields. `a < b` works on `T: Comparable<T>`. A lambda with no value can be passed where a generic result is expected. Library operations accept lists of nullable items.
+- Errors suggest close names, and explain `and`, `or`, `not` and `extends` to people arriving from other languages.
+- Infix and never-returning functions work across the files of a project.
 - Fixes: generated data class methods keep line tables after library functions, the library's `Pair` is selected only when called, the Fabric demo's jar now tracks its compiled classes, top-level initialization order follows property reads and writes, names declared inside a top-level lambda no longer force a type on a same-named top-level variable.
 
 ## Everyday syntax and library, 2026-11-08
