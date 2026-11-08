@@ -503,3 +503,4 @@ fun Text.trimIndent(): Text {
     }
     return out.toString()
 }
+fun Text.contains(item: Char): Bool = this.indexOf("{item}") >= 0

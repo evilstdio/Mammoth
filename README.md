@@ -930,6 +930,66 @@ A class that implements `Task` must also implement the Java interface's abstract
 
 Run `mammoth .\examples\java-parent-interfaces.mam` for a complete example.
 
+## Writing less code
+
+### Default and named arguments
+
+```text
+fun greet(name: Text, punctuation: Text = "!", times: Int = 1): Text { ... }
+greet("a")
+greet("b", times = 3)
+greet(times = 2, name = "c")
+```
+
+A default can read earlier parameters and is evaluated each time it is needed. Functions, methods, static methods, constructors, interfaces and imported functions can have defaults. An `override` uses the defaults of the method it overrides. Arguments run in the order you write them. A constructor default cannot use the class's type parameters yet.
+
+### Single-expression functions
+
+`fun twice(x: Int): Int = x * 2`. The result type is required.
+
+### Sealed types
+
+A `sealed class` or `sealed interface` can only be extended in its own file, so `when` knows every case:
+
+```text
+sealed class Shape
+class Circle(let r: Int) extends Shape
+object Point extends Shape
+
+fun area(shape: Shape): Int = when shape {
+    is Circle -> shape.r * 3
+    Point -> 0
+}
+```
+
+A `when` over a sealed type must cover every case or have an `else`, as a statement too. A nullable subject also needs a `null` branch.
+
+### Extension functions
+
+`fun Text.shout(): Text = this.toUpperCase() + "!"` adds a call `"hi".shout()`. Inside, `this` is the receiver and its members can be used directly, except from a lambda's implicit receiver use. A real method of the same name always wins. Receivers can be generic, as in `fun MutableList<T>.second<T>(): T`. Extensions are declared at the top level and imported by name.
+
+### Objects
+
+`object Counter { var total = 0 }` declares a single instance, used by name: `Counter.total`. It can implement interfaces and extend classes.
+
+### Data class helpers
+
+A data class has `copy`, with every property optional: `person.copy(age = 31)`. Destructure with `let (name, age) = person`, and in loops with `for (name, age) in people`. Use `_` to skip a position. `for (key, value) in map` visits a map's entries.
+
+### Collection operations
+
+Lists and Java collections have `map`, `mapIndexed`, `flatMap`, `filter`, `filterNot`, `any`, `all`, `none`, `countOf`, `find`, `first`, `firstOrNull`, `last`, `lastOrNull`, `fold`, `reduce`, `sum`, `sumOf`, `average`, `minOrNull`, `maxOrNull`, `minByOrNull`, `maxByOrNull`, `sorted`, `sortedDescending`, `sortedBy`, `sortedByDescending`, `reversed`, `distinct`, `take`, `drop`, `takeWhile`, `dropWhile`, `joinToString`, `groupBy`, `associateBy`, `toSet`, `toMutableList`, `withIndex`, `zip`, `partition` and `isNotEmpty`. Maps have `getOrPut`, `mapValues` and `filterValues`. Text has `take`, `drop`, `reversed`, `padStart`, `padEnd`, `isNotEmpty`, `isNotBlank` and `trimIndent`. Each returns a new list. A class's own method of the same name wins. `Pair(a, b)` holds two values unless your program declares its own `Pair`.
+
+These are written in Mammoth in `src/prelude.mam`, and only the ones a program uses are compiled into it.
+
+### Operators, `in`, ranges and raw text
+
+- `a + b`, `-`, `*`, `/` and `%` call `plus`, `minus`, `times`, `div` and `rem` on objects. `a < b` uses `compareTo`, and `a[i]` and `a[i] = v` call `get` and `set`, including on Java lists.
+- `x in values`, `x not in values` and `x in 1..5` work in any condition.
+- `for i in 10 downTo 0 step 2`, `0..10 step 5` and `repeat(3) { ... }`. A step must be positive.
+- `"""raw text"""` spans lines and has no escapes or `{}` values. `trimIndent()` removes the common indentation.
+- `value ?: return 0`, `value ?: throw Oops()`, `value ?: continue` and `value ?: break` leave early. `throw` and `return` also work as a `when` branch.
+
 ## Using Java
 
 Mammoth reads the JDK and the JARs on your `CLASSPATH` directly, so you can use Java classes without writing any declarations. Classes in `java.lang`, such as `Math`, `System`, `StringBuilder`, and `Thread`, are always available. Import other classes by their full name, or import a whole package with `*`.

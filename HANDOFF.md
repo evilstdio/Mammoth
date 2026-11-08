@@ -1,3 +1,19 @@
+# Session 4: language features (2026-11-08, read this first)
+
+The goal is closing the feature gap with Kotlin. Work is on branch `compiler-correctness`, committed locally, identity `sss47 <sss47@users.invalid>`, no remote and no AI attribution. Commit only after `cargo test --release --offline`, `cargo fmt --check` and clippy pass; use a separate `CARGO_TARGET_DIR` so a running fuzzer cannot lock the binary.
+
+**Done so far, each with tests in `tests/programs` and rejections in `tests/errors`:**
+- **Default and named arguments** (`src/jvm/defaults.rs`). The parser makes a hidden helper `name$default$i` per default, taking only the earlier parameters whose names appear in its source text. `complete_args` rewrites a call into positional form; it is a no-op when the count matches and nothing is named, so ordinary calls pay nothing. Temporaries (`Expr::Temp`) keep written evaluation order. Constructor helpers are static `new$default$i`.
+- **Sealed types** (`branching.rs` `exhaustive`, `covers_sealed`). `when` statements on sealed subjects must be exhaustive. Same-file rule in `check_classes`.
+- **Extension functions** (`src/jvm/extensions.rs`). `fun Text.shout()` becomes static `Text$ext$shout` with parameter `this`. `method_call_expected` only takes the slow path when some extension has that name: it tries the member first, then picks the most specific receiver.
+- **Built-in library** (`src/prelude.mam`, `syntax.rs` `add_prelude`). Parsed on each compile, but only functions the source mentions are kept. `in_prelude` functions have no line numbers. A fixed list reaches `Iterable` extensions by copying through `toMutableList`.
+- **Jumps as values** (`Expr::Jump`, `jump_value`), **objects** (`is_object`, static `INSTANCE`), **operators** (error-path rewrites in `arithmetic_tail`, comparison and index), **`in`** (`contains_check`, `Expr::InRange`), **progressions** (`loop_progression`, overflow-safe), **raw text**, **data class members** (`add_data_members`), **destructuring** (parser desugar, `statement_list`).
+- `expression` and `expression_as` now release any locals made while computing a value, so branch joins stay valid.
+
+**Known limits.** Mammoth has no vararg parameters, function references, nested classes, `typealias` or coroutines yet. Implicit receiver members do not work from a lambda inside an extension unless written with `this`. A constructor default cannot mention the class's type parameters. Prelude errors are reported as "in the built-in library".
+
+**Next.** `listOf` family and `to`, nested classes, vararg, covariant overrides, then more real programs.
+
 # Session summary: session 3, 2026-11-08 (read this first)
 
 **State.** Local Git repository, no remote, identity `sss47 <sss47@users.invalid>` set for this repository only, no AI attribution in commits. `main` holds the baseline; the work is on `compiler-correctness`. Commit `acab45e` has one failing test (`generic-methods`), fixed by the next commit.

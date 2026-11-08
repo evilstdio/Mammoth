@@ -1543,7 +1543,10 @@ impl<'a> Parser<'a> {
                     "Give this function a result type, such as fun twice(x: Int): Int = x * 2.",
                 ));
             }
-            vec![Statement::Return(name, Some(self.expression()?))]
+            match self.expression()? {
+                Expr::Jump(statement) => vec![*statement],
+                value => vec![Statement::Return(name, Some(value))],
+            }
         } else if has_body {
             self.block(0)?
         } else {

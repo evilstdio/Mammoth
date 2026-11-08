@@ -3044,7 +3044,10 @@ impl<'a> Emitter<'a> {
             text: "this",
             offset: name.offset,
         };
-        if self.in_extension && method.binding(this).is_some() {
+        if self.in_extension
+            && method.binding(this).is_some()
+            && !self.type_scope.names.contains_key(name.text)
+        {
             let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
             return self.field_access(method, receiver, name, base);
         }

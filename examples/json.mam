@@ -1,0 +1,272 @@
+// A JSON parser, query engine and report, using sealed types, extensions,
+// default and named arguments, destructuring and the collection library.
+import java.util.LinkedHashMap
+
+sealed class Json
+object JsonNull extends Json
+data class JsonBool(let value: Bool) extends Json
+data class JsonNumber(let value: Double) extends Json
+data class JsonText(let value: Text) extends Json
+data class JsonArray(let items: MutableList<Json>) extends Json
+data class JsonObject(let fields: LinkedHashMap<Text, Json>) extends Json
+
+class ParseError(message: Text, let position: Int) extends RuntimeException(message)
+
+class Parser(let source: Text) {
+    var position = 0
+
+    fun parse(): Json {
+        let value = readValue()
+        skipSpace()
+        if position != source.length() { fail("Unexpected text after the value") }
+        return value
+    }
+
+    fun fail(message: Text): Int = throw ParseError("{message} at {position}", position)
+
+    fun peek(): Char {
+        if position >= source.length() { fail("Unexpected end of input") }
+        return source.charAt(position)
+    }
+
+    fun skipSpace() {
+        while position < source.length() and source.charAt(position) in " \n\t\r" { position += 1 }
+    }
+
+    fun expect(ch: Char) {
+        skipSpace()
+        if peek() != ch { fail("Expected {ch}") }
+        position += 1
+    }
+
+    fun readValue(): Json {
+        skipSpace()
+        let ch = peek()
+        return when {
+            ch == '{' -> readObject()
+            ch == '[' -> readArray()
+            ch == '"' -> JsonText(readString())
+            ch == 't' or ch == 'f' -> readBool()
+            ch == 'n' -> readNull()
+            else -> readNumber()
+        }
+    }
+
+    fun readObject(): Json {
+        expect('{')
+        let fields = LinkedHashMap<Text, Json>()
+        skipSpace()
+        if peek() == '}' {
+            position += 1
+            return JsonObject(fields)
+        }
+        while true {
+            skipSpace()
+            let key = readString()
+            expect(':')
+            fields.put(key, readValue())
+            skipSpace()
+            if peek() == '}' {
+                position += 1
+                return JsonObject(fields)
+            }
+            expect(',')
+        }
+    }
+
+    fun readArray(): Json {
+        expect('[')
+        let items = MutableList<Json>()
+        skipSpace()
+        if peek() == ']' {
+            position += 1
+            return JsonArray(items)
+        }
+        while true {
+            items.add(readValue())
+            skipSpace()
+            if peek() == ']' {
+                position += 1
+                return JsonArray(items)
+            }
+            expect(',')
+        }
+    }
+
+    fun readString(): Text {
+        expect('"')
+        let text = StringBuilder()
+        while peek() != '"' {
+            var ch = peek()
+            position += 1
+            if ch == '\\' {
+                let escaped = peek()
+                position += 1
+                ch = when escaped {
+                    'n' -> '\n'
+                    't' -> '\t'
+                    else -> escaped
+                }
+            }
+            text.append(ch)
+        }
+        position += 1
+        return text.toString()
+    }
+
+    fun readBool(): Json {
+        if source.startsWith("true", position) {
+            position += 4
+            return JsonBool(true)
+        }
+        if source.startsWith("false", position) {
+            position += 5
+            return JsonBool(false)
+        }
+        fail("Expected true or false")
+        return JsonNull
+    }
+
+    fun readNull(): Json {
+        if not source.startsWith("null", position) { fail("Expected null") }
+        position += 4
+        return JsonNull
+    }
+
+    fun readNumber(): Json {
+        let start = position
+        while position < source.length() and source.charAt(position) in "+-0123456789.eE" { position += 1 }
+        if start == position { fail("Expected a value") }
+        return JsonNumber(Double.parseDouble(source.substring(start, position)))
+    }
+}
+
+fun Text.toJson(): Json = Parser(this).parse()
+
+fun Json.render(indent: Int = 0): Text {
+    let padding = "  ".repeat(indent + 1)
+    let closing = "  ".repeat(indent)
+    return when this {
+        JsonNull -> "null"
+        is JsonBool -> "{this.value}"
+        is JsonNumber -> {
+            if this.value == this.value.toLong().toDouble() { "{this.value.toLong()}" } else { "{this.value}" }
+        }
+        is JsonText -> "\"" + this.value + "\""
+        is JsonArray -> {
+            if this.items.isEmpty() { "[]" } else {
+                let parts = this.items.map { padding + it.render(indent + 1) }
+                "[\n" + parts.joinToString(separator = ",\n") + "\n" + closing + "]"
+            }
+        }
+        is JsonObject -> {
+            if this.fields.isEmpty() { "\{}" } else {
+                let parts = MutableList<Text>()
+                for (key, value) in this.fields {
+                    parts.add(padding + "\"" + key + "\": " + value.render(indent + 1))
+                }
+                "\{\n" + parts.joinToString(separator = ",\n") + "\n" + closing + "}"
+            }
+        }
+    }
+}
+
+fun Json.at(path: Text): Json? {
+    var current: Json = this
+    for part in path.split(".") {
+        let node = current
+        let next: Json? = when node {
+            is JsonObject -> node.fields.get(part)
+            is JsonArray -> {
+                let index = part.toIntOrNull() ?: return null
+                if index < node.items.size() { node.items[index] } else { null }
+            }
+            else -> null
+        }
+        current = next ?: return null
+    }
+    return current
+}
+
+fun Json.text(path: Text, fallback: Text = "?"): Text {
+    let found = this.at(path)
+    return if found is JsonText { found.value } else { fallback }
+}
+
+fun Json.number(path: Text, fallback: Double = 0.0): Double {
+    let found = this.at(path)
+    return if found is JsonNumber { found.value } else { fallback }
+}
+
+fun Json.list(path: Text): MutableList<Json> {
+    let found = this.at(path)
+    return if found is JsonArray { found.items } else { MutableList<Json>() }
+}
+
+data class Sale(let product: Text, let region: Text, let units: Int, let price: Double) {
+    fun revenue(): Double = units * price
+}
+
+fun Json.toSale(): Sale = Sale(
+    product = text("product"),
+    region = text("region", fallback = "unknown"),
+    units = number("units").toInt(),
+    price = number("price")
+)
+
+fun money(amount: Double): Text = Text.format("%.2f", amount)
+
+fun report(sales: MutableList<Sale>): Text {
+    let lines = MutableList<Text>()
+    lines.add("Total revenue: " + money(sales.map { it.revenue() }.sum()))
+    let byRegion = sales.groupBy { it.region }
+    for (region, group) in byRegion {
+        let revenue = group.map { it.revenue() }.sum()
+        let best = requireValue(group.maxByOrNull { it.revenue() })
+        lines.add(region.padEnd(8) + money(revenue).padStart(10) + "  best: " + best.product)
+    }
+    let ranked = sales.sortedByDescending { it.units }.take(2)
+    for (index, sale) in ranked.withIndex() {
+        lines.add("#{index + 1} {sale.product} ({sale.units} units)")
+    }
+    return lines.joinToString(separator = "\n")
+}
+
+let document = """
+{
+  "store": "north",
+  "open": true,
+  "manager": null,
+  "tags": ["a", "b"],
+  "sales": [
+    {"product": "kettle", "region": "east", "units": 3, "price": 19.5},
+    {"product": "toaster", "region": "west", "units": 7, "price": 25},
+    {"product": "mug", "region": "east", "units": 40, "price": 2.25},
+    {"product": "plate", "units": 12, "price": 4}
+  ]
+}
+"""
+
+let root = document.toJson()
+print(root.text("store"))
+print(root.at("open"))
+print(root.at("manager") == JsonNull)
+print(root.at("missing.path") == null)
+print(root.text("sales.1.product"))
+print(root.number("sales.0.price"))
+print(root.at("tags")?.render())
+
+let sales = root.list("sales").map { it.toSale() }
+print(sales.first())
+print(report(sales))
+
+let compact = """{"a": [1, 2.5, {"b": "x\ny"}], "empty": {}, "none": []}"""
+print(compact.toJson().render())
+
+for bad in ["[1,", "{\"a\" 1}", "tru", "[1] 2", ""] {
+    try {
+        print(bad.toJson())
+    } catch (e: ParseError) {
+        print("error: " + e.getMessage() + " @" + "{e.position}")
+    }
+}

@@ -1,5 +1,13 @@
 # Changelog
 
+## Kotlin-style language features, 2026-11-08
+
+- Default and named arguments, single-expression functions, sealed classes and interfaces, extension functions, objects, data class `copy` and destructuring, loops over maps, `Pair`, `x in values`, operator methods, `downTo` and `step`, raw text, and jumps as values (`value ?: return`).
+- A built-in collection and text library written in Mammoth (`src/prelude.mam`), compiled in only when used.
+- Generic constructors infer type arguments through a destination's supertype.
+- A lambda that calls a captured function value now captures it.
+- `examples/json.mam`, a 290-line JSON parser and report, drives these features together.
+
 ## Byte arrays, 2026-11-08
 
 - A Java `byte[]` can be indexed, looped over and passed back to Java. It is a separate type from `List<Int>`.

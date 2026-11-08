@@ -72,12 +72,23 @@ pub(super) fn resolve_globals<'a>(
 }
 
 fn collect_program<'a>(program: &'a Program<'a>, mut used: HashSet<&'a str>) -> HashSet<&'a str> {
+    let seed = used.clone();
+    // A name a function declares for itself is not a use of a global.
+    let free_names = |function: &'a super::Function<'a>, used: &mut HashSet<&'a str>| {
+        let mut names = seed.clone();
+        collect_statements(&function.body, &mut names);
+        let mut local = HashSet::new();
+        collect_bound(&function.body, &mut local);
+        local.extend(function.parameters.iter().map(|(name, _)| name.text));
+        names.retain(|name| !local.contains(name));
+        used.extend(names);
+    };
     for function in &program.functions {
-        collect_statements(&function.body, &mut used);
+        free_names(function, &mut used);
     }
     for class in &program.classes {
         for method in &class.methods {
-            collect_statements(&method.body, &mut used);
+            free_names(method, &mut used);
         }
         for field in &class.fields {
             if let Some(value) = &field.value {
