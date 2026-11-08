@@ -2943,9 +2943,13 @@ impl<'a> Emitter<'a> {
                 return Err(at(name, "This method needs an object."));
             }
         };
-        let signature = methods
-            .get(name.text)
-            .ok_or_else(|| at(name, "This type has no method with that name."))?;
+        let signature = methods.get(name.text).ok_or_else(|| {
+            let known: Vec<&str> = methods.keys().copied().collect();
+            at(
+                name,
+                suggest("This type has no method with that name.", name.text, &known),
+            )
+        })?;
         let args =
             self.complete_args(method, name, signature, args, DefaultHost::Instance(kind))?;
         method.stack.push(self.local_type(kind));
