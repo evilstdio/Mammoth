@@ -247,6 +247,7 @@ pub enum ListKind {
     Nested(usize),
 }
 
+#[derive(Clone)]
 pub enum WhenCondition<'a> {
     /// The subject equals this value (or, without a subject, this is true).
     Value(Expr<'a>),
@@ -255,6 +256,7 @@ pub enum WhenCondition<'a> {
     In(Expr<'a>, Expr<'a>, bool),
 }
 
+#[derive(Clone)]
 pub struct WhenBranch<'a> {
     /// Empty for the `else` branch.
     pub conditions: Vec<WhenCondition<'a>>,
@@ -263,6 +265,7 @@ pub struct WhenBranch<'a> {
     pub value: Option<Box<Expr<'a>>>,
 }
 
+#[derive(Clone)]
 pub struct Catch<'a> {
     pub name: Name<'a>,
     /// The exception type to catch. `None` catches any `Exception`.
@@ -270,6 +273,7 @@ pub struct Catch<'a> {
     pub body: Vec<Statement<'a>>,
 }
 
+#[derive(Clone)]
 pub enum Statement<'a> {
     /// `return value`, or a bare `return` in a function without a result.
     Return(Name<'a>, Option<Expr<'a>>),
@@ -350,6 +354,7 @@ pub enum Arithmetic {
     Rem,
 }
 
+#[derive(Clone)]
 pub enum Expr<'a> {
     List(usize, Vec<Expr<'a>>),
     Index(Box<Expr<'a>>, Box<Expr<'a>>),
@@ -383,6 +388,12 @@ pub enum Expr<'a> {
     Elvis(Box<Expr<'a>>, Box<Expr<'a>>),
     /// `start..end` (inclusive) or `start until end` (exclusive), used by `for` loops.
     Range(Box<Expr<'a>>, Box<Expr<'a>>, bool),
+    /// `parameter = value` in a call.
+    Named(Name<'a>, Box<Expr<'a>>),
+    /// A value the compiler stored in a local while rewriting a call.
+    Temp(Kind, u16),
+    /// A compiler-made call to a hidden static method of a class.
+    StaticHelper(usize, Name<'a>, Vec<Expr<'a>>),
 }
 
 impl Expr<'_> {
@@ -397,6 +408,8 @@ impl Expr<'_> {
             | Self::Bool(offset, _)
             | Self::List(offset, _)
             | Self::Null(offset) => *offset,
+            Self::Named(name, _) | Self::StaticHelper(_, name, _) => name.offset,
+            Self::Temp(..) => 0,
             Self::Variable(name) | Self::Call(name, _) => name.offset,
             Self::MethodCall(receiver, _, _)
             | Self::Index(receiver, _)
@@ -416,6 +429,7 @@ impl Expr<'_> {
     }
 }
 
+#[derive(Clone)]
 pub struct Lambda<'a> {
     pub offset: usize,
     /// Parameter names with their optional types.
@@ -427,6 +441,7 @@ pub struct Lambda<'a> {
     pub value: Option<Box<Expr<'a>>>,
 }
 
+#[derive(Clone)]
 pub enum Part<'a> {
     Literal(String),
     Value(Expr<'a>),
@@ -437,6 +452,8 @@ pub fn parse(source: &str) -> Result<Program<'_>, Error> {
         source,
         offset: 0,
         in_header: false,
+        pending_defaults: Vec::new(),
+        finished_helpers: Vec::new(),
     };
     let mut program = Program {
         source_name: String::new(),
@@ -477,6 +494,10 @@ pub fn parse(source: &str) -> Result<Program<'_>, Error> {
             let mut function = parser.function(true)?;
             function.exported = true;
             program.functions.push(function);
+            for mut helper in parser.finished_helpers.drain(..) {
+                helper.exported = true;
+                program.functions.push(helper);
+            }
         } else if name.text == "java" && parser.take_word("fun") {
             program.java.push(parser.java_binding()?);
         } else if name.text == "java" && parser.take_word("let") {
@@ -495,6 +516,7 @@ pub fn parse(source: &str) -> Result<Program<'_>, Error> {
             program.java_classes.push(parser.java_class(true)?);
         } else if name.text == "fun" {
             program.functions.push(parser.function(true)?);
+            program.functions.append(&mut parser.finished_helpers);
         } else if name.text == "class" {
             program.classes.push(parser.class(false, false, false)?);
         } else if name.text == "abstract" && parser.take_word("class") {
@@ -536,6 +558,11 @@ struct Parser<'a> {
     /// True while reading an `if`, `while`, or `for` header, where a `{`
     /// starts the block rather than a trailing lambda.
     in_header: bool,
+    /// Default parameter values read but not yet made into helpers: the
+    /// parameter's index, the value, and its source range.
+    pending_defaults: Vec<(usize, Expr<'a>, usize, usize)>,
+    /// Helpers for the function just parsed, for its caller to file.
+    finished_helpers: Vec<Function<'a>>,
 }
 
 impl<'a> Parser<'a> {
@@ -786,6 +813,7 @@ impl<'a> Parser<'a> {
                 method.is_abstract = true;
             }
             methods.push(method);
+            methods.append(&mut self.finished_helpers);
         }
         Ok(Interface {
             annotations: Vec::new(),
@@ -829,6 +857,7 @@ impl<'a> Parser<'a> {
         let mut fields = Vec::new();
         let mut initializers = Vec::new();
         if self.take("(") {
+            let mut index = 0;
             let declared = self.list(")", |parser| {
                 let annotations = parser.annotations()?;
                 let private = parser.take_word("private");
@@ -852,6 +881,8 @@ impl<'a> Parser<'a> {
                 let parameter = parser.binding()?;
                 parser.expect(":", "Expected ':' followed by the parameter type.")?;
                 let annotation = parser.annotation()?;
+                parser.default_value(index)?;
+                index += 1;
                 Ok((parameter, annotation, mutable, private, protected, annotations))
             })?;
             for (parameter, annotation, mutable, private, protected, annotations) in declared {
@@ -870,10 +901,29 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        let constructor_helpers = self.default_helpers("new", &parameters, &[], &[]);
+        for helper in &constructor_helpers {
+            let generic = |annotation: Name<'_>| {
+                type_parameters.iter().any(|parameter| {
+                    annotation
+                        .text
+                        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+                        .any(|word| word == parameter.text)
+                })
+            };
+            if helper.result.is_some_and(generic)
+                || helper.parameters.iter().any(|(_, kind)| generic(*kind))
+            {
+                return Err(Error {
+                    offset: helper.name.offset,
+                    message: "A constructor default value cannot use the class's type parameters yet.",
+                });
+            }
+        }
         let extends = if self.take_word("extends") {
             let parent = self.annotation()?;
             let args = if self.take("(") {
-                self.list(")", Self::expression)?
+                self.list(")", |parser| parser.argument(0))?
             } else {
                 Vec::new()
             };
@@ -912,7 +962,7 @@ impl<'a> Parser<'a> {
                 fields,
                 methods: Vec::new(),
                 static_fields: Vec::new(),
-                static_methods: Vec::new(),
+                static_methods: constructor_helpers,
                 static_initializers: Vec::new(),
                 initializers,
                 is_data,
@@ -963,7 +1013,7 @@ impl<'a> Parser<'a> {
         }
         let mut methods = Vec::new();
         let mut static_fields = Vec::new();
-        let mut static_methods = Vec::new();
+        let mut static_methods = constructor_helpers;
         let mut static_initializers = Vec::new();
         while !self.take("}") {
             if self.rest().is_empty() {
@@ -1003,6 +1053,7 @@ impl<'a> Parser<'a> {
                         function.annotations = annotations;
                         function.private = private;
                         static_methods.push(function);
+                        static_methods.append(&mut self.finished_helpers);
                     }
                     "var" | "let" => {
                         let mutable = member.text == "var";
@@ -1064,6 +1115,12 @@ impl<'a> Parser<'a> {
                     function.protected = protected;
                     function.is_abstract = abstract_member;
                     function.is_override = is_override;
+                    if is_override && !self.finished_helpers.is_empty() {
+                        return Err(Error {
+                            offset: function.name.offset,
+                            message: "An override uses the default values of the method it overrides. Remove them here.",
+                        });
+                    }
                     function.exported = exported;
                     if exported && (private || abstract_member) {
                         return Err(Error {
@@ -1078,6 +1135,7 @@ impl<'a> Parser<'a> {
                         });
                     }
                     methods.push(function);
+                    methods.append(&mut self.finished_helpers);
                 }
                 "var" | "let" if !abstract_member && !is_override && !exported => {
                     let mutable = member.text == "var";
@@ -1170,6 +1228,8 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
+        let helpers = self.default_helpers(name.text, &parameters, &type_parameters, &bounds);
+        self.finished_helpers.extend(helpers);
         Ok(Function {
             annotations: Vec::new(),
             type_parameters,
@@ -1281,11 +1341,112 @@ impl<'a> Parser<'a> {
     }
 
     fn parameters(&mut self) -> Result<Vec<(Name<'a>, Name<'a>)>, Error> {
+        let mut index = 0;
         self.list(")", |parser| {
             let parameter = parser.binding()?;
             parser.expect(":", "Expected ':' followed by the parameter type.")?;
-            Ok((parameter, parser.annotation()?))
+            let annotation = parser.annotation()?;
+            parser.default_value(index)?;
+            index += 1;
+            Ok((parameter, annotation))
         })
+    }
+
+    /// Reads `= value` after parameter number `index`, if it is there.
+    fn default_value(&mut self, index: usize) -> Result<(), Error> {
+        if self.take_assignment() {
+            self.skip_space();
+            let start = self.offset;
+            let value = self.expression()?;
+            self.pending_defaults
+                .push((index, value, start, self.offset));
+        }
+        Ok(())
+    }
+
+    /// Turns the default values just read into hidden helper functions named
+    /// `base$default$index`, each receiving the earlier parameters it mentions.
+    fn default_helpers(
+        &mut self,
+        base: &str,
+        parameters: &[(Name<'a>, Name<'a>)],
+        type_parameters: &[Name<'a>],
+        bounds: &[Vec<Name<'a>>],
+    ) -> Vec<Function<'a>> {
+        std::mem::take(&mut self.pending_defaults)
+            .into_iter()
+            .map(|(index, value, start, end)| {
+                let text = &self.source[start..end];
+                let mentions = |name: &str| {
+                    text.match_indices(name).any(|(at, _)| {
+                        let before = text[..at].chars().next_back();
+                        let after = text[at + name.len()..].chars().next();
+                        let word = |ch: Option<char>| {
+                            ch.is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
+                        };
+                        !word(before) && !word(after)
+                    })
+                };
+                let name = Name {
+                    text: Box::leak(format!("{base}$default${index}").into_boxed_str()),
+                    offset: value.offset(),
+                };
+                let inputs: Vec<(Name<'a>, Name<'a>)> = parameters[..index]
+                    .iter()
+                    .filter(|(parameter, _)| mentions(parameter.text))
+                    .copied()
+                    .collect();
+                let result = parameters[index].1;
+                // Keep only the type parameters this helper can see, so a
+                // call can always infer them.
+                let in_annotation = |annotation: Name<'_>, parameter: &str| {
+                    annotation
+                        .text
+                        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+                        .any(|word| word == parameter)
+                };
+                let kept: Vec<usize> = (0..type_parameters.len())
+                    .filter(|&position| {
+                        let parameter = type_parameters[position].text;
+                        in_annotation(result, parameter)
+                            || mentions(parameter)
+                            || inputs
+                                .iter()
+                                .any(|(_, kind)| in_annotation(*kind, parameter))
+                    })
+                    .collect();
+                Function {
+                    annotations: Vec::new(),
+                    type_parameters: kept.iter().map(|&at| type_parameters[at]).collect(),
+                    bounds: kept.iter().map(|&at| bounds[at].clone()).collect(),
+                    exported: false,
+                    foreign_name: None,
+                    name,
+                    parameters: inputs,
+                    result: Some(result),
+                    body: vec![Statement::Return(name, Some(value))],
+                    private: false,
+                    protected: false,
+                    is_abstract: false,
+                    is_override: false,
+                }
+            })
+            .collect()
+    }
+
+    /// A call argument, which may be written `parameter = value`.
+    fn argument(&mut self, depth: usize) -> Result<Expr<'a>, Error> {
+        self.skip_space();
+        let start = self.offset;
+        if let Some(label) = identifier(self.rest(), self.offset) {
+            self.offset += label.text.len();
+            if self.take_assignment() {
+                let value = self.logical(0, depth)?;
+                return Ok(Expr::Named(label, Box::new(value)));
+            }
+            self.offset = start;
+        }
+        self.logical(0, depth)
     }
 
     /// Reads an optional `out` or `in` before an interface type parameter.
@@ -1575,7 +1736,7 @@ impl<'a> Parser<'a> {
             vec![lambda]
         } else {
             self.expect("(", "Expected '(' for a call or '=' for an assignment.")?;
-            let mut args = self.list(")", Self::expression)?;
+            let mut args = self.list(")", |parser| parser.argument(0))?;
             if let Some(lambda) = self.trailing_lambda(0)? {
                 args.push(lambda);
             }
@@ -2093,7 +2254,7 @@ impl<'a> Parser<'a> {
                     name
                 };
                 if !self.newline_ahead() && self.take("(") {
-                    let mut args = self.list(")", |parser| parser.logical(0, nested + 1))?;
+                    let mut args = self.list(")", |parser| parser.argument(nested + 1))?;
                     if let Some(lambda) = self.trailing_lambda(nested + 1)? {
                         args.push(lambda);
                     }
@@ -2262,7 +2423,7 @@ impl<'a> Parser<'a> {
                 if depth == 64 {
                     return Err(self.error("Expressions can be nested up to 64 levels."));
                 }
-                let mut args = self.list(")", |parser| parser.logical(0, depth + 1))?;
+                let mut args = self.list(")", |parser| parser.argument(depth + 1))?;
                 if let Some(lambda) = self.trailing_lambda(depth + 1)? {
                     args.push(lambda);
                 }
@@ -2375,6 +2536,8 @@ impl<'a> Parser<'a> {
             source: &self.source[..end],
             offset: self.offset,
             in_header: false,
+            pending_defaults: Vec::new(),
+            finished_helpers: Vec::new(),
         };
         let expr = inner.logical(0, 1).ok()?;
         inner.skip_space();

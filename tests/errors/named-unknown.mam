@@ -1,0 +1,3 @@
+// error: no parameter with that name
+fun f(a: Int = 1) { }
+f(b = 2)

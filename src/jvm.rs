@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::classpath::ClassPath;
+use defaults::DefaultHost;
 
 use crate::syntax::{
     Arithmetic, Catch, Class, Comparison, Condition, Error, Expr, Function, Initializer, Interface,
@@ -21,6 +22,7 @@ mod builtins;
 mod casts;
 mod classes;
 mod collections;
+mod defaults;
 mod exceptions;
 mod function_types;
 mod generic_methods;
@@ -1219,6 +1221,13 @@ fn emit_class<'a>(
             let parent = symbols.superclasses[index].expect("superclass was resolved");
             let parent_signature = &symbols.constructors[parent];
             constructor.stack.push(Local::UninitializedThis);
+            let args = emitter.complete_args(
+                &mut constructor,
+                *parent_name,
+                &parent_signature.parameters,
+                args,
+                DefaultHost::Constructor(parent),
+            )?;
             if args.len() != parent_signature.parameters.len() {
                 return Err(at(
                     *parent_name,
@@ -2302,6 +2311,16 @@ impl<'a> Emitter<'a> {
             instruction(&mut method.code, 0xbb, receiver); // new
             method.code.push(0x59); // dup
             method.stack.extend([uninitialized, uninitialized]);
+            let args = match kind {
+                Kind::Object(class) => self.complete_args(
+                    method,
+                    name,
+                    &signature.parameters,
+                    args,
+                    DefaultHost::Constructor(class),
+                )?,
+                _ => args,
+            };
             self.call_arguments(method, name, args, signature, base + 2)?;
             method.stack.truncate(base as usize);
             instruction(&mut method.code, 0xb7, constructor); // invokespecial
@@ -2321,6 +2340,13 @@ impl<'a> Emitter<'a> {
             }
             return Err(at(name, "This function or class has not been defined."));
         };
+        let args = self.complete_args(
+            method,
+            name,
+            &signature.parameters,
+            args,
+            DefaultHost::Function,
+        )?;
         self.call_arguments(method, name, args, signature, base)?;
         let foreign = self.symbols.java.get(name.text);
         if let Some(target) = foreign.or_else(|| self.symbols.imports.get(name.text)) {
@@ -2582,6 +2608,13 @@ impl<'a> Emitter<'a> {
             }
             Kind::Object(class) => {
                 let signature = self.find_class_method(class, name)?;
+                let args = self.complete_args(
+                    method,
+                    name,
+                    &signature.parameters,
+                    args,
+                    DefaultHost::Instance(kind),
+                )?;
                 method.stack.push(self.local_type(kind));
                 self.call_arguments(method, name, args, signature, base + 1)?;
                 method.stack.pop();
@@ -2611,6 +2644,13 @@ impl<'a> Emitter<'a> {
         let signature = methods
             .get(name.text)
             .ok_or_else(|| at(name, "This type has no method with that name."))?;
+        let args = self.complete_args(
+            method,
+            name,
+            &signature.parameters,
+            args,
+            DefaultHost::Instance(kind),
+        )?;
         method.stack.push(self.local_type(kind));
         self.call_arguments(method, name, args, signature, base + 1)?;
         method.stack.pop();
@@ -3284,6 +3324,19 @@ impl<'a> Emitter<'a> {
                 method.code.push(0x01); // aconst_null
                 Ok(Kind::Null)
             }
+            Expr::Named(label, _) => Err(at(
+                *label,
+                "Named arguments work only in calls to functions written in Mammoth.",
+            )),
+            Expr::Temp(kind, slot) => {
+                method.access(kind.load(), *slot);
+                method.max_stack = method.max_stack.max(base + kind.slots());
+                Ok(*kind)
+            }
+            Expr::StaticHelper(class, name, args) => self
+                .static_call(method, *class, *name, args, base)?
+                .flatten()
+                .ok_or_else(|| at(*name, "This default value does not give a value.")),
             Expr::Call(name, args) => {
                 if name.text == "print" {
                     return Err(at(*name, "print does not return a value."));

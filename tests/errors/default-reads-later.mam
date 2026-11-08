@@ -1,0 +1,3 @@
+// error: This variable has not been defined
+fun f(a: Int = b, b: Int = 1) { }
+f()

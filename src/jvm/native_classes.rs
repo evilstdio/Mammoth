@@ -1,5 +1,6 @@
 //! Applied Mammoth class types share one erased JVM class. Their arguments
 //! remain part of the checked type and are substituted at member accesses.
+use super::defaults::DefaultHost;
 use super::*;
 
 #[derive(Clone, PartialEq)]
@@ -311,6 +312,13 @@ impl<'a> Emitter<'a> {
             ));
         }
         let signature = &self.symbols.constructors[class];
+        let args = self.complete_args(
+            method,
+            name,
+            &signature.parameters,
+            args,
+            DefaultHost::Constructor(class),
+        )?;
         let mut inference = signature.clone();
         inference.type_parameters = self.symbols.types.class_parameters.borrow()[class].clone();
         inference.result = Some(self.symbols.types.self_kind(class));
@@ -349,9 +357,13 @@ impl<'a> Emitter<'a> {
         let signature = symbols.interfaces[interface]
             .get(name.text)
             .ok_or_else(|| at(name, "This type has no method with that name."))?;
-        if signature.parameters.len() != args.len() {
-            return Err(at(name, "This call has the wrong number of arguments."));
-        }
+        let args = self.complete_args(
+            method,
+            name,
+            &signature.parameters,
+            args,
+            DefaultHost::Instance(kind),
+        )?;
         let map = self.symbols.types.class_map(kind);
         method.push_stack(self.local_type(kind));
         self.adapted_arguments(method, args, base + 1, signature, &map)?;
@@ -395,9 +407,13 @@ impl<'a> Emitter<'a> {
                 .java_inherited_call(method, kind, class, name, args, base, allow_null, None);
         }
         let signature = self.find_class_method(class, name)?;
-        if signature.parameters.len() != args.len() {
-            return Err(at(name, "This call has the wrong number of arguments."));
-        }
+        let args = self.complete_args(
+            method,
+            name,
+            &signature.parameters,
+            args,
+            DefaultHost::Instance(kind),
+        )?;
         let owner = self.symbols.find_method(class, name.text).unwrap().0;
         let map = self.symbols.member_map(kind, owner);
         method.push_stack(self.local_type(kind));

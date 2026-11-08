@@ -399,6 +399,24 @@ pub(super) fn resolve<'a>(
                     member: function.name.text,
                 },
             );
+            // Default values travel with the function, under the local name.
+            let prefix = format!("{}$default$", function.name.text);
+            for helper in &programs[source].functions {
+                let Some(index) = helper.name.text.strip_prefix(prefix.as_str()) else {
+                    continue;
+                };
+                let name: &str =
+                    Box::leak(format!("{}$default${index}", local.text).into_boxed_str());
+                let signature = scopes[source].functions[helper.name.text].clone();
+                scopes[owner].functions.insert(name, signature);
+                scopes[owner].imports.insert(
+                    name,
+                    JavaTarget {
+                        class: import.module.clone(),
+                        member: helper.name.text,
+                    },
+                );
+            }
         }
     }
     let mut methods = Vec::new();

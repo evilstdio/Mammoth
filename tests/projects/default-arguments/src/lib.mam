@@ -1,0 +1,14 @@
+module demo.Lib
+export fun greet(name: Text, suffix: Text = "!"): Text { return name + suffix }
+export fun pairUp<T>(value: T, count: Int = 2): MutableList<T> {
+    let items = MutableList<T>()
+    var i = 0
+    while i < count {
+        items.add(value)
+        i += 1
+    }
+    return items
+}
+class Shape(let width: Int = 2, let height: Int = 3) {
+    fun area(scale: Int = 1): Int { return width * height * scale }
+}

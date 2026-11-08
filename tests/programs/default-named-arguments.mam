@@ -1,0 +1,123 @@
+// Default and named arguments on functions, methods, constructors, statics,
+// interfaces and generics, with arguments evaluated in written order.
+fun trace(label: Text, value: Int): Int {
+    print("eval {label}")
+    return value
+}
+fun greet(name: Text, punctuation: Text = "!", times: Int = 1): Text {
+    return "hello {name}{punctuation} x{times}"
+}
+print(greet("a"))
+print(greet("b", "?"))
+print(greet("c", times = 3))
+print(greet(times = 2, name = "d"))
+print(greet(punctuation = ".", name = "e", times = 4))
+
+// A default can read earlier parameters.
+fun span(start: Int, end: Int = start + 10, step: Int = end - start): Text {
+    return "{start}..{end} by {step}"
+}
+print(span(1))
+print(span(1, 5))
+print(span(trace("start", 2)))
+print(span(end = trace("end", 8), start = trace("start", 3)))
+
+// A default is evaluated each time, only when needed.
+var counter = 0
+fun nextId(): Int {
+    counter += 1
+    return counter
+}
+fun tag(id: Int = nextId()): Int { return id }
+print(tag())
+print(tag(50))
+print(tag())
+
+// Methods, including defaults that use the object.
+class Printer(let prefix: Text = ">", var width: Int = 2) {
+    fun line(text: Text = prefix, repeat: Int = width): Text {
+        return text.repeat(repeat)
+    }
+    fun twice(text: Text = "t"): Text { return line(text) + line(repeat = 1) }
+    static fun make(width: Int = 3, prefix: Text = "*"): Printer { return Printer(prefix, width) }
+}
+let printer = Printer()
+print(printer.line())
+print(printer.line("ab"))
+print(printer.line(repeat = 3))
+print(printer.twice())
+print(Printer(width = 1).line())
+print(Printer("#").line())
+print(Printer.make().line())
+print(Printer.make(prefix = "+").line())
+
+// A receiver with a side effect runs once.
+fun makePrinter(): Printer {
+    print("made")
+    return Printer("r", 1)
+}
+print(makePrinter().line())
+
+// Inheritance and interfaces.
+interface Sized {
+    fun size(scale: Int = 2): Int
+    fun label(text: Text = "size"): Text { return "{text}={size()}" }
+}
+open class Base(let n: Int = 7) implements Sized {
+    open fun size(scale: Int): Int { return n * scale }
+}
+class Derived extends Base(n = 4) {
+    override fun size(scale: Int): Int { return n * scale + 1 }
+}
+let sized: Sized = Derived()
+print(sized.size())
+print(sized.size(10))
+print(sized.label())
+print(Base().size(1))
+print(Derived().label(text = "d"))
+
+// Generics.
+fun firstOr<T>(items: MutableList<T>, fallback: T): T {
+    if items.size() == 0 { return fallback }
+    return items[0]
+}
+fun boxed<T>(value: T, count: Int = 2): MutableList<T> {
+    let items = MutableList<T>()
+    var i = 0
+    while i < count {
+        items.add(value)
+        i += 1
+    }
+    return items
+}
+print(boxed("x").size())
+print(boxed(5, count = 3).size())
+print(firstOr(fallback = 9, items = MutableList<Int>()) + 1)
+class Pair<A, B>(let first: A, let second: B, let note: Text = "none") {
+    fun show(separator: Text = "/"): Text { return "{first}{separator}{second} {note}" }
+}
+print(Pair(1, "b").show())
+print(Pair(note = "n", first = "a", second = 2).show(separator = "-"))
+
+// Trailing lambdas skip defaulted parameters.
+fun apply(value: Int, times: Int = 2, action: (Int) -> Int): Int {
+    var result = value
+    var i = 0
+    while i < times {
+        result = action(result)
+        i += 1
+    }
+    return result
+}
+print(apply(1) { x -> x + 1 })
+print(apply(1, 3) { x -> x * 2 })
+print(apply(value = 1, action = { x -> x + 5 }))
+
+// Nullable defaults and enums.
+fun maybe(text: Text? = null): Text { return text ?: "absent" }
+print(maybe())
+print(maybe("here"))
+enum Level(let rank: Int = 1) {
+    LOW, HIGH(5)
+}
+print(Level.LOW.rank + Level.HIGH.rank)

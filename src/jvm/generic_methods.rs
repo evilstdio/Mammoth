@@ -1,5 +1,6 @@
 //! Generic member calls combine the receiver's arguments with the method's
 //! own arguments, while invoking the same erased JVM method for every call.
+use super::defaults::DefaultHost;
 use super::*;
 
 pub(super) struct MemberCall<'a> {
@@ -59,6 +60,13 @@ impl<'a> Emitter<'a> {
             }
             None => self.symbols.types.class_map(call.receiver),
         };
+        call.args = self.complete_args(
+            method,
+            call.name,
+            &signature.parameters,
+            call.args,
+            DefaultHost::Instance(call.receiver),
+        )?;
         let mut inference = signature.clone();
         for (_, kind) in &mut inference.parameters {
             *kind = self.symbols.types.replace_parameters(*kind, &map);

@@ -7,6 +7,7 @@
 //! the class names the class, as in `Counter.bump()`; code inside the class
 //! and its subclasses can leave the class name out. Static methods have no
 //! `this`.
+use super::defaults::DefaultHost;
 use super::*;
 
 impl<'a> Symbols<'a> {
@@ -90,6 +91,13 @@ impl<'a> Emitter<'a> {
             .iter()
             .any(|function| function.name.text == name.text && function.private);
         self.check_static_access(owner, private, name)?;
+        let args = self.complete_args(
+            method,
+            name,
+            &signature.parameters,
+            args,
+            DefaultHost::Static(owner),
+        )?;
         self.call_arguments(method, name, args, signature, base)?;
         let class_index = self.object_class(Kind::Object(owner));
         let reference = self

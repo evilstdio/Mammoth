@@ -1,0 +1,3 @@
+// error: type parameters yet
+class P<T>(let v: T, let w: T = v)
+print(1)

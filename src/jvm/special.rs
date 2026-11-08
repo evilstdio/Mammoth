@@ -1,5 +1,6 @@
 //! Members generated for `enum` and `data class` declarations.
 
+use super::defaults::DefaultHost;
 use super::{
     Emitter, Error, FieldInfo, Kind, ListKind, Local, Method, Name, at, instruction, push_int,
     shorts,
@@ -57,6 +58,13 @@ impl<'a> Emitter<'a> {
                 Local::Int,
             ]);
             clinit.max_stack = clinit.max_stack.max(4);
+            let args = self.complete_args(
+                &mut clinit,
+                *name,
+                &signature.parameters,
+                args,
+                DefaultHost::Constructor(index),
+            )?;
             self.call_arguments(&mut clinit, *name, args, signature, 4)?;
             clinit.stack.clear();
             instruction(&mut clinit.code, 0xb7, init); // invokespecial

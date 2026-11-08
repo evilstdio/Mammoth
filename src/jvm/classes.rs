@@ -1,6 +1,7 @@
 //! Class features: field types, inheritance checks, field access, and calls on
 //! `this` and `super`.
 
+use super::defaults::DefaultHost;
 use std::collections::{HashMap, HashSet};
 
 use super::{
@@ -1382,6 +1383,9 @@ impl<'a> Symbols<'a> {
         scope: &dyn Fn(&str) -> Option<Kind>,
     ) -> Option<Kind> {
         Some(match expr {
+            Expr::Named(_, value) => return self.static_kind(value, scope),
+            Expr::Temp(kind, _) => *kind,
+            Expr::StaticHelper(..) => return None,
             Expr::Int(..) => Kind::Int,
             Expr::Long(..) => Kind::Long,
             Expr::Char(..) => Kind::Char,
@@ -1946,6 +1950,13 @@ impl<'a> Emitter<'a> {
         }
         let kind = Kind::Object(class);
         method.access(0x19, 0);
+        let args = self.complete_args(
+            method,
+            name,
+            &signature.parameters,
+            args,
+            DefaultHost::Instance(kind),
+        )?;
         method.stack.push(self.local_type(kind));
         self.call_arguments(method, name, args, signature, base + 1)?;
         method.stack.pop();
