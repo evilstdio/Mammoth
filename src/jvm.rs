@@ -2697,7 +2697,40 @@ impl<'a> Emitter<'a> {
         {
             return Ok(result);
         }
-        self.method_call_resolved(method, receiver, name, args, base, expected)
+        let saved = method.snapshot();
+        let result = self.method_call_resolved(method, receiver, name, args, base, expected);
+        if let Err(error) = &result
+            && error.message == "This type has no method with that name."
+            && let Some(hint) = self.method_hint(method, saved, receiver, name, error.message)
+        {
+            return Err(Error {
+                offset: error.offset,
+                message: hint,
+            });
+        }
+        result
+    }
+
+    /// The missing-method message with a suggestion from the receiver's type.
+    fn method_hint(
+        &mut self,
+        method: &mut Method<'a>,
+        saved: MethodState,
+        receiver: &'a Expr<'a>,
+        name: Name<'a>,
+        message: &'static str,
+    ) -> Option<&'static str> {
+        method.restore(saved);
+        let depth = method.stack.len() as u16;
+        let kind = self.expression(method, receiver, depth).ok()?;
+        let symbols = self.symbols;
+        let class = symbols.types.native_class(kind.non_null())?;
+        let known: Vec<&str> = symbols
+            .ancestors(class)
+            .chain(std::iter::once(class))
+            .flat_map(|owner| symbols.methods[owner].keys().copied())
+            .collect();
+        Some(suggest(message, name.text, &known))
     }
 
     fn method_call_resolved(
