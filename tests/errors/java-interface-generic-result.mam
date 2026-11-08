@@ -1,0 +1,6 @@
+// error: type arguments
+import java.util.function.Supplier
+class S2 implements Supplier<Int> {
+    fun get(): Text { return "x" }
+}
+print(1)

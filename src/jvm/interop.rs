@@ -456,6 +456,10 @@ impl Types<'_> {
             JType::Class(name) => self.java_kind(name),
             JType::Array(inner) => {
                 let element = match inner.as_ref() {
+                    JType::Array(_) => self
+                        .kind_of(inner)
+                        .filter(|kind| matches!(kind, Kind::List(_)))
+                        .and_then(ListKind::for_element),
                     JType::Int => Some(ListKind::Int),
                     JType::Long => Some(ListKind::Long),
                     JType::Double => Some(ListKind::Double),
@@ -520,6 +524,9 @@ impl Types<'_> {
                 J::Int => Some(0),
                 J::Long => Some(1),
                 J::Float | J::Double => Some(2),
+                // Mammoth has no Byte or Short type, so an Int reaches those
+                // parameters, truncated as a Java cast would, after any `int`.
+                J::Byte | J::Short => Some(3),
                 _ => boxing(kind),
             },
             Kind::Long => match target {
@@ -1305,6 +1312,8 @@ impl<'a> Emitter<'a> {
             (Kind::Long, J::Float) => method.code.push(0x89),
             (Kind::Long, J::Double) => method.code.push(0x8a),
             (Kind::Double, J::Float) => method.code.push(0x90), // d2f
+            (Kind::Int, J::Byte) => method.code.push(0x91),     // i2b
+            (Kind::Int, J::Short) => method.code.push(0x93),    // i2s
             (Kind::Int | Kind::Long | Kind::Double | Kind::Bool | Kind::Char, J::Class(_)) => {
                 self.box_value(method, kind)
             }
@@ -2409,6 +2418,7 @@ impl Emitter<'_> {
                 let narrowing = matches!(
                     (argument, target),
                     (Argument::Value(Kind::Double), JType::Float)
+                        | (Argument::Value(Kind::Int), JType::Byte | JType::Short)
                 );
                 match self.java_argument_cost(argument, target) {
                     _ if narrowing => 1,

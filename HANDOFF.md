@@ -1,3 +1,14 @@
+# Latest: generic Java interfaces, narrow numbers, null text (2026-11-08, session 3)
+
+- **Unsound before.** `class C implements Conv<Text, Int> { fun conv(a: Int): Int }` compiled because only the erased signature was checked. `check_java_interface` now uses the same type-argument comparison as Java superclasses (`classes.rs` `uses_java_arguments`).
+- **Also fixed.**
+  - An `enum` cannot be extended, and a `final` Java method cannot be overridden (`check_classes`, `check_generic_java_override`).
+  - Assignments can start with a call: `make(k).v += 2`, `list()[1] = 7` (`syntax.rs` `member_assignment`).
+  - `int[][]` and `String[][]` from Java are indexable nested lists (`kind_of`).
+  - An `Int` argument reaches Java `byte` and `short` parameters after any `int` overload, truncated like a Java cast.
+  - Text templates, `+` joining, and `==`/`!=` accept a null Java result instead of throwing.
+- **Batteries.** `advcases.py`, `advcases2.py`, `advcases3.py`, `jdkcases.py` in the scratchpad hold about 340 focused programs. All `R_` cases are rejected and all `A_` cases run, except these by-design or known items: `a ?: return 0` is unsupported, `"{{"` is not an escape (`\\{` is), a string constant over 65535 bytes and a branch over 32 KB are clean compile errors.
+
 # Latest: real-library call forms (2026-11-08, session 3)
 
 - **Battery.** `jdkcases.py` in the session scratchpad runs 122 common JDK usage snippets (streams, collections, Optional, java.time, files, concurrency, comparators). 111 pass. The 11 that do not: 6 use the Kotlin-style `Runnable { }` constructor form (write `let r: Runnable = { ... }` instead, which works); 2 use fully qualified names in expressions; `"ab".chars()` is a Mammoth builtin returning a list; `byte[]` is an opaque Java value with no `.size()` or indexing; an unannotated `Map.compute` lambda cannot compare its `Int` input to null and now says to write `v: Int?`.

@@ -3416,6 +3416,7 @@ impl<'a> Emitter<'a> {
                     });
                 }
                 method.stack.push(Local::Object(self.refs.builder));
+                self.allow_null = true; // Joined text shows null as "null".
                 let rhs = self.expression(method, right, base + 1)?;
                 method.stack.pop();
                 self.append_value(method, rhs, base + 1);
@@ -3546,7 +3547,10 @@ impl<'a> Emitter<'a> {
     ) -> Result<Kind, Error> {
         let text = match part {
             Part::Literal(text) => text,
-            Part::Value(expr) => return self.expression(method, expr, base),
+            Part::Value(expr) => {
+                self.allow_null = true; // A template shows null as "null".
+                return self.expression(method, expr, base);
+            }
         };
         let index = match self.strings.get(text.as_str()) {
             Some(&index) => index,
@@ -3621,7 +3625,9 @@ impl<'a> Emitter<'a> {
                 return Ok(branches);
             }
             Expr::Compare(left, comparison, right) => {
-                self.allow_null = matches!(right.as_ref(), Expr::Null(_));
+                // `==` and `!=` handle null, so a null Java result is fine here.
+                let equality = matches!(comparison, Comparison::Eq | Comparison::Ne);
+                self.allow_null = equality;
                 let lhs = self.expression(method, left, base)?;
                 let operand = if lhs == Kind::Null {
                     Local::Null
@@ -3629,7 +3635,7 @@ impl<'a> Emitter<'a> {
                     self.local_type(lhs)
                 };
                 method.push_stack(operand);
-                self.allow_null = lhs == Kind::Null;
+                self.allow_null = equality;
                 let rhs = self.expression(method, right, base + lhs.slots())?;
                 method.pop_stack();
                 let (yes, no) =
@@ -3647,9 +3653,6 @@ impl<'a> Emitter<'a> {
         Ok(vec![branch])
     }
 
-    /// With two values of types `lhs` and `rhs` on the stack, emits what is
-    /// needed to compare them and returns the (branch-if-true,
-    /// branch-if-false) opcodes. `left` and `right` locate errors.
     /// Whether two class types share no subclass relation. Interfaces and
     /// generic types are left out, since one object can be both.
     fn unrelated_classes(&self, lhs: Kind, rhs: Kind) -> bool {
@@ -3660,6 +3663,9 @@ impl<'a> Emitter<'a> {
             && !self.symbols.fits(rhs, lhs)
     }
 
+    /// With two values of types `lhs` and `rhs` on the stack, emits what is
+    /// needed to compare them and returns the (branch-if-true,
+    /// branch-if-false) opcodes. `left` and `right` locate errors.
     #[allow(clippy::too_many_arguments)]
     fn compare_kinds(
         &mut self,

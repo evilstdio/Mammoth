@@ -1,0 +1,5 @@
+// error: type arguments
+class C2 implements Comparable<Text> {
+    fun compareTo(o: Int): Int { return 0 }
+}
+print(1)

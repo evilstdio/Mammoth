@@ -1,5 +1,13 @@
 # Changelog
 
+## Generic Java interfaces and null text, 2026-11-08
+
+- Methods implementing a generic Java interface must use its type arguments.
+- Extending an enum and overriding a `final` Java method are compile errors.
+- Assignment targets may start with a call, as in `make(k).v += 2`.
+- Nested Java arrays can be indexed. `Int` values can be passed to Java `byte` and `short` parameters.
+- Text templates, `+` joining and `==` accept null results from Java.
+
 ## Java call forms, 2026-11-08
 
 - Java calls accept explicit type arguments, such as `Collections.emptyList<Text>()`, and check arguments against them.

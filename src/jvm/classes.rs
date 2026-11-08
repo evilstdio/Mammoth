@@ -1088,6 +1088,36 @@ impl<'a> Symbols<'a> {
                     "This method's parameter and result types must match the Java interface.",
                 ));
             }
+            let generic = required
+                .signature
+                .as_deref()
+                .and_then(super::generics::parse_method_signature)
+                .filter(|generic| generic.variables.is_empty());
+            let view = self
+                .java_generic_views(self.types.self_kind(class))
+                .into_iter()
+                .find(|&view| {
+                    self.types
+                        .runtime_class_name(view)
+                        .is_some_and(|binary| self.types.is_java_subclass(&binary, &required.owner))
+                });
+            if let (Some(generic), Some(view)) = (generic, view)
+                && !self.uses_java_arguments(
+                    found,
+                    &generic,
+                    &self.types.substitution(view, &required.owner),
+                )
+            {
+                let name = self.class_declarations[owner]
+                    .methods
+                    .iter()
+                    .find(|entry| entry.name.text == required.name)
+                    .map_or(name, |entry| entry.name);
+                return Err(at(
+                    name,
+                    "This method must use the Java interface's type arguments.",
+                ));
+            }
             if self.method_flags[owner][required.name.as_str()].0 {
                 return Err(at(
                     name,
@@ -1142,29 +1172,7 @@ impl<'a> Symbols<'a> {
                 continue;
             }
             let map = self.types.substitution(view, &inherited.owner);
-            let parameters_match =
-                generic
-                    .parameters
-                    .iter()
-                    .zip(&signature.parameters)
-                    .all(|(gtype, &(_, kind))| {
-                        self.types.generic_kind(gtype, &map).is_none_or(|expected| {
-                            self.types.same_kind(expected.non_null(), kind.non_null())
-                        })
-                    });
-            let result_matches = match (
-                self.types.generic_kind(&generic.result, &map),
-                signature.result,
-            ) {
-                (Some(expected), Some(actual)) if !expected.is_reference() => {
-                    self.types.same_kind(expected, actual)
-                }
-                (Some(expected), Some(actual)) => {
-                    self.fits(actual, expected.nullable().unwrap_or(expected))
-                }
-                _ => true,
-            };
-            if !parameters_match || !result_matches {
+            if !self.uses_java_arguments(signature, &generic, &map) {
                 return Err(at(
                     method.name,
                     "This method must use the generic Java superclass's type arguments in the method it overrides.",
@@ -1172,6 +1180,40 @@ impl<'a> Symbols<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Whether a method's types are the Java method's types with the class's
+    /// type arguments filled in. Erasure alone would accept `conv(a: Int)`
+    /// for `conv(A)` in a `Conv<Text, Int>`.
+    fn uses_java_arguments(
+        &self,
+        signature: &Signature<'_>,
+        generic: &super::generics::MethodSignature,
+        map: &HashMap<String, Kind>,
+    ) -> bool {
+        let parameters_match =
+            generic
+                .parameters
+                .iter()
+                .zip(&signature.parameters)
+                .all(|(gtype, &(_, kind))| {
+                    self.types.generic_kind(gtype, map).is_none_or(|expected| {
+                        self.types.same_kind(expected.non_null(), kind.non_null())
+                    })
+                });
+        let result_matches = match (
+            self.types.generic_kind(&generic.result, map),
+            signature.result,
+        ) {
+            (Some(expected), Some(actual)) if !expected.is_reference() => {
+                self.types.same_kind(expected, actual)
+            }
+            (Some(expected), Some(actual)) => {
+                self.fits(actual, expected.nullable().unwrap_or(expected))
+            }
+            _ => true,
+        };
+        parameters_match && result_matches
     }
 
     pub(super) fn java_compatible(

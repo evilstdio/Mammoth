@@ -1,0 +1,14 @@
+// Int reaches Java byte and short parameters. Text joining shows Java null.
+import java.nio.ByteBuffer
+import java.util.HashMap
+print(Short.toString(300))
+print(Byte.toString(127))
+print(Byte.toString(200))
+print(ByteBuffer.allocate(4).putShort(7).position())
+let m = HashMap<Text, Text>()
+print("{m.get("gone")}")
+print("value: " + m.get("gone"))
+class Named implements Comparable<Named> {
+    fun compareTo(o: Named): Int { return 0 }
+}
+print(Named().compareTo(Named()))
