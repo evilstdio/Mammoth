@@ -609,7 +609,24 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
                 "Object" => Some(Kind::Any),
                 _ => types.implicit_java_class(name.text),
             })
-            .ok_or_else(|| at(name, "This type has not been defined.")),
+            .ok_or_else(|| {
+                let mut known: Vec<&str> = types.names.keys().copied().collect();
+                known.extend([
+                    "Text",
+                    "Int",
+                    "Long",
+                    "Double",
+                    "Bool",
+                    "Char",
+                    "Any",
+                    "List",
+                    "MutableList",
+                ]);
+                at(
+                    name,
+                    suggest("This type has not been defined.", name.text, &known),
+                )
+            }),
     }
 }
 
@@ -2568,7 +2585,26 @@ impl<'a> Emitter<'a> {
             if let Some(path) = self.outer_path(method, name, true) {
                 return self.method_call_expected(method, path, name, args, base, expected);
             }
-            return Err(at(name, "This function or class has not been defined."));
+            let known: Vec<&str> = self
+                .symbols
+                .functions
+                .keys()
+                .copied()
+                .chain(self.symbols.types.names.keys().copied())
+                .chain(
+                    self.current_class
+                        .into_iter()
+                        .flat_map(|class| self.symbols.methods[class].keys().copied()),
+                )
+                .collect();
+            return Err(at(
+                name,
+                suggest(
+                    "This function or class has not been defined.",
+                    name.text,
+                    &known,
+                ),
+            ));
         };
         let args = self.complete_args(method, name, signature, args, DefaultHost::Function)?;
         self.call_arguments(method, name, args, signature, base)?;
@@ -3324,7 +3360,21 @@ impl<'a> Emitter<'a> {
         if let Some(path) = self.outer_path(method, name, false) {
             return self.field_access(method, path, name, base);
         }
-        Err(at(name, "This variable has not been defined here."))
+        let known: Vec<&str> = method
+            .variables
+            .iter()
+            .map(|binding| binding.name)
+            .chain(self.fields.keys().copied())
+            .chain(self.symbols.globals.iter().map(|global| global.name))
+            .collect();
+        Err(at(
+            name,
+            suggest(
+                "This variable has not been defined here.",
+                name.text,
+                &known,
+            ),
+        ))
     }
 
     fn runtime_class(&mut self, name: &'static str) -> u16 {
@@ -5022,6 +5072,44 @@ fn widening_opcode(from: Kind, to: Kind) -> u8 {
         (Kind::Int, Kind::Double) => 0x87,  // i2d
         (Kind::Long, Kind::Double) => 0x8a, // l2d
         _ => unreachable!("only Int and Long values widen"),
+    }
+}
+
+/// The number of single-letter edits between two short names.
+fn edit_distance(left: &str, right: &str) -> usize {
+    let right: Vec<char> = right.chars().collect();
+    let mut row: Vec<usize> = (0..=right.len()).collect();
+    for (i, a) in left.chars().enumerate() {
+        let mut previous = row[0];
+        row[0] = i + 1;
+        for (j, b) in right.iter().enumerate() {
+            let current = row[j + 1];
+            row[j + 1] = if a == *b {
+                previous
+            } else {
+                1 + previous.min(current).min(row[j])
+            };
+            previous = current;
+        }
+    }
+    row[right.len()]
+}
+
+/// `message`, followed by the closest of `known` if one looks like a typo.
+fn suggest(message: &'static str, wanted: &str, known: &[&str]) -> &'static str {
+    let wanted = wanted.split('<').next().unwrap_or(wanted);
+    let lowered = wanted.to_lowercase();
+    let limit = (wanted.chars().count() / 3).clamp(1, 3);
+    let best = known
+        .iter()
+        .filter(|name| !name.starts_with("__") && !name.contains('$') && **name != wanted)
+        .filter(|name| name.len().abs_diff(wanted.len()) <= limit)
+        .map(|name| (edit_distance(&lowered, &name.to_lowercase()), *name))
+        .filter(|(distance, _)| *distance <= limit)
+        .min();
+    match best {
+        Some((_, name)) => Box::leak(format!("{message} Did you mean {name}?").into_boxed_str()),
+        None => message,
     }
 }
 

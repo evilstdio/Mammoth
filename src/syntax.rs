@@ -1914,6 +1914,11 @@ impl<'a> Parser<'a> {
             });
         }
         self.skip_space();
+        if self.rest().starts_with(':') {
+            return Err(
+                self.error("Write extends for a superclass and implements for an interface.")
+            );
+        }
         if !is_enum && !self.rest().starts_with('{') {
             // A class without a body, such as `data class Point(let x: Int, let y: Int)`.
             return Ok(Class {
@@ -4060,6 +4065,12 @@ impl<'a> Parser<'a> {
             .collect()
     }
 
+    /// Skips spaces and tabs, but not line breaks or comments.
+    fn skip_inline_space(&mut self) {
+        let rest = self.rest();
+        self.offset += rest.len() - rest.trim_start_matches([' ', '\t']).len();
+    }
+
     fn rest_trimmed(&mut self) -> &'a str {
         self.skip_space();
         self.rest()
@@ -4601,6 +4612,13 @@ impl<'a> Parser<'a> {
             }
         };
         let first = self.logical(precedence + 1, depth)?;
+        self.skip_inline_space();
+        if self.rest().starts_with("&&") {
+            return Err(self.error("Mammoth writes and instead of &&."));
+        }
+        if self.rest().starts_with("||") {
+            return Err(self.error("Mammoth writes or instead of ||."));
+        }
         if !self.take_word(word) {
             return Ok(first);
         }
@@ -5168,6 +5186,9 @@ impl<'a> Parser<'a> {
                 "null" => Expr::Null(offset),
                 _ => Expr::Variable(name),
             });
+        }
+        if self.rest().starts_with('!') {
+            return Err(self.error("Mammoth writes not value instead of !value."));
         }
         Err(self.error("Expected a value such as text, an integer, or a variable."))
     }

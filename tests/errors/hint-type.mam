@@ -1,0 +1,2 @@
+// error: Did you mean Text
+let x: Txt = "a"

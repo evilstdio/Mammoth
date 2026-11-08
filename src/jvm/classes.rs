@@ -1624,9 +1624,17 @@ impl<'a> Emitter<'a> {
         name: Name<'_>,
     ) -> Result<&'a Signature<'a>, Error> {
         let symbols = self.symbols;
-        let (owner, signature) = symbols
-            .find_method(class, name.text)
-            .ok_or_else(|| at(name, "This type has no method with that name."))?;
+        let (owner, signature) = symbols.find_method(class, name.text).ok_or_else(|| {
+            let known: Vec<&str> = symbols
+                .ancestors(class)
+                .chain(std::iter::once(class))
+                .flat_map(|owner| symbols.methods[owner].keys().copied())
+                .collect();
+            at(
+                name,
+                super::suggest("This type has no method with that name.", name.text, &known),
+            )
+        })?;
         if symbols.method_flags[owner][name.text].0 && !self.can_reach_private(owner) {
             return Err(at(name, "This method is private to its class."));
         }
@@ -1674,9 +1682,17 @@ impl<'a> Emitter<'a> {
         name: Name<'_>,
     ) -> Result<(usize, &'a FieldInfo<'a>), Error> {
         let symbols = self.symbols;
-        let (owner, field) = symbols
-            .find_field(class, name.text)
-            .ok_or_else(|| at(name, "This class has no field with that name."))?;
+        let (owner, field) = symbols.find_field(class, name.text).ok_or_else(|| {
+            let known: Vec<&str> = symbols
+                .ancestors(class)
+                .chain(std::iter::once(class))
+                .flat_map(|owner| symbols.class_fields[owner].iter().map(|field| field.name))
+                .collect();
+            at(
+                name,
+                super::suggest("This class has no field with that name.", name.text, &known),
+            )
+        })?;
         if field.private && !self.can_reach_private(owner) {
             return Err(at(name, "This field is private to its class."));
         }
