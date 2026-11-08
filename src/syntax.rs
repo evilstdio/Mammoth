@@ -833,6 +833,83 @@ fn accessor<'a>(
     }
 }
 
+/// Folds `A { override fun f() ... }` into `f`, which tests for each value.
+fn add_enum_value_methods<'a>(
+    enum_name: Name<'a>,
+    values: Option<&Vec<(Name<'a>, Vec<Expr<'a>>)>>,
+    value_methods: Vec<(Name<'a>, Function<'a>)>,
+    methods: &mut [Function<'a>],
+) -> Result<(), Error> {
+    let this = || {
+        Expr::Variable(Name {
+            text: "this",
+            offset: enum_name.offset,
+        })
+    };
+    let all = values.map_or(&[][..], Vec::as_slice);
+    for method in methods.iter_mut().filter(|method| method.is_abstract) {
+        let missing = all.iter().find(|(value, _)| {
+            !value_methods
+                .iter()
+                .any(|(owner, f)| owner.text == value.text && f.name.text == method.name.text)
+        });
+        if let Some((value, _)) = missing {
+            return Err(Error {
+                offset: value.offset,
+                message: "Every value of this enum must override its abstract methods.",
+            });
+        }
+    }
+    for (value, function) in value_methods {
+        let Some(method) = methods
+            .iter_mut()
+            .find(|method| method.name.text == function.name.text)
+        else {
+            return Err(Error {
+                offset: function.name.offset,
+                message: "This method does not override a method of the enum.",
+            });
+        };
+        let same = method.result.map(|name| name.text) == function.result.map(|name| name.text)
+            && method.parameters.len() == function.parameters.len()
+            && method
+                .parameters
+                .iter()
+                .zip(&function.parameters)
+                .all(|(a, b)| a.0.text == b.0.text && a.1.text == b.1.text);
+        if !same {
+            return Err(Error {
+                offset: function.name.offset,
+                message: "Write the same parameter names and types as the enum's method.",
+            });
+        }
+        if method.is_abstract {
+            method.is_abstract = false;
+            let failure = Expr::Call(
+                Name {
+                    text: "IllegalStateException",
+                    offset: enum_name.offset,
+                },
+                Vec::new(),
+            );
+            method.body = vec![Statement::Throw(method.name, failure)];
+        }
+        let selected = Expr::Compare(
+            Box::new(this()),
+            Comparison::Eq,
+            Box::new(Expr::Field(Box::new(Expr::Variable(enum_name)), value)),
+        );
+        let mut body = function.body;
+        if function.result.is_none() {
+            body.push(Statement::Return(function.name, None));
+        }
+        method
+            .body
+            .insert(0, Statement::If(function.name, selected, body, None));
+    }
+    Ok(())
+}
+
 /// Writes the forwarding methods of each `implements I by value`.
 fn add_delegated_methods<'a>(program: &mut Program<'a>) -> Result<(), Error> {
     for index in 0..program.classes.len() {
@@ -1159,6 +1236,7 @@ fn parse_with<'a>(
         object_scopes: Vec::new(),
         lambda_prefix: Vec::new(),
         infix_names: infix_names(source),
+        reading_extension_property: false,
         nothing_names: nothing_names(source),
         function_start: 0,
         current_type: "",
@@ -1249,6 +1327,11 @@ fn parse_with<'a>(
                 return Err(parser.error("Expected '=' after the type alias name."));
             }
             program.aliases.push((alias, parser.annotation()?));
+        } else if matches!(name.text, "let" | "val") && parser.extension_property_ahead() {
+            parser.top_level_function = true;
+            parser.reading_extension_property = true;
+            program.functions.push(parser.function(true)?);
+            parser.top_level_function = false;
         } else if matches!(name.text, "infix" | "inline" | "tailrec" | "operator")
             && parser.rest_trimmed().starts_with("fun ")
         {
@@ -1354,6 +1437,8 @@ struct Parser<'a> {
     lambda_prefix: Vec<Statement<'a>>,
     /// Names written as `infix fun`, usable as `a name b`.
     infix_names: Vec<&'a str>,
+    /// The next function read is `let Receiver.name: Type get() = ...`.
+    reading_extension_property: bool,
     /// Functions declared to return `Nothing`.
     nothing_names: Vec<&'a str>,
     /// Where the outermost function being parsed starts.
@@ -1959,6 +2044,7 @@ impl<'a> Parser<'a> {
             });
         }
         self.expect("{", "Expected '{' after the class name.")?;
+        let mut value_methods: Vec<(Name<'a>, Function<'a>)> = Vec::new();
         let mut enum_values = None;
         if is_enum {
             let mut values = Vec::new();
@@ -1987,6 +2073,24 @@ impl<'a> Parser<'a> {
                 } else {
                     Vec::new()
                 };
+                if self.rest_trimmed().starts_with('{') {
+                    self.offset += 1;
+                    // Each value is its own scope, so its methods are not overloads.
+                    let scope: &'a str =
+                        Box::leak(format!("{}.{}", name.text, value.text).into_boxed_str());
+                    let outer = std::mem::replace(&mut self.current_type, scope);
+                    while !self.take("}") {
+                        self.take_word("override");
+                        if !self.take_word("fun") {
+                            return Err(
+                                self.error("An enum value's block can only override methods.")
+                            );
+                        }
+                        let function = self.function(true)?;
+                        value_methods.push((value, function));
+                    }
+                    self.current_type = outer;
+                }
                 values.push((value, args));
                 if !self.take(",") {
                     self.take(";");
@@ -2133,7 +2237,7 @@ impl<'a> Parser<'a> {
                             message: "An exported class method must be public and have a body.",
                         });
                     }
-                    if abstract_member && !is_abstract {
+                    if abstract_member && !is_abstract && !is_enum {
                         return Err(Error {
                             offset: member.offset,
                             message: "Only an abstract class can have abstract methods.",
@@ -2337,6 +2441,9 @@ impl<'a> Parser<'a> {
         self.current_type = outer_type;
         let getters = self.property_getters(&fields, &methods);
         methods.extend(getters);
+        if is_enum {
+            add_enum_value_methods(name, enum_values.as_ref(), value_methods, &mut methods)?;
+        }
         let mut no_primary = !has_header && !secondary.is_empty();
         if no_primary
             && let Some(position) = secondary
@@ -2705,6 +2812,20 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Whether `Type.name:` follows, as in `let Text.first: Char get() = ...`.
+    fn extension_property_ahead(&mut self) -> bool {
+        let start = self.offset;
+        let found = self.annotation().is_ok()
+            && self.rest().starts_with('.')
+            && {
+                self.offset += 1;
+                self.name().is_ok()
+            }
+            && (self.rest().starts_with(':') || self.rest().starts_with('<'));
+        self.offset = start;
+        found
+    }
+
     fn function(&mut self, has_body: bool) -> Result<Function<'a>, Error> {
         self.skip_space();
         let mut type_parameters = Vec::new();
@@ -2766,8 +2887,15 @@ impl<'a> Parser<'a> {
                 self.expect(",", "Expected ',' or '>' after a type parameter.")?;
             }
         }
-        self.expect("(", "Expected '(' after the function name.")?;
-        let mut parameters = self.parameters()?;
+        let is_property = std::mem::take(&mut self.reading_extension_property);
+        if !is_property {
+            self.expect("(", "Expected '(' after the function name.")?;
+        }
+        let mut parameters = if is_property {
+            Vec::new()
+        } else {
+            self.parameters()?
+        };
         let members = self.object_scopes.last().map(|scope| scope.1.clone());
         for (parameter, _) in &parameters {
             self.shadow_member(parameter.text);
@@ -2843,8 +2971,9 @@ impl<'a> Parser<'a> {
         }
         let helpers = self.default_helpers(name.text, &parameters, &type_parameters, &bounds);
         self.finished_helpers.extend(helpers);
-        if let (Some(members), Some(scope)) = (members, self.object_scopes.last_mut()) {
-            scope.1 = members;
+        if is_property && self.take_word("get") {
+            self.expect("(", "Expected '()' after get.")?;
+            self.expect(")", "Expected '()' after get.")?;
         }
         let body = if has_body && self.take_assignment() {
             let start = self.offset;
@@ -2869,6 +2998,9 @@ impl<'a> Parser<'a> {
         } else {
             Vec::new()
         };
+        if let (Some(members), Some(scope)) = (members, self.object_scopes.last_mut()) {
+            scope.1 = members;
+        }
         Ok(Function {
             annotations: Vec::new(),
             type_parameters,
@@ -3589,6 +3721,25 @@ impl<'a> Parser<'a> {
         }
         if matches!(receiver, Expr::Field(..) | Expr::Index(..)) {
             return self.member_assignment(receiver);
+        }
+        if let Expr::Safe(inner) = &receiver
+            && let Expr::Field(object, field) = inner.as_ref()
+        {
+            // `a?.b = c` assigns only when `a` is not null.
+            let holder = Name {
+                text: Box::leak(format!("__safe{}", name.offset).into_boxed_str()),
+                offset: name.offset,
+            };
+            let target = Expr::Field(Box::new(Expr::Variable(holder)), *field);
+            let (object, assign) = ((**object).clone(), self.member_assignment(target)?);
+            let present = Expr::Compare(
+                Box::new(Expr::Variable(holder)),
+                Comparison::Ne,
+                Box::new(Expr::Null(name.offset)),
+            );
+            self.extra_statements
+                .push(Statement::If(name, present, vec![assign], None));
+            return Ok(Statement::Binding(holder, object, false, None));
         }
         let args = if let Expr::Variable(_) = receiver
             && let Some(lambda) = self.trailing_lambda(0)?
@@ -5363,6 +5514,7 @@ impl<'a> Parser<'a> {
             object_scopes: self.object_scopes.clone(),
             lambda_prefix: Vec::new(),
             infix_names: self.infix_names.clone(),
+            reading_extension_property: false,
             nothing_names: self.nothing_names.clone(),
             function_start: self.function_start,
             current_type: "",

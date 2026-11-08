@@ -1,0 +1,3 @@
+// error: no method
+interface I { fun f(): Int }
+class A implements I { override fun f(): Int = super.f() }

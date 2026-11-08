@@ -1,0 +1,4 @@
+// error: must override
+enum E { A, B { override fun f(): Int = 1 };
+    abstract fun f(): Int
+}

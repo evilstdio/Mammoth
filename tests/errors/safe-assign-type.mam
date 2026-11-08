@@ -1,0 +1,4 @@
+// error: Expected an Int
+class K { var a = 1 }
+let k: K? = K()
+k?.a = "x"

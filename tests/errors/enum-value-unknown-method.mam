@@ -1,0 +1,4 @@
+// error: does not override
+enum E { A { override fun g(): Int = 1 };
+    fun f(): Int = 2
+}

@@ -1,0 +1,4 @@
+// error: read-only
+class K { let a = 1 }
+let k: K? = K()
+k?.a = 2

@@ -1,0 +1,35 @@
+let Text.firstChar: Char get() = this[0]
+print("ab".firstChar)
+let Text.twice: Text = this + this
+print("ab".twice)
+let MutableList<T>.second<T>: T get() = this[1]
+print(listOf(1, 2).second)
+interface I { fun f(): Int = 1
+  fun g(x: Int): Int = x * 2 }
+class A implements I {
+    override fun f(): Int = super.f() + 1
+    override fun g(x: Int): Int = super.g(x) + super.f()
+}
+print(A().f())
+print(A().g(4))
+open class B { open fun h(): Int = 10 }
+class C extends B implements I { override fun h(): Int = super.h() + super.f() }
+print(C().h())
+enum E(let n: Int) {
+    A(1) { override fun f(): Int = n + 10 },
+    B(2) { override fun f(): Int = n + 20
+           override fun label(): Text = "bee" };
+    abstract fun f(): Int
+    fun label(): Text = "plain"
+}
+print(E.A.f())
+print(E.B.f())
+print(E.A.label())
+print(E.B.label())
+class K { var a = 1 }
+let k: K? = K()
+k?.a = 2
+print(k?.a)
+let n: K? = null
+n?.a = 3
+print(n?.a)

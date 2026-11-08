@@ -2631,6 +2631,39 @@ impl<'a> Emitter<'a> {
         }))
     }
 
+    /// `super.f()` where only one directly implemented interface offers `f`.
+    fn implied_interface_super(&self, name: Name<'a>) -> Option<Name<'a>> {
+        let symbols = self.symbols;
+        let class = self.current_class.filter(|_| self.this_ready)?;
+        let (local, _) = super::native_generics::call_name(name);
+        let inherited = symbols.superclasses[class].is_some_and(|parent| {
+            symbols.find_method(parent, local.text).is_some()
+                || symbols.default_method(parent, local.text).is_some()
+        });
+        if inherited {
+            return None;
+        }
+        let mut found = symbols.class_declarations[class]
+            .implements
+            .iter()
+            .map(|written| written.text.split('<').next().unwrap_or(written.text))
+            .filter(|plain| {
+                self.type_scope
+                    .names
+                    .get(plain)
+                    .and_then(|kind| symbols.types.interface_root(*kind))
+                    .is_some_and(|root| symbols.has_default(root, local.text))
+            });
+        let plain = found.next()?;
+        if found.next().is_some() {
+            return None;
+        }
+        Some(Name {
+            text: Box::leak(format!("super<{plain}>").into_boxed_str()),
+            offset: name.offset,
+        })
+    }
+
     pub(super) fn super_call_expected(
         &mut self,
         method: &mut Method<'a>,
@@ -2640,6 +2673,9 @@ impl<'a> Emitter<'a> {
         base: u16,
         expected: Option<Kind>,
     ) -> Result<Option<Kind>, Error> {
+        if let Some(qualified) = self.implied_interface_super(name) {
+            return self.interface_super_call(method, qualified, name, args, base, expected);
+        }
         if let Some(class) = self.current_class
             && self.this_ready
             && self.symbols.superclasses[class].is_none()

@@ -55,3 +55,9 @@ print(m)
 let obj = object { let v = 3
  fun h(): Int = v * 2 }
 print(1)
+interface J { fun g(x: Int): Int }
+let shadow: J = object implements J {
+    let x = 10
+    override fun g(x: Int): Int = x + this.x
+}
+print(shadow.g(1))
