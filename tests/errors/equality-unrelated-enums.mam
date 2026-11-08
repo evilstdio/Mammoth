@@ -1,0 +1,4 @@
+// error: unrelated types
+enum E { X }
+enum F { Y }
+print(E.X == F.Y)

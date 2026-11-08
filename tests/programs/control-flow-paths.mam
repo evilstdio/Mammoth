@@ -1,0 +1,42 @@
+// An endless loop needs no code after it; a top-level throw ends the program.
+fun first(limit: Int): Int {
+    var n = 0
+    while true {
+        n += 1
+        if n >= limit { return n }
+    }
+}
+print(first(3))
+fun withBreak(): Int {
+    while true { break }
+    return 5
+}
+print(withBreak())
+fun nested(): Int {
+    while true {
+        while true { break }
+        return 2
+    }
+}
+print(nested())
+// A global read by a function, called after the declaration, is fine.
+let total = 5
+fun readTotal(): Int { return total + 1 }
+print(readTotal())
+class Reader { let seen = readTotal() }
+print(Reader().seen)
+// A lambda's body runs when it is called, not when it is created.
+let later = { x: Int -> x + afterLambda() }
+let offset = 40
+fun afterLambda(): Int { return offset }
+print(later(2))
+// Comparing related classes and subclasses is allowed.
+open class A
+class B extends A
+let a: A = B()
+let b = B()
+print(a == b)
+print(a != A())
+try { throw IllegalStateException("x") }
+catch (e: IllegalStateException) { print("specific") }
+catch (e: RuntimeException) { print("general") }

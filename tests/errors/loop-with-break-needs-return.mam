@@ -1,0 +1,4 @@
+// error: must return a value on every path
+fun f(): Int {
+    while true { break }
+}

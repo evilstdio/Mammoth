@@ -819,6 +819,7 @@ pub(super) fn resolve<'a>(
     for (owner, (symbol, program)) in symbols.iter_mut().zip(programs).enumerate() {
         symbol.globals =
             globals::resolve_globals(program, symbol).map_err(|error| (owner, error))?;
+        globals::check_global_order(program, &symbol.globals).map_err(|error| (owner, error))?;
     }
     Ok(symbols)
 }

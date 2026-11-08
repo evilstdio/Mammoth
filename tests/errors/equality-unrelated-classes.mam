@@ -1,0 +1,4 @@
+// error: unrelated types
+class A
+class C
+print(A() != C())

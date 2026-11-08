@@ -1,0 +1,2 @@
+// error: An earlier catch already handles
+try { print(1) } catch (e: RuntimeException) { print(2) } catch (e: IllegalStateException) { print(3) }

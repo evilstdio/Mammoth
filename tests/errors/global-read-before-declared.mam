@@ -1,0 +1,4 @@
+// error: declared further down
+fun read(): Int { return value.length() }
+print(read())
+let value = "x"

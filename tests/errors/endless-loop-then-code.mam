@@ -1,0 +1,5 @@
+// error: cannot run
+fun f(): Int {
+    while true { print(1) }
+    return 2
+}

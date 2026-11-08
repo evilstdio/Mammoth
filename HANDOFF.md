@@ -1,3 +1,12 @@
+# Latest: initialization order and control-flow checks (2026-11-08, session 3)
+
+- **Global order.** `globals.rs` `check_global_order` rejects a top-level statement that reaches, through bare function calls or constructors (field initializers and init blocks), a top-level variable declared later. Previously `Text` read as null and `Int` as 0. Lambdas are skipped because they run later. Calls through objects and methods are not followed, which is a known gap. Locals and parameters with the same name as a global are excluded.
+- **`while true`** with no `break` now ends the path, so `fun f(): Int { while true { return 1 } }` compiles and code after the loop is rejected.
+- **Unrelated equality.** `==` and `!=` between classes (or `Text`) with no subclass relation is rejected. Interfaces and generic types are not checked.
+- **Unreachable catch.** A `catch` after one for its parent class is rejected.
+- **Top-level `throw`** as the last statement no longer emits a dead `return`.
+- **Known gap found.** A function can call a top-level function value in a statement (`f(1)`) but not as an expression (`return f(1)`), because `collect_expr` does not record call names for globals. Recording them broke a class method with the same name as a global, so it needs lookup-order work.
+
 # Latest: soundness and overload fixes from a new fuzzer (2026-11-08, session 3)
 
 - **Tools.** `difffuzz.py` (same random program in Mammoth and Java, stdout and crash status must match) and `soundfuzz.py` (grows programs from random, usually ill-typed statements; anything accepted must not raise a type or linkage error it did not ask for). Both are in the session scratchpad, not the repo. Differential runs had 0 problems on 420 programs.

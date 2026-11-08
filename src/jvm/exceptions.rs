@@ -140,14 +140,28 @@ impl<'a> Emitter<'a> {
             exits.push(method.jump());
         }
         let mut entries = Vec::new();
+        let mut caught: Vec<Kind> = Vec::new();
         for catch in catches {
             let (kind, class) = match catch.kind {
-                Some(name) => self.throwable_class(name)?,
+                Some(name) => {
+                    let found = self.throwable_class(name)?;
+                    if caught
+                        .iter()
+                        .any(|&earlier| self.symbols.fits(found.0, earlier))
+                    {
+                        return Err(at(
+                            name,
+                            "An earlier catch already handles this exception type, so this one can never run.",
+                        ));
+                    }
+                    found
+                }
                 None => {
                     let kind = self.symbols.types.java_kind("java/lang/Exception");
                     (kind, self.object_class(kind))
                 }
             };
+            caught.push(kind);
             let handler = method.code.len();
             for &(from, to) in &body_ranges {
                 entries.push([from, to, handler, class as usize]);

@@ -1321,8 +1321,9 @@ fn emit_class<'a>(
             shorts(&mut fields, &[0x0009, name_index, type_index, 0]); // public static
         }
         let mut main = Method::new(vec![Local::Object(array)]);
-        emitter.block(&mut main, &program.body)?;
-        main.code.push(0xb1);
+        if emitter.block(&mut main, &program.body)? {
+            main.code.push(0xb1);
+        }
         let main_name = emitter.pool.ascii("main");
         let main_type = emitter.pool.ascii("([Ljava/lang/String;)V");
         main.write(
@@ -2101,7 +2102,12 @@ impl<'a> Emitter<'a> {
                 Statement::While(name, condition, body) => {
                     let header = method.code.len();
                     method.frame(method.locals.len());
-                    let exit = self.branch_when(method, condition, false)?;
+                    let endless = matches!(condition, Expr::Bool(_, true));
+                    let exit = if endless {
+                        Vec::new()
+                    } else {
+                        self.branch_when(method, condition, false)?
+                    };
                     let narrowed = method.non_null_facts(condition, true);
                     let types = self.type_facts(method, condition, true);
                     let type_count = method.type_facts.len();
@@ -2113,6 +2119,11 @@ impl<'a> Emitter<'a> {
                     if continues? {
                         let back = method.jump();
                         method.patch_branch(back, header, name.offset)?;
+                    }
+                    if endless && frame.breaks.is_empty() {
+                        // Nothing leaves the loop, so nothing can follow it.
+                        falls_through = false;
+                        continue;
                     }
                     method.patch_branches(&exit, name.offset)?;
                     method.patch_branches(&frame.breaks, name.offset)?;
@@ -3636,6 +3647,16 @@ impl<'a> Emitter<'a> {
     /// needed to compare them and returns the (branch-if-true,
     /// branch-if-false) opcodes. `left` and `right` locate errors.
     #[allow(clippy::too_many_arguments)]
+    /// Whether two class types share no subclass relation. Interfaces and
+    /// generic types are left out, since one object can be both.
+    fn unrelated_classes(&self, lhs: Kind, rhs: Kind) -> bool {
+        let (lhs, rhs) = (lhs.non_null(), rhs.non_null());
+        matches!(lhs, Kind::Object(_) | Kind::Text)
+            && matches!(rhs, Kind::Object(_) | Kind::Text)
+            && !self.symbols.fits(lhs, rhs)
+            && !self.symbols.fits(rhs, lhs)
+    }
+
     fn compare_kinds(
         &mut self,
         method: &mut Method<'a>,
@@ -3681,6 +3702,12 @@ impl<'a> Emitter<'a> {
                 Comparison::Ge => (0x9c, 0x9b),
             }
         } else if both_references {
+            if self.unrelated_classes(lhs, rhs) {
+                return Err(Error {
+                    offset: left.offset(),
+                    message: "These values have unrelated types, so they can never be equal.",
+                });
+            }
             self.compare_references(method, left, lhs, rhs, comparison)?
         } else if lhs == Kind::Double && rhs == Kind::Double {
             // Choose the NaN ordering that makes ordered comparisons false.

@@ -1,0 +1,6 @@
+// error: declared further down
+fun inner(): Int { return value }
+fun outer(): Int { return inner() }
+class Holder { let seen = outer() }
+let h = Holder()
+let value = 3

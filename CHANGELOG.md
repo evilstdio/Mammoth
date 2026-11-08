@@ -1,5 +1,11 @@
 # Changelog
 
+## Initialization order and control flow, 2026-11-08
+
+- A top-level statement that reaches a later top-level variable through function calls or constructors is rejected.
+- `while true` without `break` no longer needs code after it.
+- Comparing unrelated classes, and a `catch` that an earlier `catch` already covers, are compile errors.
+
 ## Casts, maps, arrays and overloads, 2026-11-08
 
 - `as` to a non-null type now rejects null at runtime.
