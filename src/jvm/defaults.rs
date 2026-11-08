@@ -33,6 +33,21 @@ impl<'a> Emitter<'a> {
                     symbols
                         .find_method(class, helper)
                         .map(|(_, signature)| signature)
+                        .or_else(|| {
+                            // A default declared by an interface the class implements.
+                            symbols.ancestors(class).find_map(|ancestor| {
+                                symbols.implementations[ancestor]
+                                    .iter()
+                                    .find_map(|&listed| {
+                                        symbols.interface_ancestors(listed).into_iter().find_map(
+                                            |parent| {
+                                                let root = symbols.types.interface_root(parent)?;
+                                                symbols.interfaces[root].get(helper)
+                                            },
+                                        )
+                                    })
+                            })
+                        })
                 }
             }
         }
@@ -105,9 +120,12 @@ impl<'a> Emitter<'a> {
         }
         let count = args.len().min(fixed);
         let mut full = args[..count].to_vec();
-        if args.len() >= fixed {
-            full.push(Expr::List(name.offset, args[fixed..].to_vec()));
-        }
+        let rest = args.get(fixed..).unwrap_or(&[]).to_vec();
+        // Named, so that earlier parameters can still take their defaults.
+        full.push(Expr::Named(
+            signature.parameters[fixed].0,
+            Box::new(Expr::List(name.offset, rest)),
+        ));
         let full: &'a [Expr<'a>] = Box::leak(full.into_boxed_slice());
         self.complete_args(method, name, &plain, full, host)
     }

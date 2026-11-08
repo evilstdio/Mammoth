@@ -724,6 +724,11 @@ impl<'a> Symbols<'a> {
                 return Err(at(*name, "An enum cannot be extended."));
             }
             if let (Some(parent), Some((name, _))) = (parent, &class.extends)
+                && self.class_declarations[parent].is_object
+            {
+                return Err(at(*name, "An object cannot be extended."));
+            }
+            if let (Some(parent), Some((name, _))) = (parent, &class.extends)
                 && self.class_declarations[parent].is_sealed
                 && !self.own_classes.contains(&parent)
             {

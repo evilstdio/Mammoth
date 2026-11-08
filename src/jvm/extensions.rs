@@ -131,7 +131,10 @@ impl<'a> Emitter<'a> {
         expected: Option<Kind>,
     ) -> Result<Option<Option<Kind>>, Error> {
         let (plain, _) = super::native_generics::call_name(name);
-        let Some(hidden) = self.find_extension(plain.text, receiver) else {
+        let found = self.find_extension(plain.text, receiver);
+        let found: Option<&'a str> =
+            found.map(|hidden| hidden.split("$ov$").next().unwrap_or(hidden));
+        let Some(hidden) = found else {
             // A fixed list reaches collection operations by copying it first.
             if let Kind::List(list) = receiver
                 && self
@@ -215,6 +218,8 @@ impl<'a> Emitter<'a> {
         let Some(hidden) = self.find_extension(plain.text, kind) else {
             return Err(member_error);
         };
+        // Overloads of an extension are chosen among themselves by the call.
+        let hidden = hidden.split("$ov$").next().unwrap_or(hidden);
         let text: &'a str = match explicit {
             None => hidden,
             Some(_) => {

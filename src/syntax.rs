@@ -706,7 +706,14 @@ fn parse_source(source: &str) -> Result<Program<'_>, Error> {
     let arities = program
         .functions
         .iter()
-        .map(|function| (function.name.text, function.parameters.len()))
+        .map(|function| {
+            let kinds = function
+                .parameters
+                .iter()
+                .map(|(_, kind)| function.type_parameters.is_empty().then_some(*kind))
+                .collect();
+            (function.name.text, kinds)
+        })
         .collect();
     Ok(parse_with(source, nested, arities, properties, overloaded, false)?.0)
 }
@@ -715,7 +722,7 @@ fn parse_source(source: &str) -> Result<Program<'_>, Error> {
 fn parse_with<'a>(
     source: &'a str,
     nested_names: Vec<(&'a str, &'a str)>,
-    arities: Vec<(&'a str, usize)>,
+    arities: Vec<(&'a str, Vec<Option<Name<'a>>>)>,
     interface_properties: Vec<&'a str>,
     overloaded: Vec<&'a str>,
     discovering: bool,
@@ -913,8 +920,9 @@ struct Parser<'a> {
     /// Property names declared by interfaces, from an earlier parse.
     interface_properties: Vec<&'a str>,
     properties_found: Vec<&'a str>,
-    /// How many parameters each top-level function has, from an earlier parse.
-    arities: Vec<(&'a str, usize)>,
+    /// Each top-level function's parameter types, from an earlier parse. A
+    /// generic function has no entry for its types, only their count.
+    arities: Vec<(&'a str, Vec<Option<Name<'a>>>)>,
     nested_classes: Vec<Class<'a>>,
     nested_interfaces: Vec<Interface<'a>>,
 }
@@ -1662,7 +1670,7 @@ impl<'a> Parser<'a> {
         self.declared_functions.push((self.current_type, name.text));
         let mut overload_of = None;
         let mut name = name;
-        if extension_of.is_none() && self.overloaded.contains(&name.text) {
+        if self.overloaded.contains(&name.text) {
             overload_of = Some(name.text);
             let label: String = parameters
                 .iter()
@@ -3139,14 +3147,18 @@ impl<'a> Parser<'a> {
                 self.saw_dotted_type = true;
                 return Ok(Expr::Null(offset));
             }
-            let Some(&(_, count)) = self.arities.iter().find(|(name, _)| *name == target.text)
+            let Some((_, kinds)) = self
+                .arities
+                .iter()
+                .find(|(name, _)| *name == target.text)
+                .cloned()
             else {
                 return Err(at_name(
                     target,
                     "Use :: with a function declared in this file.",
                 ));
             };
-            let names: Vec<Name<'a>> = (0..count)
+            let names: Vec<Name<'a>> = (0..kinds.len())
                 .map(|index| Name {
                     text: Box::leak(format!("__arg{index}").into_boxed_str()),
                     offset,
@@ -3155,7 +3167,7 @@ impl<'a> Parser<'a> {
             let arguments = names.iter().map(|name| Expr::Variable(*name)).collect();
             return Ok(Expr::Lambda(Box::new(Lambda {
                 offset,
-                parameters: names.into_iter().map(|name| (name, None)).collect(),
+                parameters: names.into_iter().zip(kinds).collect(),
                 explicit: true,
                 body: Vec::new(),
                 value: Some(Box::new(Expr::Call(target, arguments))),

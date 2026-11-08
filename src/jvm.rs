@@ -3691,13 +3691,24 @@ impl<'a> Emitter<'a> {
         {
             // `a + b` calls `a.plus(b)` on an object.
             for &(operator, right) in rest {
+                // java.math names these operations differently.
+                let math = self
+                    .symbols
+                    .types
+                    .runtime_class_name(kind)
+                    .is_some_and(|class| class.starts_with("java/math/"));
                 let name = Name {
-                    text: match operator {
-                        Arithmetic::Add => "plus",
-                        Arithmetic::Sub => "minus",
-                        Arithmetic::Mul => "times",
-                        Arithmetic::Div => "div",
-                        Arithmetic::Rem => "rem",
+                    text: match (operator, math) {
+                        (Arithmetic::Add, false) => "plus",
+                        (Arithmetic::Sub, false) => "minus",
+                        (Arithmetic::Mul, false) => "times",
+                        (Arithmetic::Div, false) => "div",
+                        (Arithmetic::Rem, false) => "rem",
+                        (Arithmetic::Add, true) => "add",
+                        (Arithmetic::Sub, true) => "subtract",
+                        (Arithmetic::Mul, true) => "multiply",
+                        (Arithmetic::Div, true) => "divide",
+                        (Arithmetic::Rem, true) => "remainder",
                     },
                     offset: right.offset(),
                 };
