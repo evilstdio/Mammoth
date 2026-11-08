@@ -1,0 +1,3 @@
+// error: must match the interface
+interface I { fun f(): Int }
+let i: I = object implements I { override fun f(): Text = "x" }

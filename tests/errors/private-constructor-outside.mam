@@ -1,0 +1,3 @@
+// error: private to its class
+class K private constructor(let a: Int)
+print(K(1))

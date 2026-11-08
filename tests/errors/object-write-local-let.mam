@@ -1,0 +1,9 @@
+// error: cannot change
+interface I { fun f(): Int }
+let n = 1
+let i: I = object implements I {
+    override fun f(): Int {
+        n = 2
+        return n
+    }
+}

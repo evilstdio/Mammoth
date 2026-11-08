@@ -1321,7 +1321,11 @@ fn emit_class<'a>(
                 0x0002, // private
             )
         } else {
-            let access = if class.no_primary { 0x0002 } else { 0x0001 };
+            let access = if class.no_primary || class.private_primary {
+                0x0002
+            } else {
+                0x0001
+            };
             (signature.descriptor.clone(), access)
         };
         let kind = emitter.pool.ascii(&descriptor);
@@ -1940,6 +1944,18 @@ impl<'a> Emitter<'a> {
             self.mark_line(method, statement.offset());
             match statement {
                 Statement::Return(name, expr) => {
+                    if name.text == "return@" && !method.is_lambda {
+                        return Err(at(*name, "Use return@name only inside a lambda."));
+                    }
+                    // The first returned value sets an inferred lambda's result.
+                    if let Some(value) = expr
+                        && std::mem::take(&mut method.infers_result)
+                    {
+                        let saved = method.snapshot();
+                        let kind = self.expression(method, value, 0);
+                        method.restore(saved);
+                        method.result = Some(kind?);
+                    }
                     match (expr, method.result) {
                         (Some(expr), Some(result)) => {
                             let kind = self.expression_as(method, expr, 0, Some(result))?;
@@ -3172,6 +3188,23 @@ impl<'a> Emitter<'a> {
             && let Some(kind) = self.read_static_field(method, class, name, base)?
         {
             return Ok(kind);
+        }
+        // Inside an enum, `name` and `ordinal` describe the current value.
+        if matches!(name.text, "name" | "ordinal")
+            && self
+                .current_class
+                .is_some_and(|class| self.symbols.enum_values[class].is_some())
+        {
+            let this = Name {
+                text: "this",
+                offset: name.offset,
+            };
+            if method.binding(this).is_some() {
+                let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
+                if let Some(kind) = self.method_call(method, receiver, name, &[], base)? {
+                    return Ok(kind);
+                }
+            }
         }
         if let Some(kind) = self.implicit_java_field(method, name, base)? {
             return Ok(kind);
@@ -5396,6 +5429,9 @@ struct Method<'a> {
     /// A specialized generic interface body keeps primitive source checking
     /// while returning a boxed value through its Java-compatible entry.
     boxed_result: bool,
+    /// A lambda whose result type comes from its first returned value.
+    infers_result: bool,
+    is_lambda: bool,
     locals: Vec<Local>,
     stack: Vec<Local>,
     max_stack: u16,
@@ -5441,6 +5477,8 @@ impl<'a> Method<'a> {
             code: Vec::new(),
             result: None,
             boxed_result: false,
+            infers_result: false,
+            is_lambda: false,
             max_stack: 0,
             max_locals: locals.len() as u16,
             locals,

@@ -1,0 +1,2 @@
+// error: Expected an Int
+let r = "a".."b"

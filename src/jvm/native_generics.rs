@@ -511,7 +511,7 @@ impl<'a> Emitter<'a> {
                     method.code.push(0x57);
                     continue;
                 }
-                let Kind::Function(index) = pattern else {
+                let Kind::Function(index) = pattern.non_null() else {
                     // A Java functional interface whose types are already known.
                     let target = self.symbols.types.replace_parameters(pattern, &map);
                     if matches!(target.non_null(), Kind::Java(_))
@@ -532,7 +532,7 @@ impl<'a> Emitter<'a> {
                     }
                 }
                 let target = self.symbols.types.replace_parameters(pattern, &map);
-                let Kind::Function(index) = target else {
+                let Kind::Function(index) = target.non_null() else {
                     unreachable!()
                 };
                 let function = self.symbols.types.function_type(index);

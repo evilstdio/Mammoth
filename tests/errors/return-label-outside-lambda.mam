@@ -1,0 +1,2 @@
+// error: only inside a lambda
+fun f(): Int { return@nope 1 }

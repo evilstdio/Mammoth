@@ -5,6 +5,7 @@ import java.util.LinkedHashSet as __LinkedHashSet
 import java.util.Map as __Map
 import java.util.Map.Entry as __Entry
 import java.util.NoSuchElementException as __NoSuchElement
+import java.util.regex.Pattern as M__Pattern
 import java.util.Collections as M__Collections
 import java.util.Comparator as __Comparator
 import java.io.ByteArrayOutputStream as __ByteOutput
@@ -117,6 +118,30 @@ fun Iterable<__T>.find<__T>(predicate: (__T) -> Bool): __T? {
         if predicate(item) { return item }
     }
     return null
+}
+fun Iterable<__T>.first<__T>(predicate: (__T) -> Bool): __T {
+    for item in this {
+        if predicate(item) { return item }
+    }
+    throw __NoSuchElement("No item matches.")
+}
+fun Iterable<__T>.firstOrNull<__T>(predicate: (__T) -> Bool): __T? {
+    for item in this {
+        if predicate(item) { return item }
+    }
+    return null
+}
+fun Iterable<__T>.last<__T>(predicate: (__T) -> Bool): __T {
+    var found = false
+    var result: __T? = null
+    for item in this {
+        if predicate(item) {
+            found = true
+            result = item
+        }
+    }
+    if not found { throw __NoSuchElement("No item matches.") }
+    return result!!
 }
 fun Iterable<__T>.first<__T>(): __T {
     for item in this { return item }
@@ -371,13 +396,17 @@ fun Iterable<__T>.dropWhile<__T>(predicate: (__T) -> Bool): MutableList<__T> {
     }
     return out
 }
-fun Iterable<__T>.joinToString<__T>(separator: Text = ", ", prefix: Text = "", suffix: Text = ""): Text {
+fun Iterable<__T>.joinToString<__T>(separator: Text = ", ", prefix: Text = "", suffix: Text = "", transform: ((__T) -> Text)? = null): Text {
     let text = StringBuilder(prefix)
     var first = true
     for item in this {
         if not first { text.append(separator) }
         first = false
-        text.append("{item}")
+        if transform != null {
+            text.append(transform(item))
+        } else {
+            text.append("{item}")
+        }
     }
     text.append(suffix)
     return text.toString()
@@ -937,3 +966,132 @@ fun __growList<__T>(size: Int, make: (Int) -> __T): MutableList<__T> {
     }
     return out
 }
+
+fun __rangeTo(first: Int, last: Int): MutableList<Int> {
+    let out = MutableList<Int>()
+    var value = first
+    while value <= last {
+        out.add(value)
+        value += 1
+    }
+    return out
+}
+
+fun __rangeUntil(first: Int, end: Int): MutableList<Int> {
+    let out = MutableList<Int>()
+    var value = first
+    while value < end {
+        out.add(value)
+        value += 1
+    }
+    return out
+}
+
+fun __rangeDown(first: Int, last: Int): MutableList<Int> {
+    let out = MutableList<Int>()
+    var value = first
+    while value >= last {
+        out.add(value)
+        value -= 1
+    }
+    return out
+}
+
+fun __Map<__K, __V>.filterKeys<__K, __V>(predicate: (__K) -> Bool): __LinkedHashMap<__K, __V> {
+    let out = __LinkedHashMap<__K, __V>()
+    for entry in this.entrySet() {
+        if predicate(entry.getKey()) { out.put(entry.getKey(), entry.getValue()) }
+    }
+    return out
+}
+
+fun __Map<__K, __V>.mapKeys<__K, __V, __R>(transform: (__K) -> __R): __LinkedHashMap<__R, __V> {
+    let out = __LinkedHashMap<__R, __V>()
+    for entry in this.entrySet() { out.put(transform(entry.getKey()), entry.getValue()) }
+    return out
+}
+
+fun Iterable<__T>.distinctBy<__T, __K>(selector: (__T) -> __K): MutableList<__T> {
+    let seen = __LinkedHashSet<__K>()
+    let out = MutableList<__T>()
+    for item in this {
+        if seen.add(selector(item)) { out.add(item) }
+    }
+    return out
+}
+
+fun Iterable<__T>.subtract<__T>(other: Iterable<__T>): __LinkedHashSet<__T> {
+    let unwanted = __LinkedHashSet<__T>()
+    for item in other { unwanted.add(item) }
+    let out = __LinkedHashSet<__T>()
+    for item in this {
+        if not unwanted.contains(item) { out.add(item) }
+    }
+    return out
+}
+
+fun Text.toList(): MutableList<Char> {
+    let out = MutableList<Char>()
+    for ch in this { out.add(ch) }
+    return out
+}
+
+fun Int.coerceIn(low: Int, high: Int): Int = if this < low { low } else if this > high { high } else { this }
+fun Int.coerceAtLeast(low: Int): Int = if this < low { low } else { this }
+fun Int.coerceAtMost(high: Int): Int = if this > high { high } else { this }
+fun Long.coerceIn(low: Long, high: Long): Long = if this < low { low } else if this > high { high } else { this }
+fun Long.coerceAtLeast(low: Long): Long = if this < low { low } else { this }
+fun Long.coerceAtMost(high: Long): Long = if this > high { high } else { this }
+fun Double.coerceIn(low: Double, high: Double): Double = if this < low { low } else if this > high { high } else { this }
+fun Double.coerceAtLeast(low: Double): Double = if this < low { low } else { this }
+fun Double.coerceAtMost(high: Double): Double = if this > high { high } else { this }
+fun Int.rem(other: Int): Int = this % other
+fun Long.rem(other: Long): Long = this % other
+fun Double.rem(other: Double): Double = this % other
+
+fun Text.trimMargin(marker: Text = "|"): Text {
+    let out = StringBuilder()
+    var first = true
+    for line in this.split("\n") {
+        let trimmed = line.trim()
+        if first and trimmed.length() == 0 {
+            first = false
+            continue
+        }
+        if not first { out.append("\n") }
+        first = false
+        if trimmed.startsWith(marker) {
+            out.append(trimmed.substring(marker.length()))
+        } else {
+            out.append(line)
+        }
+    }
+    let text = out.toString()
+    if text.endsWith("\n") { return text.substring(0, text.length() - 1) }
+    return text
+}
+
+class Regex(pattern: Text) {
+    private let compiled: M__Pattern = M__Pattern.compile(pattern)
+    fun matches(input: Text): Bool = compiled.matcher(input).matches()
+    fun containsMatchIn(input: Text): Bool = compiled.matcher(input).find()
+    fun replace(input: Text, replacement: Text): Text = compiled.matcher(input).replaceAll(replacement)
+    fun split(input: Text): MutableList<Text> {
+        let out = MutableList<Text>()
+        for part in compiled.split(input) { out.add(part) }
+        return out
+    }
+    fun findAll(input: Text): MutableList<Text> {
+        let out = MutableList<Text>()
+        let found = compiled.matcher(input)
+        while found.find() { out.add(found.group()) }
+        return out
+    }
+    fun find(input: Text): Text? {
+        let found = compiled.matcher(input)
+        if found.find() { return found.group() }
+        return null
+    }
+}
+
+fun Text.toRegex(): Regex = Regex(this)

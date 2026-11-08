@@ -425,6 +425,19 @@ impl<'a> Emitter<'a> {
         name: Name<'a>,
         base: u16,
     ) -> Result<Kind, Error> {
+        if name.text == "entries"
+            && !self.symbols.enum_values[class]
+                .as_ref()
+                .is_some_and(|values| values.contains(&name.text))
+        {
+            let values = Name {
+                text: "values",
+                offset: name.offset,
+            };
+            return self
+                .enum_static_call(method, class, values, &[], base)?
+                .ok_or_else(|| at(name, "This enum has no value with that name."));
+        }
         if !self.symbols.enum_values[class]
             .as_ref()
             .is_some_and(|values| values.contains(&name.text))

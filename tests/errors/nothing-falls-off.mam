@@ -1,0 +1,2 @@
+// error: must return a value
+fun f(): Nothing { print(1) }

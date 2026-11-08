@@ -186,6 +186,9 @@ impl<'a> Emitter<'a> {
         let symbols = self.symbols;
         let secondary = &symbols.secondary[class];
         let primary = &symbols.constructors[class];
+        if symbols.class_declarations[class].private_primary && self.current_class != Some(class) {
+            return Err(at(name, "This constructor is private to its class."));
+        }
         if secondary.is_empty() {
             return Ok(primary);
         }

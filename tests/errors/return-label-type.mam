@@ -1,0 +1,5 @@
+// error: Expected Text
+print(listOf(1).map {
+    if it == 1 { return@map "a" }
+    it
+})

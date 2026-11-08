@@ -389,8 +389,11 @@ impl<'a> Emitter<'a> {
         }
         let declared_result = target.as_ref().and_then(|target| target.result);
         body.result = declared_result.flatten();
+        body.infers_result = declared_result.is_none();
+        body.is_lambda = true;
         self.mark_line(&mut body, offset.offset);
         let falls_through = self.block(&mut body, &lambda.body)?;
+        let declared_result = declared_result.or(body.result.map(Some));
         if let Some(value) = &lambda.value {
             self.mark_line(&mut body, value.offset());
         }
@@ -704,6 +707,18 @@ impl<'a> Emitter<'a> {
         };
         match kind {
             Kind::Function(index) => {
+                self.load(method, name, base)?;
+                self.invoke_function(method, index, name, args, base)
+                    .map(Some)
+            }
+            Kind::Nullable(super::Reference::Function(_))
+                if method
+                    .binding(name)
+                    .is_some_and(|binding| method.non_null_slots.contains(&binding.slot)) =>
+            {
+                let Kind::Function(index) = kind.non_null() else {
+                    unreachable!("the pattern matched a function")
+                };
                 self.load(method, name, base)?;
                 self.invoke_function(method, index, name, args, base)
                     .map(Some)

@@ -352,10 +352,19 @@ fn collect_branches<'a>(branches: &'a [super::WhenBranch<'a>], used: &mut HashSe
 /// Collects the names used inside lambdas that appear in `statements`.
 fn collect_lambdas<'a>(statements: &'a [Statement<'a>], used: &mut HashSet<&'a str>) {
     for_each_lambda(statements, &mut |lambda| {
-        collect_statements(&lambda.body, used);
+        let mut inner: HashSet<&'a str> = [RECORD_CALLS, SKIP_LAMBDAS]
+            .into_iter()
+            .filter(|marker| used.contains(marker))
+            .collect();
+        collect_statements(&lambda.body, &mut inner);
         if let Some(value) = &lambda.value {
-            collect_expr(value, used);
+            collect_expr(value, &mut inner);
         }
+        // Names the lambda declares itself are not outside values.
+        let mut bound = HashSet::new();
+        collect_bound(&lambda.body, &mut bound);
+        bound.extend(lambda.parameters.iter().map(|(name, _)| name.text));
+        used.extend(inner.into_iter().filter(|name| !bound.contains(name)));
     });
 }
 

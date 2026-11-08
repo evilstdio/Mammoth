@@ -69,6 +69,7 @@ impl<'a> Emitter<'a> {
             "listOf"
                 | "mutableListOf"
                 | "setOf"
+                | "mutableSetOf"
                 | "mapOf"
                 | "mutableMapOf"
                 | "arrayOf"
@@ -111,7 +112,7 @@ impl<'a> Emitter<'a> {
         let call = if args.is_empty() {
             let written = name.text.get(plain.text.len()..).unwrap_or("");
             if explicit.is_none() {
-                if !is_map && plain.text != "setOf" {
+                if !is_map && !plain.text.ends_with("etOf") {
                     // The destination's type gives the element type.
                     let element = match expected.map(Kind::non_null) {
                         Some(Kind::MutableList(list)) => Some(list),
@@ -128,7 +129,7 @@ impl<'a> Emitter<'a> {
             }
             let class = match plain.text {
                 "listOf" | "mutableListOf" => "MutableList",
-                "setOf" => "__LinkedHashSet",
+                "setOf" | "mutableSetOf" => "__LinkedHashSet",
                 _ => "__LinkedHashMap",
             };
             let text: &'a str = Box::leak(format!("{class}{written}").into_boxed_str());
@@ -137,7 +138,7 @@ impl<'a> Emitter<'a> {
             let pairs = Expr::MethodCall(Box::new(list()), named("toMutableList"), Vec::new());
             Expr::Call(named("__mapOf"), vec![pairs])
         } else {
-            let method_name = if plain.text == "setOf" {
+            let method_name = if plain.text.ends_with("etOf") {
                 "toSet"
             } else {
                 "toMutableList"

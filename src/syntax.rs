@@ -147,6 +147,8 @@ pub struct Class<'a> {
     /// The class has only secondary constructors, so nothing outside it may
     /// call the generated header constructor.
     pub no_primary: bool,
+    /// `class K private constructor(...)`.
+    pub private_primary: bool,
 }
 
 /// `constructor(s: Text) : this(s.length) { ... }`.
@@ -824,6 +826,43 @@ fn accessor<'a>(
     }
 }
 
+/// Every function whose header says `: Nothing`.
+fn nothing_names(source: &str) -> Vec<&str> {
+    let mut names = Vec::new();
+    for (at, _) in source.match_indices("fun ") {
+        let rest = &source[at + 4..];
+        let header = rest.split(['\n', '{', '=']).next().unwrap_or("");
+        if header.trim_end().ends_with(": Nothing")
+            && let Some(name) = header.split(['(', '<']).next()
+        {
+            names.push(name.trim());
+        }
+    }
+    names
+}
+
+/// Every name declared with `infix fun`, and the library's own.
+fn infix_names(source: &str) -> Vec<&str> {
+    let mut names = vec!["union", "intersect", "subtract"];
+    for (at, _) in source.match_indices("infix fun ") {
+        let rest = &source[at + "infix fun ".len()..];
+        let header = rest.split(['(', '<']).next().unwrap_or("");
+        // `Int.addTo<T>` has its name after the receiver's last dot, and a
+        // generic receiver has its name after the closing angle bracket.
+        let header = if rest[header.len()..].starts_with('<') && !header.contains('.') {
+            let end = rest.find(">.").map_or(0, |end| end + 2);
+            rest[end..].split(['(', '<']).next().unwrap_or("")
+        } else {
+            header
+        };
+        let name = header.rsplit('.').next().unwrap_or("").trim();
+        if !name.is_empty() && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
 fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
     let parsed = parse_source(PRELUDE).expect("the built-in library parses");
     let extensions: Vec<&str> = parsed
@@ -836,13 +875,25 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         .any(|text| source.contains(text));
     if !destructuring
         && !calls_function(source, "Pair")
+        && !calls_function(source, "Regex")
+        && !in_code(source, "..")
+        && !in_code(source, " union ")
+        && !in_code(source, " intersect ")
+        && !in_code(source, " subtract ")
         && !in_code(source, "List<")
         && !in_code(source, " in ")
         && !in_code(source, " to ")
         && !source.contains("Triple(")
         && !PRELUDE_FUNCTIONS
             .iter()
-            .chain(&["listOf", "mutableListOf", "setOf", "mapOf", "mutableMapOf"])
+            .chain(&[
+                "listOf",
+                "mutableListOf",
+                "setOf",
+                "mutableSetOf",
+                "mapOf",
+                "mutableMapOf",
+            ])
             .any(|name| calls_function(source, name))
         && !extensions.iter().any(|name| calls_member(source, name))
     {
@@ -873,10 +924,14 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
                 let needs_pair = matches!(name, "zip" | "partition");
                 name == "toMutableList"
                     || (name.starts_with("__sumOf") && calls_member(source, "sumOf"))
+                    || (matches!(name, "union" | "intersect" | "subtract")
+                        && in_code(source, &format!(" {name} ")))
                     || (destructures && name.starts_with("component"))
                     || (name == "contains" && in_code(source, " in "))
                     || (matches!(name, "plus" | "minus") && list_operators)
-                    || (name == "toSet" && calls_function(source, "setOf"))
+                    || (name == "toSet"
+                        && (calls_function(source, "setOf")
+                            || calls_function(source, "mutableSetOf")))
                     || (calls_member(source, name) && !(needs_pair && user_pair))
             })
         })
@@ -892,9 +947,16 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             || calls_member(source, "associate")
             || needs_map);
     let needs_indexed = calls_member(source, "withIndex");
+    let needs_regex = calls_function(source, "Regex") || calls_member(source, "toRegex");
     for class in parsed.classes {
         if (class.name.text == "Pair" && needs_pair)
             || (class.name.text == "__Indexed" && needs_indexed)
+            || (class.name.text == "Regex"
+                && needs_regex
+                && !program
+                    .classes
+                    .iter()
+                    .any(|class| class.name.text == "Regex"))
             || (class.name.text == "Triple"
                 && source.contains("Triple(")
                 && !program
@@ -969,6 +1031,20 @@ fn parse_source(source: &str) -> Result<Program<'_>, Error> {
                 .collect();
             (function.name.text, kinds)
         })
+        .chain(
+            program
+                .classes
+                .iter()
+                .filter(|class| class.type_parameters.is_empty() && !class.parameters.is_empty())
+                .map(|class| {
+                    let kinds = class
+                        .parameters
+                        .iter()
+                        .map(|(_, kind)| Some(*kind))
+                        .collect();
+                    (class.name.text, kinds)
+                }),
+        )
         .collect();
     Ok(parse_with(source, nested, arities, properties, overloaded, false)?.0)
 }
@@ -1006,6 +1082,10 @@ fn parse_with<'a>(
         saw_vararg: false,
         local_aliases: Vec::new(),
         hoisted_functions: Vec::new(),
+        object_scopes: Vec::new(),
+        lambda_prefix: Vec::new(),
+        infix_names: infix_names(source),
+        nothing_names: nothing_names(source),
         function_start: 0,
         current_type: "",
         declared_functions: Vec::new(),
@@ -1090,6 +1170,14 @@ fn parse_with<'a>(
                 return Err(parser.error("Expected '=' after the type alias name."));
             }
             program.aliases.push((alias, parser.annotation()?));
+        } else if matches!(name.text, "infix" | "inline" | "tailrec" | "operator")
+            && parser.rest_trimmed().starts_with("fun ")
+        {
+            parser.take_word("fun");
+            parser.top_level_function = true;
+            program.functions.push(parser.function(true)?);
+            parser.top_level_function = false;
+            program.functions.append(&mut parser.finished_helpers);
         } else if name.text == "fun" {
             parser.top_level_function = true;
             program.functions.push(parser.function(true)?);
@@ -1179,6 +1267,15 @@ struct Parser<'a> {
     /// Local functions in scope: written name, then hidden name.
     local_aliases: Vec<(&'a str, &'a str)>,
     hoisted_functions: Vec<Function<'a>>,
+    /// For each `object implements ...` being read: the hidden name of the
+    /// object and the members that bare names inside it refer to.
+    object_scopes: Vec<(&'a str, Vec<&'a str>)>,
+    /// Bindings that unpack `{ (a, b) -> ... }` parameters.
+    lambda_prefix: Vec<Statement<'a>>,
+    /// Names written as `infix fun`, usable as `a name b`.
+    infix_names: Vec<&'a str>,
+    /// Functions declared to return `Nothing`.
+    nothing_names: Vec<&'a str>,
     /// Where the outermost function being parsed starts.
     function_start: usize,
     /// The type whose members are being parsed.
@@ -1556,6 +1653,17 @@ impl<'a> Parser<'a> {
         is_enum: bool,
     ) -> Result<Class<'a>, Error> {
         let name = self.binding()?;
+        self.class_named(name, is_abstract, is_data, is_enum)
+    }
+
+    /// The rest of a class declaration, after its name.
+    fn class_named(
+        &mut self,
+        name: Name<'a>,
+        is_abstract: bool,
+        is_data: bool,
+        is_enum: bool,
+    ) -> Result<Class<'a>, Error> {
         let mut type_parameters = Vec::new();
         let mut variances = Vec::new();
         let mut bounds = Vec::new();
@@ -1577,6 +1685,11 @@ impl<'a> Parser<'a> {
         let mut fields = Vec::new();
         let mut initializers = Vec::new();
         let mut header_methods = Vec::new();
+        let private_primary = self.rest_trimmed().starts_with("private constructor");
+        if private_primary {
+            self.take_word("private");
+            self.take_word("constructor");
+        }
         let has_header = self.take("(");
         if has_header {
             let mut index = 0;
@@ -1731,6 +1844,7 @@ impl<'a> Parser<'a> {
                 enum_values: None,
                 secondary: Vec::new(),
                 no_primary: false,
+                private_primary,
             });
         }
         self.expect("{", "Expected '{' after the class name.")?;
@@ -2137,6 +2251,7 @@ impl<'a> Parser<'a> {
             enum_values,
             secondary,
             no_primary,
+            private_primary,
         })
     }
 
@@ -2244,7 +2359,7 @@ impl<'a> Parser<'a> {
             });
         }
         let this = Expr::Variable(Name {
-            text: "this",
+            text: self.object_scopes.last().map_or("this", |scope| scope.0),
             offset: name.offset,
         });
         let getter_body = accessors.getter.unwrap_or_else(|| {
@@ -2282,6 +2397,157 @@ impl<'a> Parser<'a> {
             is_lateinit: false,
         });
         Ok((field, methods))
+    }
+
+    /// The hidden name of the innermost object with a member `name`.
+    fn object_member(&self, name: &str) -> Option<&'a str> {
+        self.object_scopes
+            .iter()
+            .rev()
+            .find(|(_, members)| members.contains(&name))
+            .map(|(owner, _)| *owner)
+    }
+
+    /// A local or parameter named `name` hides the member until the method ends.
+    fn shadow_member(&mut self, name: &str) {
+        if let Some(scope) = self.object_scopes.last_mut() {
+            scope.1.retain(|member| *member != name);
+        }
+    }
+
+    /// `object implements Runnable { ... }`. The object becomes a hidden class
+    /// whose methods forward to lambdas made where the object is written, so
+    /// they can use the local variables around it.
+    fn object_expression(&mut self, keyword: Name<'a>) -> Result<Expr<'a>, Error> {
+        let hidden: &'a str = Box::leak(format!("__Anon{}", keyword.offset).into_boxed_str());
+        let self_name: &'a str = Box::leak(format!("__self{}", keyword.offset).into_boxed_str());
+        let name = Name {
+            text: hidden,
+            offset: keyword.offset,
+        };
+        // A first reading learns the members, which may be used before they
+        // are declared.
+        let start = self.offset;
+        let marks = (
+            self.hoisted_functions.len(),
+            self.nested_classes.len(),
+            self.finished_helpers.len(),
+            self.extra_statements.len(),
+            self.declared_functions.len(),
+        );
+        let first = self.class_named(name, false, false, false)?;
+        let mut members: Vec<&'a str> = first.fields.iter().map(|field| field.name.text).collect();
+        members.extend(
+            first
+                .methods
+                .iter()
+                .map(|method| method.name.text)
+                .filter(|name| !name.contains('$')),
+        );
+        self.hoisted_functions.truncate(marks.0);
+        self.nested_classes.truncate(marks.1);
+        self.finished_helpers.truncate(marks.2);
+        self.extra_statements.truncate(marks.3);
+        self.declared_functions.truncate(marks.4);
+        self.offset = start;
+        self.object_scopes.push((self_name, members));
+        self.local_aliases.push(("this", self_name));
+        let parsed = self.class_named(name, false, false, false);
+        self.local_aliases.pop();
+        self.object_scopes.pop();
+        let mut class = parsed?;
+        let self_type = name;
+        let self_variable = Name {
+            text: self_name,
+            offset: keyword.offset,
+        };
+        let this = Expr::Variable(Name {
+            text: "this",
+            offset: keyword.offset,
+        });
+        let mut arguments = Vec::new();
+        let mut holders = Vec::new();
+        for (position, method) in class.methods.iter_mut().enumerate() {
+            if method.is_abstract || method.name.text.contains('$') {
+                continue;
+            }
+            if !method.type_parameters.is_empty() {
+                return Err(Error {
+                    offset: method.name.offset,
+                    message: "A method of an object expression cannot have type parameters yet.",
+                });
+            }
+            let holder = Name {
+                text: Box::leak(format!("__m{position}").into_boxed_str()),
+                offset: method.name.offset,
+            };
+            let mut inputs = vec![hidden];
+            inputs.extend(method.parameters.iter().map(|(_, kind)| kind.text));
+            let result = method.result.map_or("Unit", |result| result.text);
+            let annotation = Name {
+                text: Box::leak(format!("({}) -> {result}", inputs.join(", ")).into_boxed_str()),
+                offset: method.name.offset,
+            };
+            let mut parameters = vec![(self_variable, Some(self_type))];
+            parameters.extend(
+                method
+                    .parameters
+                    .iter()
+                    .map(|&(name, kind)| (name, Some(kind))),
+            );
+            let body = std::mem::take(&mut method.body);
+            arguments.push(Expr::Lambda(Box::new(Lambda {
+                offset: method.name.offset,
+                parameters,
+                explicit: true,
+                body,
+                value: None,
+                receiver: false,
+            })));
+            let mut forwarded = vec![this.clone()];
+            forwarded.extend(
+                method
+                    .parameters
+                    .iter()
+                    .map(|&(name, _)| Expr::Variable(name)),
+            );
+            let call = Expr::Call(holder, forwarded.clone());
+            method.body = if method.result.is_some() {
+                vec![Statement::Return(method.name, Some(call))]
+            } else {
+                vec![Statement::Call(holder, forwarded)]
+            };
+            method.private = false;
+            holders.push((holder, annotation));
+        }
+        for field in &mut class.fields {
+            field.private = false;
+        }
+        // Field starting values refer to the object through this name too.
+        class.methods.push(accessor(
+            self_variable,
+            Vec::new(),
+            Some(self_type),
+            vec![Statement::Return(self_variable, Some(this))],
+        ));
+        for (index, &(holder, annotation)) in holders.iter().enumerate() {
+            class.parameters.push((holder, annotation));
+            class
+                .initializers
+                .insert(index, Initializer::Field(class.fields.len()));
+            class.fields.push(Field {
+                annotations: Vec::new(),
+                protected: false,
+                name: holder,
+                annotation: Some(annotation),
+                value: Some(Expr::Variable(holder)),
+                mutable: false,
+                private: true,
+                is_lateinit: false,
+            });
+        }
+        self.nested_classes.push(class);
+        Ok(Expr::Call(name, arguments))
     }
 
     /// After the word `constructor`.
@@ -2370,6 +2636,10 @@ impl<'a> Parser<'a> {
         }
         self.expect("(", "Expected '(' after the function name.")?;
         let mut parameters = self.parameters()?;
+        let members = self.object_scopes.last().map(|scope| scope.1.clone());
+        for (parameter, _) in &parameters {
+            self.shadow_member(parameter.text);
+        }
         let vararg = std::mem::take(&mut self.saw_vararg);
         self.declared_functions.push((self.current_type, name.text));
         let mut overload_of = None;
@@ -2405,8 +2675,17 @@ impl<'a> Parser<'a> {
         let mut wrote_unit = false;
         let result = if self.take(":") {
             let written = self.annotation()?;
-            wrote_unit = matches!(written.text, "Unit" | "Nothing");
-            (!wrote_unit).then_some(written)
+            wrote_unit = written.text == "Unit";
+            // A function that never returns is declared to give an exception,
+            // and each call throws it, so code after a call is unreachable.
+            (!wrote_unit).then_some(if written.text == "Nothing" {
+                Name {
+                    text: "RuntimeException",
+                    offset: written.offset,
+                }
+            } else {
+                written
+            })
         } else {
             None
         };
@@ -2432,6 +2711,9 @@ impl<'a> Parser<'a> {
         }
         let helpers = self.default_helpers(name.text, &parameters, &type_parameters, &bounds);
         self.finished_helpers.extend(helpers);
+        if let (Some(members), Some(scope)) = (members, self.object_scopes.last_mut()) {
+            scope.1 = members;
+        }
         let body = if has_body && self.take_assignment() {
             let start = self.offset;
             match self.expression()? {
@@ -2697,6 +2979,7 @@ impl<'a> Parser<'a> {
             self.offset = start;
         }
         let first = self.logical(0, depth)?;
+        let first = self.range_value(first, depth)?;
         if !self.newline_ahead() && self.take_word("to") {
             let second = self.logical(0, depth)?;
             let pair = Name {
@@ -2851,16 +3134,22 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self, mut name: Name<'a>, depth: usize) -> Result<Statement<'a>, Error> {
-        if name.text == "field"
+        if matches!(name.text, "field" | "this")
             && let Some(&(_, hidden)) = self
                 .local_aliases
                 .iter()
                 .rev()
-                .find(|(plain, _)| *plain == "field")
+                .find(|(plain, _)| *plain == name.text)
         {
             name.text = hidden;
         }
         if name.text == "return" {
+            // `return@forEach` leaves the lambda, as a plain return in one does.
+            if self.rest().starts_with('@') {
+                self.offset += 1;
+                self.name()?;
+                name.text = "return@";
+            }
             let line = self.rest().split('\n').next().unwrap_or("");
             let bare = line.trim().is_empty()
                 || line.trim_start().starts_with('}')
@@ -2979,9 +3268,11 @@ impl<'a> Parser<'a> {
                 None
             };
             self.expect("=", "Expected '=' after the binding name.")?;
+            let value = self.expression()?;
+            self.shadow_member(variable.text);
             return Ok(Statement::Binding(
                 variable,
-                self.expression()?,
+                value,
                 name.text == "var",
                 annotation,
             ));
@@ -3089,6 +3380,27 @@ impl<'a> Parser<'a> {
             }
             return Ok(Statement::For(variable, values, body));
         }
+        if let Some(owner) = self.object_member(name.text) {
+            let this = Expr::Variable(Name {
+                text: owner,
+                offset: name.offset,
+            });
+            let target = if !self.newline_ahead() && self.take("(") {
+                let mut args = self.list(")", |parser| parser.argument(0))?;
+                if let Some(lambda) = self.trailing_lambda(0)? {
+                    args.push(lambda);
+                }
+                Expr::MethodCall(Box::new(this), name, args)
+            } else {
+                Expr::Field(Box::new(this), name)
+            };
+            let target = self.postfix(target, 0)?;
+            return match target {
+                Expr::MethodCall(..) => Ok(Statement::MethodCall(target)),
+                Expr::Field(..) | Expr::Index(..) => self.member_assignment(target),
+                _ => Err(self.error("Expected a function or method call.")),
+            };
+        }
         if let Some(operator) = self.step_operator() {
             return Ok(Statement::Assign(
                 name,
@@ -3136,6 +3448,9 @@ impl<'a> Parser<'a> {
             args
         };
         match self.postfix(Expr::Call(name, args), 0)? {
+            Expr::Call(name, args) if self.nothing_names.contains(&name.text) => {
+                Ok(Statement::Throw(name, Expr::Call(name, args)))
+            }
             Expr::Call(name, args) => Ok(Statement::Call(name, args)),
             call @ Expr::MethodCall(..) => Ok(Statement::MethodCall(call)),
             target @ (Expr::Field(..) | Expr::Index(..)) => self.member_assignment(target),
@@ -3515,7 +3830,7 @@ impl<'a> Parser<'a> {
                     })
                 })?;
                 let this = Name {
-                    text: "this",
+                    text: self.object_scopes.last().map_or("this", |scope| scope.0),
                     offset: field.name.offset,
                 };
                 let value = Expr::Field(Box::new(Expr::Variable(this)), field.name);
@@ -3549,7 +3864,7 @@ impl<'a> Parser<'a> {
                     return None;
                 }
                 let this = Name {
-                    text: "this",
+                    text: self.object_scopes.last().map_or("this", |scope| scope.0),
                     offset: field.name.offset,
                 };
                 let value = Name {
@@ -3847,6 +4162,17 @@ impl<'a> Parser<'a> {
             };
             left = Expr::Call(pair, vec![left, self.elvis(depth)?]);
         }
+        while !self.newline_ahead() {
+            let Some(word) = identifier(self.rest_trimmed(), self.offset) else {
+                break;
+            };
+            if !self.infix_names.contains(&word.text) {
+                break;
+            }
+            self.offset += word.text.len();
+            let right = self.elvis(depth)?;
+            left = Expr::MethodCall(Box::new(left), word, vec![right]);
+        }
         if !self.newline_ahead() && self.take_word("is") {
             return Ok(Expr::Is(Box::new(left), self.annotation()?));
         }
@@ -3935,7 +4261,30 @@ impl<'a> Parser<'a> {
     }
 
     fn expression(&mut self) -> Result<Expr<'a>, Error> {
-        self.logical(0, 0)
+        let first = self.logical(0, 0)?;
+        self.range_value(first, 0)
+    }
+
+    /// `1..3` used as a value holds its numbers in a list.
+    fn range_value(&mut self, first: Expr<'a>, depth: usize) -> Result<Expr<'a>, Error> {
+        if self.in_header || self.newline_ahead() {
+            return Ok(first);
+        }
+        let function = if self.take("..") {
+            "__rangeTo"
+        } else if self.take_word("until") {
+            "__rangeUntil"
+        } else if self.take_word("downTo") {
+            "__rangeDown"
+        } else {
+            return Ok(first);
+        };
+        let name = Name {
+            text: function,
+            offset: first.offset(),
+        };
+        let last = self.logical(0, depth)?;
+        Ok(Expr::Call(name, vec![first, last]))
     }
 
     /// An expression directly followed by a block, as in `if ready { ... }`.
@@ -3962,9 +4311,11 @@ impl<'a> Parser<'a> {
             return Err(self.error("Expressions can be nested up to 64 levels."));
         }
         let parameters = self.lambda_parameters();
+        let prefix = std::mem::take(&mut self.lambda_prefix);
         let explicit = parameters.is_some();
         let parameters = parameters.unwrap_or_default();
-        let (body, value) = self.value_body(depth)?;
+        let (mut body, value) = self.value_body(depth)?;
+        body.splice(0..0, prefix);
         Ok(Expr::Lambda(Box::new(Lambda {
             offset,
             parameters,
@@ -3986,15 +4337,42 @@ impl<'a> Parser<'a> {
             return Some(parameters);
         }
         loop {
-            let Ok(name) = self.binding() else {
+            self.skip_space();
+            let at = self.offset;
+            let destructured = if self.take("(") {
+                match self.list(")", Self::binding) {
+                    Ok(names) => Some(names),
+                    Err(_) => {
+                        self.offset = start;
+                        self.lambda_prefix.clear();
+                        return None;
+                    }
+                }
+            } else {
+                None
+            };
+            let binding = match &destructured {
+                Some(_) => Ok(Name {
+                    text: Box::leak(format!("__pair{at}").into_boxed_str()),
+                    offset: at,
+                }),
+                None => self.binding(),
+            };
+            let Ok(name) = binding else {
                 self.offset = start;
+                self.lambda_prefix.clear();
                 return None;
             };
+            if let Some(names) = destructured {
+                let bindings = self.component_bindings(name, &names, false);
+                self.lambda_prefix.extend(bindings);
+            }
             let annotation = if self.take(":") {
                 match self.annotation() {
                     Ok(annotation) => Some(annotation),
                     Err(_) => {
                         self.offset = start;
+                        self.lambda_prefix.clear();
                         return None;
                     }
                 }
@@ -4009,6 +4387,7 @@ impl<'a> Parser<'a> {
             }
             if !self.take(",") {
                 self.offset = start;
+                self.lambda_prefix.clear();
                 return None;
             }
         }
@@ -4268,6 +4647,7 @@ impl<'a> Parser<'a> {
             }
             let outer = std::mem::replace(&mut self.in_header, false);
             let inner = self.logical(0, depth + 1)?;
+            let inner = self.range_value(inner, depth + 1)?;
             self.in_header = outer;
             self.expect(")", "Expected ')' to close the expression.")?;
             return Ok(inner);
@@ -4499,6 +4879,13 @@ impl<'a> Parser<'a> {
             if name.text == "try" && self.rest_trimmed().starts_with('{') {
                 return self.try_value(name, depth + 1);
             }
+            if name.text == "object"
+                && (self.rest_trimmed().starts_with('{')
+                    || self.rest().starts_with("implements ")
+                    || self.rest().starts_with("extends "))
+            {
+                return self.object_expression(name);
+            }
             if let Some(&(_, hidden)) = self
                 .local_aliases
                 .iter()
@@ -4506,6 +4893,44 @@ impl<'a> Parser<'a> {
                 .find(|(plain, _)| *plain == name.text)
             {
                 name.text = hidden;
+            }
+            if let Some(owner) = self.object_member(name.text) {
+                let this = Expr::Variable(Name {
+                    text: owner,
+                    offset,
+                });
+                let target = if !self.newline_ahead() && self.take("(") {
+                    let mut args = self.list(")", |parser| parser.argument(depth + 1))?;
+                    if let Some(lambda) = self.trailing_lambda(depth + 1)? {
+                        args.push(lambda);
+                    }
+                    Expr::MethodCall(Box::new(this), name, args)
+                } else {
+                    Expr::Field(Box::new(this), name)
+                };
+                return Ok(target);
+            }
+            if self.rest().starts_with("::")
+                && name.text.starts_with(|ch: char| ch.is_ascii_uppercase())
+            {
+                self.offset += 2;
+                let member = self.name()?;
+                if member.text != "class" {
+                    let input = Name {
+                        text: "__input",
+                        offset,
+                    };
+                    let read = Expr::Field(Box::new(Expr::Variable(input)), member);
+                    return Ok(Expr::Lambda(Box::new(Lambda {
+                        offset,
+                        parameters: vec![(input, Some(name))],
+                        explicit: true,
+                        body: Vec::new(),
+                        value: Some(Box::new(read)),
+                        receiver: false,
+                    })));
+                }
+                self.offset -= member.text.len() + 2;
             }
             if !matches!(name.text, "true" | "false" | "null")
                 && !self.newline_ahead()
@@ -4521,6 +4946,10 @@ impl<'a> Parser<'a> {
                     } else {
                         lambda
                     });
+                }
+                if self.nothing_names.contains(&name.text) {
+                    let call = Expr::Call(name, args);
+                    return Ok(Expr::Jump(Box::new(Statement::Throw(name, call))));
                 }
                 return Ok(Expr::Call(name, args));
             }
@@ -4650,6 +5079,10 @@ impl<'a> Parser<'a> {
             saw_vararg: false,
             local_aliases: self.local_aliases.clone(),
             hoisted_functions: Vec::new(),
+            object_scopes: self.object_scopes.clone(),
+            lambda_prefix: Vec::new(),
+            infix_names: self.infix_names.clone(),
+            nothing_names: self.nothing_names.clone(),
             function_start: self.function_start,
             current_type: "",
             declared_functions: Vec::new(),

@@ -1,0 +1,7 @@
+// error: no method
+interface I { fun f(): Int }
+let i: I = object implements I {
+    override fun f(): Int = 1
+    fun g(): Int = 2
+}
+print(i.g())
