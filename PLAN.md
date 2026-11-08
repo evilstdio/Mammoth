@@ -109,7 +109,7 @@ Open correctness work, in order:
 1. Consider this-escape from initializers.
 2. Element checks for arrays passed through generic functions.
 3. Wildcard types written in Mammoth source, so conservatively rejected wildcard programs can be expressed.
-4. `byte[]` as a usable list type, and `goto_w` for branches over 32 KB.
+4. Constructing `java.lang.String` from `byte[]` or `char[]`, and `goto_w` for branches over 32 KB.
 5. Extend the fuzzers to multi-file projects and Java subclasses of Mammoth classes.
 
 This work does not establish full Java or Kotlin compatibility, and no performance claims follow from it.

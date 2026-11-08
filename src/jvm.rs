@@ -3152,6 +3152,7 @@ impl<'a> Emitter<'a> {
             ListKind::Double => method.code.extend([0xbc, 7]), // newarray double
             ListKind::Long => method.code.extend([0xbc, 11]), // newarray long
             ListKind::Char => method.code.extend([0xbc, 5]), // newarray char
+            ListKind::Byte => method.code.extend([0xbc, 8]), // newarray byte
             ListKind::Object(_)
             | ListKind::Interface(_)
             | ListKind::Java(_)
@@ -4478,6 +4479,7 @@ impl ListKind {
             Self::Double => Kind::Double,
             Self::Long => Kind::Long,
             Self::Char => Kind::Char,
+            Self::Byte => Kind::Int,
             Self::Object(index) => Kind::Object(index),
             Self::Interface(index) => Kind::Interface(index),
             Self::Java(index) => Kind::Java(index),
@@ -4494,6 +4496,7 @@ impl ListKind {
             Self::Double => Cow::Borrowed("[D"),
             Self::Long => Cow::Borrowed("[J"),
             Self::Char => Cow::Borrowed("[C"),
+            Self::Byte => Cow::Borrowed("[B"),
             _ => Cow::Owned(format!("[{}", self.element().descriptor(types))),
         }
     }
@@ -4511,6 +4514,7 @@ impl ListKind {
             Self::Double => 0x31, // daload
             Self::Long => 0x2f,   // laload
             Self::Char => 0x34,   // caload
+            Self::Byte => 0x33,   // baload
         }
     }
 
@@ -4527,6 +4531,7 @@ impl ListKind {
             Self::Double => 0x52, // dastore
             Self::Long => 0x50,   // lastore
             Self::Char => 0x55,   // castore
+            Self::Byte => 0x54,   // bastore
         }
     }
 }

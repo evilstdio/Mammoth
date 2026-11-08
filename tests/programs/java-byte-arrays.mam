@@ -1,0 +1,19 @@
+// A Java byte[] is a list whose items read and write as Int.
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+import java.nio.ByteBuffer
+import java.util.Arrays
+let bytes = "héllo".getBytes(StandardCharsets.UTF_8)
+print(bytes.size())
+print(bytes[1])
+bytes[0] = 72
+var total = 0
+for b in bytes { total += b }
+print(total)
+print(StandardCharsets.UTF_8.decode(ByteBuffer.wrap(bytes)).toString().length())
+print(Base64.getEncoder().encodeToString(bytes))
+print(Arrays.toString(bytes))
+bytes[0] = 300
+print(bytes[0])
+fun firstByte(data: Any): Text { return data.getClass().getSimpleName() }
+print(firstByte(bytes))

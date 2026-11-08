@@ -1478,6 +1478,7 @@ Lambdas can be passed where a Java generic parameter is erased to `Object`, and 
 - `value as Text` throws if `value` is null. Use `as Text?` to keep null.
 - A top-level statement cannot reach a variable declared later through the functions, constructors and methods it calls. Methods are matched by name, and lambdas are not followed.
 - Mammoth has no `Byte` or `Short` type, so an `Int` can be passed to Java `byte` and `short` parameters after any `int` overload. The value is truncated as a Java cast would.
+- A Java `byte[]` is a list whose items read and write as `Int`: bytes are signed, and writing a larger number truncates it. It is a separate type from `List<Int>`.
 - Call a generic Java method with explicit type arguments like `Collections.emptyList<Text>()`. Arguments must fit them.
 
 #### Casts to parameterized Java types

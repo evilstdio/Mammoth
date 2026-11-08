@@ -7,14 +7,15 @@
 2. Differential, soundness and adversarial tools (`tests/fuzz`), plus a seeded differential test in `cargo test`.
 3. Soundness: null through `as`, `MutableList` casts, map keys, array element reads, generic Java interface signatures, instance field writes from static code, early reads of top-level variables, enum subclasses, final Java overrides.
 4. Overloads follow javac's phases and lambda specificity. Explicit type arguments on Java calls.
-5. Interop: `for` over `Iterable` classes, `EnumMap`, nested Java arrays, `byte`/`short` parameters, nullable lambda inputs, null-tolerant text joining and `==`.
+5. Interop: `byte[]` as an indexable list (`ListKind::Byte`, elements read as `Int`, distinct from `List<Int>` in `same_kind`), `for` over `Iterable` classes, `EnumMap`, nested Java arrays, `byte`/`short` parameters, nullable lambda inputs, null-tolerant text joining and `==`.
 6. Diagnostics and robustness: correct stack-trace lines after probes, unreachable `catch`, unrelated `==`, `while true`, a compiler panic on `static init`.
 
 **Evidence.**
 - Differential fuzz: 0 problems on 620 programs (seeds 2, 5, 7) against javac.
 - Soundness fuzz: 0 unexplained failures on 150 grown programs after the last soundness fix, 75 of them with random class declarations. A later final run is recorded below if it finished.
 - Mutation fuzz with a debug compiler: 6300 inputs found one panic, now fixed.
-- The fuzz runs predate the final two compiler commits, which changed only global name tracking and static-field checks.
+- A further differential run of 150 programs and soundness run of 20 grown programs also had 0 problems.
+- These fuzz runs predate the last few compiler commits (global name tracking, static-field checks, the method-following order check, `byte[]` lists). The seeded differential test in `cargo test` covers the final source, but the larger fuzzers were not re-run on it.
 
 **Final checks, on the last commit's source.**
 - `cargo test --release --offline`: unit 5, annotations 1, fuzz 1, programs 3, projects 9, all passing.
@@ -26,7 +27,7 @@
 - Top-level initialization order follows method calls by name, so a same-named method in another class can cause a false rejection. It does not follow lambdas. Indirect this-escape can still observe null or 0.
 - Arrays passed through generic functions are not element-checked. Raw Java parameters can pollute typed collections.
 - Mammoth cannot write wildcard types, so some valid wildcard programs are rejected.
-- `byte[]` is an opaque Java value with no indexing. Branches over 32 KB are a clean compile error.
+- `java.lang.String` cannot be constructed directly, so `new String(bytes, charset)` needs `charset.decode(ByteBuffer.wrap(bytes)).toString()`. Mammoth code cannot create a `byte[]` itself. Branches over 32 KB are a clean compile error.
 - `a ?: return x` is not supported. Compound assignment to Java fields through an explicit receiver is not supported.
 - Generic default methods cannot be called through `super.` when the superclass inherits them.
 

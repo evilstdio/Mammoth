@@ -860,7 +860,8 @@ impl Types<'_> {
             }
             (Kind::List(left), Kind::List(right))
             | (Kind::MutableList(left), Kind::MutableList(right)) => {
-                self.same_kind(left.element(), right.element())
+                (left == ListKind::Byte) == (right == ListKind::Byte)
+                    && self.same_kind(left.element(), right.element())
             }
             (Kind::Function(left), Kind::Function(right)) => {
                 let left = self.function_type(left);

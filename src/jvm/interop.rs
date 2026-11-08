@@ -465,6 +465,7 @@ impl Types<'_> {
                     JType::Double => Some(ListKind::Double),
                     JType::Bool => Some(ListKind::Bool),
                     JType::Char => Some(ListKind::Char),
+                    JType::Byte => Some(ListKind::Byte),
                     JType::Class(name) => ListKind::for_element(self.java_kind(name)),
                     _ => None,
                 };
@@ -565,6 +566,11 @@ impl Types<'_> {
                 }
             }
             Kind::Nullable(_) => self.conversion_cost(kind.non_null(), target),
+            Kind::List(ListKind::Byte) => match target {
+                J::Array(inner) if **inner == J::Byte => Some(0),
+                J::Class(name) if name == "java/lang/Object" => Some(3),
+                _ => None,
+            },
             Kind::List(list) => match target {
                 J::Array(inner) => {
                     let element = list.element();

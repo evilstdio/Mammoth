@@ -1,0 +1,4 @@
+// error: No version of this Java method accepts
+import java.nio.ByteBuffer
+let ints = [1, 2]
+print(ByteBuffer.wrap(ints))

@@ -1,0 +1,3 @@
+// error: Expected a list with the declared type
+fun f(a: List<Int>): Int { return a[0] }
+print(f("a".getBytes()))

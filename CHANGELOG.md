@@ -1,5 +1,10 @@
 # Changelog
 
+## Byte arrays, 2026-11-08
+
+- A Java `byte[]` can be indexed, looped over and passed back to Java. It is a separate type from `List<Int>`.
+- The initialization-order check follows method calls by name.
+
 ## Generic Java interfaces and null text, 2026-11-08
 
 - Methods implementing a generic Java interface must use its type arguments.

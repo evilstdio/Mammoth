@@ -234,6 +234,8 @@ pub enum ListKind {
     Int,
     Long,
     Char,
+    /// A Java `byte[]`. Its elements read and write as `Int`.
+    Byte,
     Bool,
     Double,
     Object(usize),
