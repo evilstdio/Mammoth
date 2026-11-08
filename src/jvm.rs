@@ -34,6 +34,7 @@ mod java_fields;
 mod lambdas;
 mod native_classes;
 mod native_generics;
+mod overloads;
 mod project;
 mod special;
 mod statics;
@@ -1662,6 +1663,8 @@ struct Symbols<'a> {
     functions: HashMap<&'a str, Signature<'a>>,
     /// For each extension function name, the hidden functions declared for it.
     extensions: HashMap<&'a str, Vec<&'a str>>,
+    /// For each overloaded name, the hidden names of its declarations.
+    overloads: Rc<HashMap<&'a str, Vec<&'a str>>>,
     methods: Rc<Vec<HashMap<&'a str, Signature<'a>>>>,
     constructors: Rc<Vec<Signature<'a>>>,
     interfaces: Rc<Vec<HashMap<&'a str, Signature<'a>>>>,
@@ -2239,6 +2242,19 @@ impl<'a> Emitter<'a> {
         if let Some(kind) = self.collection_builder(method, name, args, base, expected)? {
             return Ok(Some(kind));
         }
+        if !self.symbols.overloads.is_empty()
+            && method.binding(name).is_none()
+            && let Some(chosen) = self.overloaded_function(method, name, args)?
+        {
+            return self.call_expected(method, chosen, args, base, expected);
+        }
+        if let Some(class) = self.current_class
+            && matches!(name.text, "values" | "valueOf")
+            && self.symbols.enum_values[class].is_some()
+            && !self.symbols.functions.contains_key(name.text)
+        {
+            return self.enum_static_call(method, class, name, args, base);
+        }
         if let Some(class) = self.current_class
             && !self.symbols.functions.contains_key(name.text)
             && let Some(result) = self.static_call(method, class, name, args, base)?
@@ -2463,6 +2479,12 @@ impl<'a> Emitter<'a> {
         base: u16,
         expected: Option<Kind>,
     ) -> Result<Option<Kind>, Error> {
+        let name = if self.symbols.overloads.is_empty() {
+            name
+        } else {
+            self.overloaded_method(method, receiver, name, args)?
+                .unwrap_or(name)
+        };
         if let Expr::Variable(variable) = receiver
             && variable.text.starts_with("super")
             && variable.text.contains('<')

@@ -176,6 +176,8 @@ pub struct Function<'a> {
     pub in_prelude: bool,
     /// Whether the last parameter was written `vararg`.
     pub vararg: bool,
+    /// For one of several declarations of a name, the written name.
+    pub overload_of: Option<&'a str>,
 }
 
 pub struct Annotation<'a> {
@@ -521,6 +523,7 @@ fn add_data_members<'a>(class: &mut Class<'a>) {
         extension_of: None,
         in_prelude: false,
         vararg: false,
+        overload_of: None,
     };
     let declared = |methods: &[Function<'a>], name: &str| {
         methods.iter().any(|method| method.name.text == name)
@@ -686,9 +689,16 @@ pub fn parse(source: &str) -> Result<Program<'_>, Error> {
 }
 
 fn parse_source(source: &str) -> Result<Program<'_>, Error> {
-    let (program, nested, dotted, properties) =
-        parse_with(source, Vec::new(), Vec::new(), Vec::new(), true)?;
-    if nested.is_empty() && !dotted && properties.is_empty() {
+    let (program, nested, dotted, properties, declared) =
+        parse_with(source, Vec::new(), Vec::new(), Vec::new(), Vec::new(), true)?;
+    let mut seen = std::collections::HashSet::new();
+    let mut overloaded: Vec<&str> = Vec::new();
+    for entry in declared {
+        if !seen.insert(entry) && !overloaded.contains(&entry.1) {
+            overloaded.push(entry.1);
+        }
+    }
+    if nested.is_empty() && !dotted && properties.is_empty() && overloaded.is_empty() {
         return Ok(program);
     }
     // Now that every nested type and function is known, `Outer.Inner` and
@@ -698,7 +708,7 @@ fn parse_source(source: &str) -> Result<Program<'_>, Error> {
         .iter()
         .map(|function| (function.name.text, function.parameters.len()))
         .collect();
-    Ok(parse_with(source, nested, arities, properties, false)?.0)
+    Ok(parse_with(source, nested, arities, properties, overloaded, false)?.0)
 }
 
 #[allow(clippy::type_complexity)]
@@ -707,8 +717,18 @@ fn parse_with<'a>(
     nested_names: Vec<(&'a str, &'a str)>,
     arities: Vec<(&'a str, usize)>,
     interface_properties: Vec<&'a str>,
+    overloaded: Vec<&'a str>,
     discovering: bool,
-) -> Result<(Program<'a>, Vec<(&'a str, &'a str)>, bool, Vec<&'a str>), Error> {
+) -> Result<
+    (
+        Program<'a>,
+        Vec<(&'a str, &'a str)>,
+        bool,
+        Vec<&'a str>,
+        Vec<(&'a str, &'a str)>,
+    ),
+    Error,
+> {
     let mut parser = Parser {
         source,
         offset: 0,
@@ -722,6 +742,9 @@ fn parse_with<'a>(
         discovering,
         saw_dotted_type: false,
         saw_vararg: false,
+        current_type: "",
+        declared_functions: Vec::new(),
+        overloaded,
         interface_properties,
         properties_found: Vec::new(),
         arities,
@@ -853,6 +876,7 @@ fn parse_with<'a>(
         parser.nested_found,
         parser.saw_dotted_type,
         parser.properties_found,
+        parser.declared_functions,
     ))
 }
 
@@ -880,6 +904,12 @@ struct Parser<'a> {
     discovering: bool,
     saw_dotted_type: bool,
     saw_vararg: bool,
+    /// The type whose members are being parsed.
+    current_type: &'a str,
+    /// Every function and method seen, with the type it is in.
+    declared_functions: Vec<(&'a str, &'a str)>,
+    /// Names declared more than once in one scope, from an earlier parse.
+    overloaded: Vec<&'a str>,
     /// Property names declared by interfaces, from an earlier parse.
     interface_properties: Vec<&'a str>,
     properties_found: Vec<&'a str>,
@@ -1120,6 +1150,7 @@ impl<'a> Parser<'a> {
         }
         // An interface without members can leave out its braces.
         let has_body = self.take("{");
+        let outer_type = std::mem::replace(&mut self.current_type, name.text);
         let mut methods = Vec::new();
         while has_body && !self.take("}") {
             let annotations = self.annotations()?;
@@ -1147,6 +1178,7 @@ impl<'a> Parser<'a> {
                     extension_of: None,
                     in_prelude: false,
                     vararg: false,
+                    overload_of: None,
                 });
                 continue;
             }
@@ -1168,6 +1200,7 @@ impl<'a> Parser<'a> {
             methods.push(method);
             methods.append(&mut self.finished_helpers);
         }
+        self.current_type = outer_type;
         Ok(Interface {
             annotations: Vec::new(),
             type_parameters,
@@ -1367,6 +1400,7 @@ impl<'a> Parser<'a> {
             }
             enum_values = Some(values);
         }
+        let outer_type = std::mem::replace(&mut self.current_type, name.text);
         let mut methods = Vec::new();
         let mut static_fields = Vec::new();
         let mut static_methods = constructor_helpers;
@@ -1550,6 +1584,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        self.current_type = outer_type;
         let getters = self.property_getters(&fields, &methods);
         methods.extend(getters);
         Ok(Class {
@@ -1624,6 +1659,21 @@ impl<'a> Parser<'a> {
         self.expect("(", "Expected '(' after the function name.")?;
         let mut parameters = self.parameters()?;
         let vararg = std::mem::take(&mut self.saw_vararg);
+        self.declared_functions.push((self.current_type, name.text));
+        let mut overload_of = None;
+        let mut name = name;
+        if extension_of.is_none() && self.overloaded.contains(&name.text) {
+            overload_of = Some(name.text);
+            let label: String = parameters
+                .iter()
+                .map(|(_, annotation)| annotation.text)
+                .collect::<Vec<_>>()
+                .join("_")
+                .chars()
+                .map(|ch| if ch.is_alphanumeric() { ch } else { '_' })
+                .collect();
+            name.text = Box::leak(format!("{}$ov${label}", name.text).into_boxed_str());
+        }
         if let Some(receiver) = receiver {
             parameters.insert(
                 0,
@@ -1679,6 +1729,7 @@ impl<'a> Parser<'a> {
             extension_of,
             in_prelude: false,
             vararg,
+            overload_of,
         })
     }
 
@@ -1722,6 +1773,7 @@ impl<'a> Parser<'a> {
                         extension_of: None,
                         in_prelude: false,
                         vararg: false,
+                        overload_of: None,
                     });
                 }
                 "new" => {
@@ -1879,6 +1931,7 @@ impl<'a> Parser<'a> {
                     extension_of: None,
                     in_prelude: false,
                     vararg: false,
+                    overload_of: None,
                 }
             })
             .collect()
@@ -2027,6 +2080,8 @@ impl<'a> Parser<'a> {
         end: &str,
         mut read: impl FnMut(&mut Self) -> Result<T, Error>,
     ) -> Result<Vec<T>, Error> {
+        // Inside brackets, `{` can only start a lambda, even in an `if` header.
+        let outer = std::mem::replace(&mut self.in_header, false);
         let mut items = Vec::new();
         while !self.take(end) {
             items.push(read(self)?);
@@ -2035,6 +2090,7 @@ impl<'a> Parser<'a> {
             }
             self.expect(",", "Expected a comma or the end of the list.")?;
         }
+        self.in_header = outer;
         Ok(items)
     }
 
@@ -2475,6 +2531,7 @@ impl<'a> Parser<'a> {
                     extension_of: None,
                     in_prelude: false,
                     vararg: false,
+                    overload_of: None,
                 })
             })
             .collect()
@@ -3068,7 +3125,9 @@ impl<'a> Parser<'a> {
             if depth == 64 {
                 return Err(self.error("Expressions can be nested up to 64 levels."));
             }
+            let outer = std::mem::replace(&mut self.in_header, false);
             let inner = self.logical(0, depth + 1)?;
+            self.in_header = outer;
             self.expect(")", "Expected ')' to close the expression.")?;
             return Ok(inner);
         }
@@ -3367,6 +3426,9 @@ impl<'a> Parser<'a> {
             discovering: self.discovering,
             saw_dotted_type: false,
             saw_vararg: false,
+            current_type: "",
+            declared_functions: Vec::new(),
+            overloaded: self.overloaded.clone(),
             interface_properties: self.interface_properties.clone(),
             properties_found: Vec::new(),
             arities: self.arities.clone(),

@@ -1,0 +1,85 @@
+// Functions and methods can share a name when their parameters differ.
+fun show(value: Int): Text = "int {value}"
+fun show(value: Text): Text = "text {value}"
+fun show(value: Double): Text = "double {value}"
+fun show(a: Int, b: Int): Text = "two {a} {b}"
+fun show(value: Long): Text = "long {value}"
+print(show(1))
+print(show("a"))
+print(show(1.5))
+print(show(1, 2))
+print(show(5L))
+let boxed: Int = 7
+print(show(boxed))
+print(show(1 + 1))
+print(show("x" + "y"))
+
+// Widening picks the nearest version.
+fun near(value: Long): Text = "long"
+fun near(value: Double): Text = "double"
+print(near(1))
+
+// Subclasses prefer the most exact match.
+open class A
+class B extends A
+fun pick(value: A): Text = "A"
+fun pick(value: B): Text = "B"
+fun pick(value: Any): Text = "Any"
+print(pick(A()))
+print(pick(B()))
+print(pick("text"))
+let asA: A = B()
+print(pick(asA))
+
+// Methods, static methods, inheritance and defaults.
+open class Printer {
+    open fun put(value: Int): Text = "int {value}"
+    open fun put(value: Text): Text = "text {value}"
+    fun both(a: Int, b: Text): Text = put(a) + "," + put(b)
+    fun times(value: Text, count: Int = 2): Text = value.repeat(count)
+    fun times(value: Int): Int = value * 2
+    static fun make(size: Int): Text = "size {size}"
+    static fun make(name: Text): Text = "name {name}"
+}
+class Loud extends Printer {
+    override fun put(value: Text): Text = super.put(value) + "!"
+}
+let printer: Printer = Loud()
+print(printer.put(1))
+print(printer.put("a"))
+print(printer.both(2, "b"))
+print(printer.times("x"))
+print(printer.times("x", 3))
+print(printer.times(4))
+print(Printer.make(1))
+print(Printer.make("n"))
+
+// Lambdas are matched by their parameter count.
+fun run(action: () -> Int): Int = action()
+fun run(action: (Int) -> Int): Int = action(10)
+print(run { 1 })
+print(run { x -> x + 1 })
+
+// Interfaces.
+interface Sink {
+    fun send(value: Int): Text
+    fun send(value: Text): Text
+}
+class Console implements Sink {
+    override fun send(value: Int): Text = "n{value}"
+    override fun send(value: Text): Text = "s{value}"
+}
+let sink: Sink = Console()
+print(sink.send(1))
+print(sink.send("a"))
+
+// Named arguments and generics.
+fun label(text: Text, width: Int = 3): Text = text.padEnd(width) + "|"
+fun label(number: Int, width: Int = 3): Text = "{number}".padStart(width) + "|"
+print(label("a"))
+print(label(number = 1))
+print(label(2, width = 5))
+fun first<T>(items: MutableList<T>): T = items[0]
+fun first(text: Text): Text = text.substring(0, 1)
+print(first(listOf(9)) + 1)
+print(first("hello"))

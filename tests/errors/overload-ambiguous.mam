@@ -1,0 +1,8 @@
+// error: more than one version
+open class A
+interface I
+interface J
+class C implements I, J
+fun f(a: I) { }
+fun f(a: J) { }
+f(C())

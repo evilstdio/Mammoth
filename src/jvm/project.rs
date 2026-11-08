@@ -177,7 +177,8 @@ pub(super) fn resolve<'a>(
                 } else if !programs[source].functions.iter().any(|function| {
                     function.exported
                         && (function.name.text == import.name.text
-                            || function.extension_of == Some(import.name.text))
+                            || function.extension_of == Some(import.name.text)
+                            || function.overload_of == Some(import.name.text))
                 }) {
                     return Err((
                         owner,
@@ -388,6 +389,21 @@ pub(super) fn resolve<'a>(
             let Some(&source) = modules.get(import.module.as_str()) else {
                 continue;
             };
+            for function in &programs[source].functions {
+                if function.exported && function.overload_of == Some(import.name.text) {
+                    let signature = scopes[source].functions[function.name.text].clone();
+                    scopes[owner]
+                        .functions
+                        .insert(function.name.text, signature);
+                    scopes[owner].imports.insert(
+                        function.name.text,
+                        JavaTarget {
+                            class: import.module.clone(),
+                            member: function.name.text,
+                        },
+                    );
+                }
+            }
             let extensions: Vec<_> = programs[source]
                 .functions
                 .iter()
@@ -476,6 +492,29 @@ pub(super) fn resolve<'a>(
             }
         }
     }
+    let mut overload_table: HashMap<&str, Vec<&str>> = HashMap::new();
+    for program in programs.iter() {
+        let members = program
+            .classes
+            .iter()
+            .flat_map(|class| class.methods.iter().chain(&class.static_methods))
+            .chain(
+                program
+                    .interfaces
+                    .iter()
+                    .flat_map(|interface| &interface.methods),
+            )
+            .chain(&program.functions);
+        for function in members {
+            if let Some(plain) = function.overload_of {
+                let hidden = overload_table.entry(plain).or_default();
+                if !hidden.contains(&function.name.text) {
+                    hidden.push(function.name.text);
+                }
+            }
+        }
+    }
+    let overloads = Rc::new(overload_table);
     let mut methods = Vec::new();
     let mut constructors = Vec::new();
     let mut implementations = Vec::new();
@@ -802,6 +841,7 @@ pub(super) fn resolve<'a>(
         own_classes: Vec::new(),
         own_interfaces: Vec::new(),
         extensions: HashMap::new(),
+        overloads: overloads.clone(),
     };
     for (owner, (scope, program)) in scopes.iter().zip(programs).enumerate() {
         template.types = scope.types.clone();
@@ -888,6 +928,7 @@ pub(super) fn resolve<'a>(
             types: scope.types,
             functions: scope.functions,
             extensions: scope.extensions,
+            overloads: overloads.clone(),
             java: scope.java,
             imports: scope.imports,
             java_fields: scope.java_fields,

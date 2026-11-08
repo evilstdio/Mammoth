@@ -10,9 +10,15 @@ The goal is closing the feature gap with Kotlin. Work is on branch `compiler-cor
 - **Jumps as values** (`Expr::Jump`, `jump_value`), **objects** (`is_object`, static `INSTANCE`), **operators** (error-path rewrites in `arithmetic_tail`, comparison and index), **`in`** (`contains_check`, `Expr::InRange`), **progressions** (`loop_progression`, overflow-safe), **raw text**, **data class members** (`add_data_members`), **destructuring** (parser desugar, `statement_list`).
 - `expression` and `expression_as` now release any locals made while computing a value, so branch joins stay valid.
 
-**Known limits.** Mammoth has no vararg parameters, function references, nested classes, `typealias` or coroutines yet. Implicit receiver members do not work from a lambda inside an extension unless written with `this`. A constructor default cannot mention the class's type parameters. Prelude errors are reported as "in the built-in library".
+- **Overloading** (`src/jvm/overloads.rs`). The first parse records names declared twice in one scope; the second gives every declaration of such a name a hidden `name$ov$types` name. Calls probe argument kinds and score candidates. Costs apply only to overloaded names.
+- **Two-pass parsing** (`parse_source`). A lenient first pass (`discovering`) finds nested types, function arities, interface properties and overloads. A second pass runs only when one of those is present.
+- **Nested types** flatten to top-level types (`nested_type`), so inner names must be unique per file. **Function references** become lambdas using arities from the first pass. **Varargs** are `Signature::vararg`, gathered in `complete_varargs`.
+- **Property reads** fall back in `field_on` to `name()`, `getName()` and extensions. **Interface properties** are abstract methods; a class field of that name gets a generated getter (`property_getters`).
+- Real programs: `examples/json.mam`, `algorithms.mam`, `library.mam`.
 
-**Next.** `listOf` family and `to`, nested classes, vararg, covariant overrides, then more real programs.
+**Known limits.** No coroutines, local functions, `lateinit`, `by lazy`, or companion objects. Implicit receiver members work in a lambda inside an extension only through `this`. A constructor default cannot mention the class's type parameters. Overloaded names are hidden from Java. Overloads with a generic parameter type may not line up with an override written with concrete types. Prelude errors are reported as "in the built-in library". `a to b` works only in call arguments.
+
+**Next.** Local functions, `lateinit`, `by lazy`, companion objects, then more real programs.
 
 # Session summary: session 3, 2026-11-08 (read this first)
 

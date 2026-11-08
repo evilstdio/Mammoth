@@ -990,6 +990,29 @@ These are written in Mammoth in `src/prelude.mam`, and only the ones a program u
 - `"""raw text"""` spans lines and has no escapes or `{}` values. `trimIndent()` removes the common indentation.
 - `value ?: return 0`, `value ?: throw Oops()`, `value ?: continue` and `value ?: break` leave early. `throw` and `return` also work as a `when` branch.
 
+### Overloading
+
+Functions and methods can share a name when their parameter types differ. The call picks the closest match: an exact type first, then widening such as `Int` to `Long`, then a parent type. A lambda is matched by its parameter count. A call that fits two versions equally is an error. On the JVM each version has a hidden name, such as `show$ov$Int`, so Java callers and Java interfaces cannot use these names directly.
+
+### Nested types
+
+`class`, `data class`, `enum`, `object`, `sealed class` and `interface` can be declared inside a class and named `Outer.Inner`, or just `Inner`. A nested type has no access to an instance of the outer class, and each nested name must be unique within its file.
+
+### Building collections
+
+`listOf(1, 2)` and `mutableListOf("a")` make a `MutableList`, `setOf(1, 2)` a set, and `mapOf("a" to 1)` a map. `a to b` inside call arguments makes a `Pair`.
+
+### Variable arguments, references and aliases
+
+- `fun total(vararg numbers: Int): Int` takes any number of values, as a list named `numbers`. `total(*existing)` passes a list.
+- `::double` is a function value for a function in the same file.
+- `typealias Names = MutableList<Text>` names a type.
+- An `override` can return a subtype of the parent method's result.
+
+### Properties and scope functions
+
+`list.size`, `text.length` and a Java bean's `person.name` read like fields: Mammoth calls `size()` or `getName()` when there is no such field. An interface can declare `let name: Text`. A class answers it with a field of that name. `value.let { ... }`, `also`, `takeIf` and `takeUnless` work on any value, including with `?.`. `list.indices` and `list.lastIndex` give positions.
+
 ## Using Java
 
 Mammoth reads the JDK and the JARs on your `CLASSPATH` directly, so you can use Java classes without writing any declarations. Classes in `java.lang`, such as `Math`, `System`, `StringBuilder`, and `Thread`, are always available. Import other classes by their full name, or import a whole package with `*`.

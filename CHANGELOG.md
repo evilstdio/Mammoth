@@ -1,5 +1,11 @@
 # Changelog
 
+## Overloading, nesting and shorthand, 2026-11-08
+
+- Function and method overloading, nested types, `listOf`/`setOf`/`mapOf` and `to`, varargs, function references, type aliases, covariant overrides, property-style reads, interface properties, and `let`/`also`/`takeIf`.
+- A `{` inside parentheses or brackets is a lambda even in an `if` header.
+- `examples/algorithms.mam` and `examples/library.mam` exercise these with Java collections, dates, money, regular expressions, streams and files.
+
 ## Kotlin-style language features, 2026-11-08
 
 - Default and named arguments, single-expression functions, sealed classes and interfaces, extension functions, objects, data class `copy` and destructuring, loops over maps, `Pair`, `x in values`, operator methods, `downTo` and `step`, raw text, and jumps as values (`value ?: return`).

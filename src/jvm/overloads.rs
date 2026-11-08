@@ -1,0 +1,238 @@
+//! Overloaded functions and methods. Several declarations of one name in a
+//! scope get hidden names built from their parameter types, such as
+//! `add$ov$Int_Text`, and each call picks one from its arguments. Only names
+//! that are overloaded somewhere reach this module.
+
+use super::{Emitter, Error, Expr, Kind, Method, Name, Signature, at};
+
+impl<'a> Emitter<'a> {
+    fn overloads_of(&self, name: &str) -> Option<&'a Vec<&'a str>> {
+        let plain = name.split('<').next().unwrap_or(name);
+        self.symbols.overloads.get(plain)
+    }
+
+    /// The types of the arguments, learned without keeping any code. `None`
+    /// stands for a lambda or a value whose type depends on its destination.
+    fn probe_arguments(
+        &mut self,
+        method: &mut Method<'a>,
+        args: &'a [Expr<'a>],
+    ) -> Vec<(Option<&'a str>, Option<Kind>, Option<usize>)> {
+        args.iter()
+            .map(|arg| {
+                let (label, value) = match arg {
+                    Expr::Named(label, value) => (Some(label.text), value.as_ref()),
+                    other => (None, other),
+                };
+                if let Expr::Lambda(lambda) = value {
+                    return (label, None, Some(lambda.parameters.len()));
+                }
+                let saved = method.snapshot();
+                let allow_null = std::mem::take(&mut self.allow_null);
+                let base = method.stack.len() as u16;
+                let kind = self.expression(method, value, base).ok();
+                method.restore(saved);
+                self.allow_null = allow_null;
+                (label, kind, None)
+            })
+            .collect()
+    }
+
+    /// The conversion cost of passing `actual` to `parameter`, or `None`.
+    fn argument_cost(&self, actual: Kind, parameter: Kind) -> Option<u32> {
+        let types = &self.symbols.types;
+        if types.same_kind(actual, parameter) {
+            return Some(0);
+        }
+        if actual == Kind::Null {
+            return matches!(parameter, Kind::Nullable(_)).then_some(1);
+        }
+        if types.contains_parameter(parameter) {
+            return Some(4);
+        }
+        match (actual, parameter) {
+            (Kind::Int, Kind::Long) | (Kind::Long, Kind::Double) => return Some(1),
+            (Kind::Int, Kind::Double) => return Some(2),
+            _ => {}
+        }
+        self.symbols.fits(actual, parameter).then_some(2)
+    }
+
+    fn overload_score(
+        &self,
+        signature: &Signature<'a>,
+        arguments: &[(Option<&'a str>, Option<Kind>, Option<usize>)],
+    ) -> Option<u32> {
+        let parameters = &signature.parameters;
+        if arguments.len() > parameters.len() {
+            return None;
+        }
+        let mut total = 0;
+        for (position, (label, kind, lambda)) in arguments.iter().enumerate() {
+            let index = match label {
+                Some(label) => parameters
+                    .iter()
+                    .position(|(name, _)| name.text == *label)?,
+                None => position,
+            };
+            let parameter = parameters[index].1;
+            if let Some(arity) = lambda {
+                if let Kind::Function(function) = parameter.non_null() {
+                    let wanted = self.symbols.types.function_type(function);
+                    if wanted.parameters.len() != *arity {
+                        return None;
+                    }
+                } else if !self.symbols.types.contains_parameter(parameter)
+                    && !matches!(parameter.non_null(), Kind::Java(_))
+                {
+                    return None;
+                }
+            } else if let Some(kind) = kind {
+                total += self.argument_cost(*kind, parameter)?;
+            }
+        }
+        // Each parameter left out needs a default, and costs a little so an
+        // exact match wins.
+        Some(total + (parameters.len() - arguments.len()) as u32 * 8)
+    }
+
+    fn choose_overload(
+        &mut self,
+        method: &mut Method<'a>,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+        candidates: Vec<(&'a str, &'a Signature<'a>)>,
+    ) -> Result<Name<'a>, Error> {
+        let arguments = self.probe_arguments(method, args);
+        let mut best: Vec<(&'a str, u32)> = Vec::new();
+        for (hidden, signature) in candidates {
+            let Some(score) = self.overload_score(signature, &arguments) else {
+                continue;
+            };
+            match best.first() {
+                Some(&(_, top)) if score > top => {}
+                Some(&(_, top)) if score == top => best.push((hidden, score)),
+                _ => best = vec![(hidden, score)],
+            }
+        }
+        match best.as_slice() {
+            [] => Err(at(
+                name,
+                "No version of this function accepts these arguments.",
+            )),
+            [(hidden, _)] => {
+                let plain = name.text.split('<').next().unwrap_or(name.text);
+                let suffix = &name.text[plain.len()..];
+                let text: &'a str = if suffix.is_empty() {
+                    hidden
+                } else {
+                    Box::leak(format!("{hidden}{suffix}").into_boxed_str())
+                };
+                Ok(Name {
+                    text,
+                    offset: name.offset,
+                })
+            }
+            _ => Err(at(
+                name,
+                "This call matches more than one version of the function. Make the argument types exact.",
+            )),
+        }
+    }
+
+    /// Resolves a bare call to one overload, if its name is overloaded here.
+    pub(super) fn overloaded_function(
+        &mut self,
+        method: &mut Method<'a>,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+    ) -> Result<Option<Name<'a>>, Error> {
+        let Some(hidden) = self.overloads_of(name.text) else {
+            return Ok(None);
+        };
+        let symbols = self.symbols;
+        let current = self.current_class;
+        let mut candidates = Vec::new();
+        for &text in hidden {
+            let signature = current
+                .and_then(|class| symbols.find_method(class, text).map(|found| found.1))
+                .or_else(|| {
+                    current.and_then(|class| {
+                        symbols.find_static_method(class, text).map(|found| found.1)
+                    })
+                })
+                .or_else(|| symbols.functions.get(text));
+            if let Some(signature) = signature {
+                candidates.push((text, signature));
+            }
+        }
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+        self.choose_overload(method, name, args, candidates)
+            .map(Some)
+    }
+
+    /// Resolves `receiver.name(...)` to one overload of the receiver's type.
+    pub(super) fn overloaded_method(
+        &mut self,
+        method: &mut Method<'a>,
+        receiver: &'a Expr<'a>,
+        name: Name<'a>,
+        args: &'a [Expr<'a>],
+    ) -> Result<Option<Name<'a>>, Error> {
+        let Some(hidden) = self.overloads_of(name.text) else {
+            return Ok(None);
+        };
+        let symbols = self.symbols;
+        let mut candidates = Vec::new();
+        let is_super = matches!(receiver, Expr::Variable(variable) if variable.text == "super");
+        if let Some(class) = self.static_class(method, receiver) {
+            for &text in hidden {
+                if let Some((_, signature)) = symbols.find_static_method(class, text) {
+                    candidates.push((text, signature));
+                }
+            }
+            if !candidates.is_empty() {
+                return self
+                    .choose_overload(method, name, args, candidates)
+                    .map(Some);
+            }
+        }
+        let kind = if is_super {
+            let class = self
+                .current_class
+                .and_then(|class| symbols.superclasses[class]);
+            class.map(Kind::Object)
+        } else {
+            let saved = method.snapshot();
+            let allow_null = std::mem::take(&mut self.allow_null);
+            let base = method.stack.len() as u16;
+            let kind = self.expression(method, receiver, base).ok();
+            method.restore(saved);
+            self.allow_null = allow_null;
+            kind.map(Kind::non_null)
+        };
+        let Some(kind) = kind else {
+            return Ok(None);
+        };
+        for &text in hidden {
+            let signature = if let Some(class) = symbols.types.native_class(kind) {
+                symbols.find_method(class, text).map(|found| found.1)
+            } else {
+                symbols
+                    .types
+                    .interface_root(kind)
+                    .and_then(|interface| symbols.interfaces[interface].get(text))
+            };
+            if let Some(signature) = signature {
+                candidates.push((text, signature));
+            }
+        }
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+        self.choose_overload(method, name, args, candidates)
+            .map(Some)
+    }
+}

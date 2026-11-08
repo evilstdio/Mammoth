@@ -1,0 +1,4 @@
+// error: No version of this function
+fun f(a: Int) { }
+fun f(a: Text) { }
+f(true)

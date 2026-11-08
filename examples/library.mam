@@ -1,0 +1,190 @@
+// A lending library: enums with behavior, events, a query builder, dates,
+// exact money, regular expressions, Java streams and temporary files.
+import java.math.BigDecimal
+import java.nio.file.Files
+import java.time.LocalDate
+import java.util.LinkedHashMap
+import java.util.Comparator
+import java.util.Optional
+import java.util.regex.Pattern
+import java.util.stream.Collectors
+
+enum Genre(let code: Text, let lateFeePerDay: Int) {
+    FICTION("F", 10),
+    SCIENCE("S", 25),
+    HISTORY("H", 15);
+
+    fun label(): Text = name().substring(0, 1) + name().substring(1).toLowerCase()
+    static fun parse(code: Text): Genre? {
+        for genre in values() {
+            if genre.code == code { return genre }
+        }
+        return null
+    }
+}
+
+data class Book(let isbn: Text, let title: Text, let genre: Genre, let year: Int = 2000)
+data class Member(let id: Int, let name: Text, let joined: LocalDate)
+data class Loan(let book: Book, let member: Member, let due: LocalDate, var returned: LocalDate? = null) {
+    fun daysLate(today: LocalDate): Long {
+        let end = returned ?: today
+        return if end.isAfter(due) { end.toEpochDay() - due.toEpochDay() } else { 0L }
+    }
+}
+
+// Domain errors form a sealed hierarchy.
+sealed class LibraryError(message: Text) extends RuntimeException(message)
+class NotFound(let what: Text) extends LibraryError("not found: " + what)
+class AlreadyLent(let book: Book) extends LibraryError("already lent: " + book.title)
+
+interface Listener {
+    fun onEvent(kind: Text, detail: Text)
+}
+class Recorder implements Listener {
+    let entries = mutableListOf<Text>()
+    override fun onEvent(kind: Text, detail: Text) { entries.add("[" + kind + "] " + detail) }
+}
+
+class Library(let today: LocalDate) {
+    private let books = LinkedHashMap<Text, Book>()
+    private let members = mutableListOf<Member>()
+    private let loans = mutableListOf<Loan>()
+    private let listeners = mutableListOf<(Text, Text) -> Unit>()
+
+    fun subscribe(listener: (Text, Text) -> Unit) { listeners.add(listener) }
+    fun subscribe(listener: Listener) { listeners.add { kind, detail -> listener.onEvent(kind, detail) } }
+
+    private fun emit(kind: Text, detail: Text) {
+        for listener in listeners { listener(kind, detail) }
+    }
+
+    fun add(book: Book): Library {
+        books.put(book.isbn, book)
+        emit("added", book.title)
+        return this
+    }
+
+    fun join(name: Text): Member {
+        let member = Member(members.size + 1, name, today)
+        members.add(member)
+        return member
+    }
+
+    fun find(isbn: Text): Book = books.get(isbn) ?: throw NotFound(isbn)
+
+    fun lend(isbn: Text, member: Member, days: Long = 14L): Loan {
+        let book = find(isbn)
+        if (loans.any { it.book == book and it.returned == null }) { throw AlreadyLent(book) }
+        let loan = Loan(book, member, today.plusDays(days))
+        loans.add(loan)
+        emit("lent", book.title + " to " + member.name)
+        return loan
+    }
+
+    fun giveBack(loan: Loan, on: LocalDate) {
+        loan.returned = on
+        emit("returned", loan.book.title)
+    }
+
+    fun fees(): BigDecimal {
+        var total = BigDecimal.ZERO
+        for loan in loans {
+            let cents = loan.daysLate(today) * loan.book.genre.lateFeePerDay
+            total = total.add(BigDecimal.valueOf(cents, 2))
+        }
+        return total
+    }
+
+    fun query(): Query = Query(books.values().toMutableList())
+}
+
+class Query(private var results: MutableList<Book>) {
+    fun inGenre(genre: Genre): Query {
+        results = results.filter { it.genre == genre }
+        return this
+    }
+    fun after(year: Int = 2000): Query {
+        results = results.filter { it.year > year }
+        return this
+    }
+    fun titled(pattern: Text): Query {
+        let regex = Pattern.compile(pattern)
+        results = results.filter { regex.matcher(it.title).find() }
+        return this
+    }
+    fun titles(): MutableList<Text> = results.sortedBy { it.title }.map { it.title }
+}
+
+let library = Library(LocalDate.of(2024, 3, 20))
+let recorder = Recorder()
+library.subscribe(recorder)
+var events = 0
+library.subscribe { kind, detail -> events += 1 }
+
+library
+    .add(Book("1", "Dune", Genre.FICTION, 1965))
+    .add(Book("2", "Cosmos", Genre.SCIENCE, 1980))
+    .add(Book("3", "SPQR", Genre.HISTORY, year = 2015))
+    .add(Book(title = "Emma", isbn = "4", genre = Genre.FICTION))
+
+let ann = library.join("Ann")
+let bo = library.join("Bo")
+print(ann)
+
+let first = library.lend("1", ann)
+print(first.due)
+try {
+    library.lend("1", bo)
+} catch (e: AlreadyLent) {
+    print(e.getMessage() + " / " + e.book.isbn)
+}
+try {
+    library.find("99")
+} catch (e: LibraryError) {
+    print(when e {
+        is NotFound -> "missing " + e.what
+        is AlreadyLent -> "busy"
+    })
+}
+
+let late = library.lend("2", bo, days = 1L)
+library.giveBack(late, LocalDate.of(2024, 3, 25))
+print(late.daysLate(LocalDate.of(2024, 4, 1)))
+print(library.fees())
+
+print(library.query().inGenre(Genre.FICTION).titles())
+print(library.query().after(1970).titles())
+print(library.query().after(year = 1970).titled("^S").titles())
+
+print(events)
+print(recorder.entries.size)
+print(recorder.entries.last())
+
+print(Genre.parse("H")?.label())
+print(Genre.parse("Z")?.label() ?: "unknown genre")
+print(Genre.SCIENCE.lateFeePerDay + Genre.values().size)
+
+// Java streams and Optional alongside the built-in operations.
+let shelf = listOf(Book("a", "Zen", Genre.HISTORY, 1974), Book("b", "Ada", Genre.SCIENCE, 2011))
+let names = shelf.stream()
+    .sorted(Comparator.comparing { b: Book -> b.title })
+    .map { it.title.toUpperCase() }
+    .collect(Collectors.joining(", "))
+print(names)
+let oldest: Optional<Book> = shelf.stream().min(Comparator.comparingInt { b: Book -> b.year })
+print(oldest.map { it.title }.orElse("none"))
+
+// Text files.
+let path = Files.createTempFile("library", ".csv")
+let lines = shelf.map { "{it.isbn},{it.title},{it.genre.code},{it.year}" }
+Files.write(path, lines)
+let parsed = Files.readAllLines(path).toMutableList().map { line ->
+    let (isbn, title, code, year) = line.split(",").toMutableList().toFour()
+    Book(isbn, title, requireValue(Genre.parse(code)), year.toInt())
+}
+Files.delete(path)
+print(parsed == shelf)
+print(parsed.map { it.year }.sum())
+
+data class Four<T>(let a: T, let b: T, let c: T, let d: T)
+fun MutableList<T>.toFour<T>(): Four<T> = Four(this[0], this[1], this[2], this[3])
