@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "demo.mammoth.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["ClientMixin$$0", "ClientAccessor$Interface$0"],
+  "injectors": { "defaultRequire": 1 }
+}

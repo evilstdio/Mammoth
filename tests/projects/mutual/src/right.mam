@@ -1,0 +1,4 @@
+module demo.Right
+import demo.Left.Node as Other
+class Node(let next: Other?) { let name = "right" }
+enum Mood { Ready, Done }

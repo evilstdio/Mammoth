@@ -1,0 +1,6 @@
+// error: This field is read before its starting value is set
+class Greeting {
+    let loud: Text = this.word + "!"
+    let word: Text = "hi"
+}
+print(Greeting().loud)

@@ -1,0 +1,21 @@
+interface Friendly {
+    fun greet(): Text { return "Hello" }
+}
+
+interface Enthusiastic extends Friendly {
+    override fun greet(): Text {
+        return super<Friendly>.greet() + "!"
+    }
+}
+
+interface Polite {
+    fun greet(): Text { return "Welcome" }
+}
+
+class Host implements Enthusiastic, Polite {
+    override fun greet(): Text {
+        return super<Enthusiastic>.greet() + " " + super<Polite>.greet() + " to Mammoth."
+    }
+}
+
+print(Host().greet())

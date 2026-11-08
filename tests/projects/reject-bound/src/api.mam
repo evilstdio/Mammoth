@@ -1,0 +1,3 @@
+module rejected.API
+open class Animal(let name: Text)
+class Pen<A: Animal>(var occupant: A)

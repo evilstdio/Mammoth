@@ -1,0 +1,6 @@
+// error: This type argument does not satisfy the bound of its type parameter.
+interface Named { fun name(): Text }
+interface Scored { fun score(): Int }
+class OnlyNamed implements Named { fun name(): Text { return "x" } }
+class Shelf<T: Named & Scored>(var item: T)
+fun keep(shelf: Shelf<OnlyNamed>) {}

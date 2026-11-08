@@ -1,0 +1,23 @@
+// A when used as a value needs no else when its branches name every
+// constant of an enum subject, Mammoth or Java.
+import java.time.DayOfWeek
+
+enum Light { RED, AMBER, GREEN }
+
+fun advice(light: Light): Text {
+    return when (light) {
+        Light.RED -> "stop"
+        Light.AMBER -> "wait"
+        Light.GREEN -> "go"
+    }
+}
+for light in Light.values() { print(advice(light)) }
+
+fun weekend(day: DayOfWeek): Bool {
+    return when (day) {
+        DayOfWeek.SATURDAY, DayOfWeek.SUNDAY -> true
+        DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY -> false
+    }
+}
+print(weekend(DayOfWeek.SUNDAY))
+print(weekend(DayOfWeek.MONDAY))

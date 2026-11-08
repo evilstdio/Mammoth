@@ -1,0 +1,58 @@
+module demo.mammoth.mixin.ClientMixin
+import net.minecraft.client.MinecraftClient
+import net.minecraft.client.option.GameOptions
+import org.spongepowered.asm.mixin.Final
+import org.spongepowered.asm.mixin.Mixin
+import org.spongepowered.asm.mixin.Shadow
+import org.spongepowered.asm.mixin.Unique
+import org.spongepowered.asm.mixin.injection.Inject
+import org.spongepowered.asm.mixin.injection.At
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
+import demo.mammoth.Controls.markMixinTick
+import demo.mammoth.Controls.markStaticMixin
+
+@Mixin(value = MinecraftClient.class)
+class TickMixin {
+    @Shadow
+    private var itemUseCooldown: Int = 0
+
+    @Shadow
+    @Final
+    private let options: GameOptions?
+
+    @Unique
+    private var mammothSeen = false
+
+    // Nondefault initial values: Mixin merges these initializers into every
+    // MinecraftClient constructor.
+    @Unique
+    private var mammothBudget: Int = 40
+
+    @Unique
+    private let mammothTag: Text = "tusk-" + "ready"
+
+    // Static members merge into MinecraftClient as static members.
+    @Unique
+    private static var mammothStaticCalls: Int = 0
+
+    @Unique
+    private static let mammothStaticTag: Text = "static-" + "ready"
+
+    // MinecraftClient.getInstance() is static, so its handler is static too.
+    @Inject(method = "getInstance", at = @At(value = "HEAD"))
+    private static fun onGetInstance(info: CallbackInfoReturnable<MinecraftClient>) {
+        mammothStaticCalls += 1
+        if mammothStaticCalls == 1 {
+            markStaticMixin(mammothStaticTag)
+        }
+    }
+
+    @Inject(method = "tick", at = @At(value = "HEAD"))
+    private fun onTick(info: CallbackInfo) {
+        if not mammothSeen {
+            mammothSeen = true
+            markMixinTick(itemUseCooldown, options != null, mammothBudget, mammothTag)
+        }
+    }
+}

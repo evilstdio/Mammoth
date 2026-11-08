@@ -1,0 +1,5 @@
+// error: Expected an object of the declared class here.
+open class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+fun fill<T>(items: List<T>, value: T) { items[0] = value }
+fill([Dog("rex")], Animal("cat"))

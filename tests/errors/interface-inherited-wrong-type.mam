@@ -1,0 +1,7 @@
+// error: This method's parameter and result types must match the interface.
+interface Source<T> { fun next(): T }
+interface Numbers extends Source<Int> { fun total(): Int }
+class C implements Numbers {
+    fun next(): Text { return "x" }
+    fun total(): Int { return 1 }
+}

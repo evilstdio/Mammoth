@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "mammoth_demo",
+  "version": "${version}",
+  "name": "Mammoth Language Demo",
+  "description": "A custom item, client event, keybind, and Mixin written in Mammoth.",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["demo.mammoth.Demo::initialize"],
+    "client": ["demo.mammoth.Controls::initializeClient"]
+  },
+  "mixins": ["mammoth_demo.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "fabric-api": "*",
+    "minecraft": "1.21.1",
+    "java": ">=21"
+  }
+}

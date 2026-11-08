@@ -1,0 +1,8 @@
+// error: unless it names every constant of an enum
+// null matches no constant, so a nullable subject still needs else.
+enum Light { RED, GREEN }
+let maybe: Light? = Light.RED
+let code = when (maybe) {
+    Light.RED -> 1
+    Light.GREEN -> 2
+}

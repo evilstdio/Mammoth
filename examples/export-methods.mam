@@ -1,0 +1,5 @@
+class Greeter(let name: Text) {
+    // Java and reflection can call greet under this exact method name.
+    export fun greet(): Text { return "Hello, {name}!" }
+}
+print(Greeter("Mammoth").greet())

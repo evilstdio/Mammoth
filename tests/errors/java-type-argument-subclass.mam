@@ -1,0 +1,7 @@
+// error: This argument does not match the Java type's type argument
+import java.util.ArrayList
+abstract class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+class Cat(name: Text) extends Animal(name)
+let dogs = ArrayList<Dog>()
+dogs.add(Cat("tom"))

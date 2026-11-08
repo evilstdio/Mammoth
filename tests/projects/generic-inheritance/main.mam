@@ -1,0 +1,18 @@
+module family.Main
+import family.Base.Container
+import family.Derived.Tagged
+import family.Derived.score
+import family.Derived.weight
+let s = score(4)
+print(s.twice())
+print(s.tagged())
+print(s.swap(10) + s.take())
+let asContainer: Container<Int> = s
+print(asContainer.take() + 1)
+let tagged: Tagged<Int> = s
+print(tagged.tag)
+let w = weight(2.5)
+print(w.amount() * 2.0)
+print(w.label())
+let text = Tagged("t", "value")
+print(text.take().length())

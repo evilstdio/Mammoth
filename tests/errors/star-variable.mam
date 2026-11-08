@@ -1,0 +1,2 @@
+// error: Expected a name.
+let x: * = 1

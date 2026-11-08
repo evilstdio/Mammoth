@@ -1,0 +1,7 @@
+module methods.API
+import methods.Model.Box
+interface Contract { fun keep<T>(value: T): T }
+class Service implements Contract { fun keep<R>(value: R): R { return value } }
+export fun service(): Service { return Service() }
+export fun contract(): Contract { return Service() }
+export fun box<T>(value: T): Box<T> { return Box(value) }

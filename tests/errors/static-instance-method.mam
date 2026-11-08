@@ -1,0 +1,5 @@
+// error: This function or class has not been defined.
+class Box(var size: Int) {
+    fun grow() { size += 1 }
+    static fun make(): Box { grow() return Box(1) }
+}

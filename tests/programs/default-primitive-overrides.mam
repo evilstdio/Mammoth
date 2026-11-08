@@ -1,0 +1,61 @@
+interface Values<T> {
+    fun echo(value: T, count: Int): T { return value }
+    fun maybe(value: T?): T? { return value }
+    fun choose<R>(value: T, result: R): R { return result }
+}
+interface Longs extends Values<Long> {
+    override fun echo(value: Long, count: Int): Long {
+        try {
+            if count > 0 { return super<Values>.echo(value, count) + 1L }
+            return value
+        } finally { print("clean") }
+    }
+    override fun maybe(value: Long?): Long? { return super<Values>.maybe(value) }
+    override fun choose<R>(value: Long, result: R): R { return super<Values>.choose(value, result) }
+}
+interface NewLongs extends Longs {
+    override fun echo(value: Long, count: Int): Long { return super<Longs>.echo(value, count) + 10L }
+    override fun choose<S>(value: Long, result: S): S { return super<Longs>.choose<S>(value, result) }
+}
+class Big implements NewLongs { }
+interface Doubles extends Values<Double> {
+    override fun echo(value: Double, count: Int): Double { return super<Values>.echo(value, count) + 0.5 }
+}
+class Decimal implements Doubles { }
+interface Flags extends Values<Bool> {
+    override fun echo(value: Bool, count: Int): Bool { return not super<Values>.echo(value, count) }
+}
+class Flag implements Flags { }
+interface Characters extends Values<Char> {
+    override fun echo(value: Char, count: Int): Char { return super<Values>.echo(value, count) }
+}
+class Letter implements Characters { }
+
+let big = Big()
+print(big.echo(5000000000L, 1))
+let longs: Values<Long> = big
+print(longs.echo(6000000000L, 1))
+print(big.choose(1L, "generic"))
+print(longs.choose(2L, 77))
+print(big.maybe(null))
+print(big.maybe(9L))
+let doubles: Values<Double> = Decimal()
+print(doubles.echo(1.5, 1))
+print(Decimal().echo(2.5, 1))
+let flags: Values<Bool> = Flag()
+print(flags.echo(true, 1))
+print(Flag().echo(false, 1))
+let letters: Values<Char> = Letter()
+print(letters.echo('M', 1))
+print(Letter().echo('!', 1))
+
+interface Named { fun name(): Text }
+interface Bounded<T> {
+    fun keep<R: Named>(value: R): R { return value }
+}
+interface MoreBounded<T> extends Bounded<T> {
+    override fun keep<S: Named>(value: S): S { return super<Bounded>.keep(value) }
+}
+class Name(let text: Text) implements Named { fun name(): Text { return text } }
+class Service implements MoreBounded<Int> { }
+print(Service().keep(Name("bounded")).name())

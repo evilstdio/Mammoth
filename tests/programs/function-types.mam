@@ -1,0 +1,32 @@
+fun apply3(f: (Int, Int, Int) -> Int, a: Int, b: Int, c: Int): Int {
+    return f(a, b, c)
+}
+fun each4(action: (Text, Int, Double, Bool) -> Unit) {
+    action("four", 4, 4.5, true)
+}
+fun compose<A, B, C, R>(f: (A, B, C) -> R, a: A, b: B, c: C): R {
+    return f(a, b, c)
+}
+class Calculator(let scale: Long) {
+    let combine: (Long, Long, Long) -> Long = { x, y, z -> (x + y + z) * scale }
+    fun run(): Long { return combine(1L, 2L, 3L) }
+}
+print(apply3({ a, b, c -> a * b + c }, 2, 3, 4))
+var captured = 10
+let add: (Int, Int, Int) -> Int = { a, b, c -> a + b + c + captured }
+captured = 20
+print(add(1, 2, 3))
+each4({ name, count, ratio, flag -> print("{name} {count} {ratio} {flag}") })
+print(compose({ a: Text, b: Int, c: Char -> a + b + c }, "x", 1, 'y'))
+print(Calculator(2L).run())
+let five: (Int, Int, Int, Int, Int) -> Text = { a, b, c, d, e -> "{a + b + c + d + e}" }
+print(five(1, 2, 3, 4, 5))
+let maybe: (Int, Int?, Text?) -> Int? = { a, b, c -> if b == null { null } else { a + b } }
+print(maybe(1, 2, null) ?: -1)
+print(maybe(1, null, "x") ?: -1)
+let fns = MutableList<(Int, Int, Int) -> Int>()
+fns.add(add)
+fns.add { a, b, c -> a * b * c }
+for f in fns {
+    print(f(2, 3, 4))
+}

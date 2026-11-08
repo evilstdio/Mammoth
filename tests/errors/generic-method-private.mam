@@ -1,0 +1,3 @@
+// error: This method is private to its class.
+class Service { private fun keep<T>(value: T): T { return value } }
+print(Service().keep(1))

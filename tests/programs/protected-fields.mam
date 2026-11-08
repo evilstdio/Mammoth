@@ -1,0 +1,20 @@
+class Base<T>(protected var value: T, protected let label: Text) {
+    fun read(other: Base<T>): T { return other.value }
+}
+class Child extends Base<Int>(3, "count") {
+    fun increment(): Int { value += 1 return this.value }
+    fun from(other: Child): Int { return other.value }
+    fun rename(other: Child, number: Int) { other.value = number }
+    fun describe(): Text { return "{label}:{value}" }
+}
+class Grandchild extends Child() {
+    fun bump(): Int { this.value += 2 return value }
+}
+let first = Child()
+let second = Child()
+print(first.increment())
+first.rename(second, 9)
+print(first.from(second))
+print(first.describe())
+print(first.read(second))
+print(Grandchild().bump())

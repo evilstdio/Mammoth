@@ -1,0 +1,24 @@
+module exports.API
+import java.lang.Runnable
+class Counter(var count: Int) {
+    export fun add(value: Int): Int { count += value return count }
+    export fun describe(value: Long, ratio: Double, label: Text): Text { return "{label}:{value}:{ratio}" }
+    export fun optional(value: Text?): Text? { return value }
+    export fun identity<T>(value: T): T { return value }
+    export fun toString(): Text { return "counter={count}" }
+    fun hidden(): Int { return 7 }
+}
+class Derived extends Counter(10) {
+    override fun add(value: Int): Int { return super.add(value * 2) }
+}
+class Box<T>(let value: T) {
+    export fun get(): T { return value }
+    export fun keep(value: T): T { return value }
+}
+class Job implements Runnable {
+    export fun run() { print("job") }
+}
+export fun counter(): Counter { return Counter(1) }
+export fun derived(): Derived { return Derived() }
+export fun box<T>(value: T): Box<T> { return Box(value) }
+export fun job(): Job { return Job() }

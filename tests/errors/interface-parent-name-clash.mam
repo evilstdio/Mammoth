@@ -1,0 +1,4 @@
+// error: Two parent interfaces declare a method with this name.
+interface A { fun run(): Int }
+interface B { fun run(): Int }
+interface C extends A, B { fun c(): Int }

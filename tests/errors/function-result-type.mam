@@ -1,0 +1,2 @@
+// error: Expected an Int here.
+let f: (Int, Int, Text, Int) -> Int = { a, b, c, d -> c }

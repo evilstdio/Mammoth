@@ -1,0 +1,4 @@
+// error: Expected an Int here.
+import java.util.ArrayList
+let steps = ArrayList<() -> Int>()
+steps.add({ -> "text" })

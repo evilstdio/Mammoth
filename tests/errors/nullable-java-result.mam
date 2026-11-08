@@ -1,0 +1,5 @@
+// error: This method's parameter and result types must match the Java interface.
+import java.util.function.IntSupplier
+class Missing implements IntSupplier {
+    fun getAsInt(): Int? { return null }
+}

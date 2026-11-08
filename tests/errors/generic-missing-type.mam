@@ -1,0 +1,3 @@
+// error: Cannot infer every type parameter.
+fun empty<T>(): MutableList<T> { return mutableList() }
+print(empty())

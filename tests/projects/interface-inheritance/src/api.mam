@@ -1,0 +1,46 @@
+module streams.API
+import streams.Base.Source
+import streams.Base.Named
+import java.lang.Runnable
+interface Stream<T> extends Source<T>, Named {
+    fun peek(): T
+}
+class Counter(var count: Int) implements Stream<Int> {
+    fun next(): Int {
+        count += 1
+        return count
+    }
+    fun peek(): Int { return count + 1 }
+    fun name(): Text { return "counter" }
+}
+export fun counter(start: Int): Stream<Int> { return Counter(start) }
+export fun total(source: Source<Int>, times: Int): Int {
+    var sum = 0
+    for i in 0 until times {
+        sum += source.next()
+    }
+    return sum
+}
+export fun label(stream: Stream<Int>): Text {
+    return "{stream.name()}:{stream.peek()}"
+}
+export fun both<T: Source<Int> & Named>(value: T): Text {
+    return "{value.name()}+{value.next()}"
+}
+export fun swapEnds<T>(items: List<T>): List<T> {
+    let first = items[0]
+    items[0] = items[items.size() - 1]
+    items[items.size() - 1] = first
+    return items
+}
+export fun peekAny(source: Source<*>): Text {
+    return "any {source.next()}"
+}
+interface Job extends Runnable {
+    fun tag(): Text
+}
+class Echo implements Job {
+    fun run() { print("echo") }
+    fun tag(): Text { return "e" }
+}
+export fun job(): Job { return Echo() }

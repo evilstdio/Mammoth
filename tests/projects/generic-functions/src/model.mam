@@ -1,0 +1,2 @@
+module demo.Models
+class Item(let name: Text)

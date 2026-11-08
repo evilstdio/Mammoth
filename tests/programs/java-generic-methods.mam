@@ -1,0 +1,39 @@
+import java.util.ArrayList
+import java.util.Collections
+import java.util.HashMap
+
+abstract class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+class Dogs extends ArrayList<Dog>()
+let dogs = Dogs()
+dogs.add(Dog("rex"))
+let animals = ArrayList<Animal>()
+animals.addAll(dogs)
+print(animals.get(0).name)
+let copied = ArrayList<Animal>(dogs)
+print(copied.get(0).name)
+Collections.copy(animals, dogs)
+print(animals.get(0).name)
+let words = ArrayList<Text>()
+words.add("a")
+let copiedWords = ArrayList<Text>(words)
+print(copiedWords.get(0))
+let first = HashMap<Text, Int>()
+first.put("x", 4)
+let second = HashMap<Text, Int>()
+second.putAll(first)
+print(second.get("x") ?: 0)
+class Groups<T> {
+    fun append(target: ArrayList<ArrayList<T>>, source: ArrayList<ArrayList<T>>): Int {
+        target.addAll(source)
+        return target.size()
+    }
+}
+let source = ArrayList<ArrayList<Text>>()
+source.add(words)
+print(Groups<Text>().append(ArrayList<ArrayList<Text>>(), source))
+
+Collections.addAll(words, "b", "c")
+print(words.size())
+import java.util.Arrays
+print(Arrays.asList("x", "y").get(1))

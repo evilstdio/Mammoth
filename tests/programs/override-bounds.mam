@@ -1,0 +1,16 @@
+interface Source<T> { fun get(): T }
+class Word implements Source<Text> { fun get(): Text { return "word" } }
+interface Service<T> { fun keep<R: Source<T>>(value: R): R }
+class Base<T> {
+    export fun keep<U: Source<T>>(value: U): U { return value }
+}
+class Concrete extends Base<Text>() implements Service<Text> {
+    override fun keep<V: Source<Text>>(value: V): V { return super.keep<V>(value) }
+}
+class Inherited extends Base<Text>() implements Service<Text> { }
+print(Concrete().keep(Word()).get())
+let service: Service<Text> = Concrete()
+print(service.keep(Word()).get())
+let inherited: Service<Text> = Inherited()
+print(inherited.keep(Word()).get())
+print(Base<Text>().keep(Word()).get())

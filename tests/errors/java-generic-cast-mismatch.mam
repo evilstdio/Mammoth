@@ -1,0 +1,5 @@
+// error: Java type arguments are erased at runtime.
+import java.util.ArrayList
+import java.util.Collection
+let names: Collection<Text> = ArrayList<Text>()
+let numbers = names as ArrayList<Int>

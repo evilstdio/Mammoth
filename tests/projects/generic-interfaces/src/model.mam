@@ -1,0 +1,7 @@
+module contracts.Model
+import contracts.API.Source
+class Cell<T>(var value: T) implements Source<T> {
+    fun next(): T { return value }
+    fun peek(): T? { return value }
+    fun convert<R>(change: (T) -> R): R { return change(value) }
+}

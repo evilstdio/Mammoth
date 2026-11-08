@@ -1,0 +1,43 @@
+module contracts.API
+import contracts.Model.Cell
+interface Source<T> {
+    fun next(): T
+    fun peek(): T?
+    fun convert<R>(change: (T) -> R): R
+}
+interface Keyed<K, V> {
+    fun key(): K
+    fun value(): V
+}
+class Numbers(var current: Int) implements Source<Int> {
+    fun next(): Int {
+        current += 1
+        return current
+    }
+    fun peek(): Int? {
+        if current == 0 {
+            return null
+        }
+        return current
+    }
+    fun convert<R>(change: (Int) -> R): R {
+        return change(current)
+    }
+}
+class Named(let label: Text, let weight: Long) implements Keyed<Text, Long> {
+    fun key(): Text { return label }
+    fun value(): Long { return weight }
+}
+export fun numbers(start: Int): Source<Int> { return Numbers(start) }
+export fun named(label: Text): Keyed<Text, Long> { return Named(label, 5000000000L) }
+export fun cell(value: Text): Source<Text> { return Cell(value) }
+export fun drain(source: Source<Int>, times: Int): Int {
+    var total = 0
+    for i in 0 until times {
+        total += source.next()
+    }
+    return total
+}
+export fun describe(entry: Keyed<Text, Long>): Text {
+    return "{entry.key()}:{entry.value()}"
+}

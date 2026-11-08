@@ -1,0 +1,2 @@
+// error: Type parameters are erased at runtime.
+fun convert<T>(value: Any): T? { return value as? T }

@@ -1,0 +1,6 @@
+// error: This static field is read before its starting value is set
+class Table {
+    static init { print(size + 1) }
+    static var size: Int = 3
+}
+print(Table.size)

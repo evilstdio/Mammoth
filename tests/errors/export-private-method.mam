@@ -1,0 +1,2 @@
+// error: An exported class method must be public and have a body.
+class C { private export fun hidden() { } }

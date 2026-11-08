@@ -1,0 +1,3 @@
+// error: Access this protected field through this class or one of its subclasses.
+class Base(protected var value: Int)
+class Child extends Base(1) { fun read(other: Base): Int { return other.value } }

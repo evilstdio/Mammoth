@@ -1,0 +1,4 @@
+// error: This field is read-only.
+class Box(let size: Int) {}
+let box = Box(1)
+box.size = 2

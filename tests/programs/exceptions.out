@@ -1,0 +1,23 @@
+12
+not a number: twelve
+-1
+divide finished
+5
+caught / by zero
+divide finished
+0
+age 5 is fine
+problem: age cannot be negative
+loop 1
+cleanup 1
+cleanup 2
+loop 3
+cleanup 3
+cleanup 4
+inner finally
+outer caught: inner failure
+outer finally
+done
+leaving early
+ran to the end
+index problem

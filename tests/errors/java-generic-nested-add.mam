@@ -1,0 +1,4 @@
+// error: This argument does not match the Java type
+import java.util.ArrayList
+class Bag<T> { fun bad(item: ArrayList<Int>) { let groups = ArrayList<ArrayList<T>>()
+groups.add(item) } }

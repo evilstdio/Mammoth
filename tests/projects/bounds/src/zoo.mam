@@ -1,0 +1,3 @@
+module ranks.Zoo
+open class Animal(let name: Text)
+class Lion(name: Text) extends Animal(name)

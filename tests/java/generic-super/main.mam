@@ -1,0 +1,267 @@
+import java.math.BigInteger
+import java.lang.Number
+import java.util.List as JavaList
+import java.util.ArrayList
+import java.util.Collection
+import lib.Holder
+class Counter(start: Int) extends Holder<Int>(start) {
+    fun bump(): Int {
+        value = value + 1
+        history.add(value)
+        return current() * 10
+    }
+    fun last(): Int {
+        return history.get(history.size() - 1)
+    }
+    fun name(): Text {
+        return label.toUpperCase()
+    }
+}
+class Box<T>(start: T) extends Holder<T>(start) {
+    fun swap(next: T): T {
+        let old = value
+        this.value = next
+        return old
+    }
+}
+let counter = Counter(4)
+print(counter.bump())
+print(counter.bump() + counter.last())
+print(counter.read() + 1)
+print(counter.name())
+let box = Box("a")
+print(box.swap("b").length())
+print(box.read())
+
+class Loud extends ArrayList<Text>() {
+    override fun add(value: Text): Bool {
+        return super.add(value.toUpperCase())
+    }
+    fun trim(count: Int) {
+        removeRange(0, count)
+    }
+    fun changes(): Int {
+        return modCount
+    }
+}
+let loud = Loud()
+let collection: Collection<Text> = loud
+collection.add("one")
+loud.add("two")
+loud.add("three")
+loud.trim(1)
+print(loud.get(0) + loud.size())
+print(loud.changes())
+
+// Original generic signatures enforce invariance and both wildcard directions.
+let ints = ArrayList<Int>()
+ints.add(3)
+let intHolder = Holder<Int>(5)
+intHolder.exact(ints)
+intHolder.upper(ints)
+let nums = ArrayList<Number>()
+intHolder.lower(nums)
+if nums.size() != 1 { throw IllegalStateException("lower wildcard did not insert") }
+let number: Number = BigInteger("6")
+Holder<Number>(number).upper(ints)
+let nested = ArrayList<JavaList<Text>>()
+nested.add(ArrayList<Text>())
+Holder.nested(nested)
+
+let nestedInts = ArrayList<ArrayList<Int>>()
+nestedInts.add(ints)
+Holder.nestedCovariant(nestedInts)
+
+// Method variables shadow receiver variables; ancestor mappings may reorder them.
+if Holder<Text>("owner").shadow(7) + 1 != 8 { throw IllegalStateException("shadow") }
+import java.util.HashMap
+class Flipped<A, B> extends HashMap<B, A>()
+let flipped = Flipped<Int, Text>()
+flipped.put("key", 8)
+if Holder.key(flipped).length() != 3 { throw IllegalStateException("ancestor inference") }
+if Holder.ordered(7) != 7 { throw IllegalStateException("recursive bound") }
+if Holder.dependent("a", "b") != "b" { throw IllegalStateException("dependent bound") }
+import java.lang.AutoCloseable
+class Both implements Runnable, AutoCloseable {
+    fun run() {}
+    fun close() {}
+}
+Holder.intersection(Both()).run()
+
+interface Task extends Runnable, AutoCloseable {}
+class Derived implements Task { fun run() {} fun close() {} }
+Holder.intersection(Derived()).close()
+
+if Holder.self(8) != 8 { throw IllegalStateException("boxed self bound") }
+fun keepOrdered<T: Comparable<T>>(value: T): T { return Holder.self(value) }
+if keepOrdered("safe") != "safe" { throw IllegalStateException("native bound") }
+
+fun closeJava<T: Runnable & AutoCloseable>(value: T): T { return Holder.closeOnly(value) }
+closeJava(Both()).close()
+
+abstract class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+class Cat(name: Text) extends Animal(name)
+if Holder.choose(Dog("dog"), Cat("cat")).name != "dog" { throw IllegalStateException("common forward") }
+if Holder.choose(Cat("cat"), Dog("dog")).name != "cat" { throw IllegalStateException("common reverse") }
+let animals = ArrayList<Animal>()
+Holder.anchored(animals, Dog("dog"))
+Holder.anchoredReverse(Cat("cat"), animals)
+if animals.size() != 2 { throw IllegalStateException("invariant anchor") }
+
+// A dependent variable can widen to accommodate every argument.
+if Holder.dependent(Dog("dog"), Cat("cat")).name != "cat" { throw IllegalStateException("dependent forward") }
+if Holder.dependent(Cat("cat"), Dog("dog")).name != "dog" { throw IllegalStateException("dependent reverse") }
+if Holder.chain(Dog("d"), Dog("d2"), Cat("c")).name != "c" { throw IllegalStateException("dependent chain") }
+let nestedWords = ArrayList<Text>()
+nestedWords.add("bound")
+if Holder.nestedDependent(nestedWords).length() != 5 { throw IllegalStateException("nested dependent inference") }
+
+if Holder.boundedCommon(StringBuilder("a"), StringBuffer("bc")).length() != 1 { throw IllegalStateException("bounded common forward") }
+if Holder.boundedCommon(StringBuffer("bc"), StringBuilder("a")).length() != 2 { throw IllegalStateException("bounded common reverse") }
+
+let contextual: JavaList<Int> = Holder<Text>("owner").contextualEmpty()
+if contextual.size() != 0 { throw IllegalStateException("instance context") }
+
+let numericContext: JavaList<Int> = Holder<Text>("owner").numericEmpty()
+if numericContext.size() != 0 { throw IllegalStateException("bounded context") }
+
+if Holder.supplied({ 7 }) != 7 { throw IllegalStateException("supplier bound") }
+if Holder.either({ Dog("dog") }, { Cat("cat") }).name != "dog" { throw IllegalStateException("lambda common forward") }
+if Holder.either({ Cat("cat") }, { Dog("dog") }).name != "cat" { throw IllegalStateException("lambda common reverse") }
+
+if Holder.withValue(Dog("dog"), { Cat("cat") }).name != "cat" { throw IllegalStateException("argument plus lambda") }
+
+if Holder.child({ text -> text.length() }) + 1 != 5 { throw IllegalStateException("inherited SAM") }
+if Holder.swapped({ text -> text.length() }, "abc") + 2 != 5 { throw IllegalStateException("reordered SAM") }
+let inferredFunction = Holder.make { text: Text -> text.length() }
+if inferredFunction.apply("abc") + 1 != 4 { throw IllegalStateException("annotated input") }
+let broadFunction = Holder.make { value: Any -> value.toString() }
+if broadFunction.apply("safe").length() != 4 { throw IllegalStateException("broad input") }
+
+import lib.Holder.Numeric
+import lib.Holder.Ordered
+import lib.Holder.Dependent
+import lib.Holder.Recursive
+if Numeric<Int>().number(4) != 4 { throw IllegalStateException("class bound") }
+let dependency = Dependent<Animal, Dog>()
+let recursive = Recursive<Text>()
+fun ordered(value: Ordered<Int>) {}
+class NativeNumeric<N: Number> { fun create(): Numeric<N> { return Numeric<N>() } }
+class JavaChild extends Numeric<Int>()
+if JavaChild().number(5) != 5 { throw IllegalStateException("superclass bound") }
+
+if Holder.overloaded(ArrayList<Int>()) != "ints" { throw IllegalStateException("generic overload") }
+if Holder.reversed(ArrayList<Text>()) != "strings" { throw IllegalStateException("reverse overload") }
+import java.util.concurrent.atomic.AtomicInteger
+if Holder.boundedOverload(AtomicInteger(1)) != "object" { throw IllegalStateException("bound fallback") }
+import lib.Holder.Choice
+if Choice(ArrayList<Int>()).kind() != "ints" { throw IllegalStateException("constructor overload") }
+import lib.Holder.ChildChoice
+if ChildChoice().pick(ArrayList<Int>()) != "parent" { throw IllegalStateException("inherited overload") }
+
+if Holder.boundedOverload(7) != "ordered" { throw IllegalStateException("valid bound preference") }
+if Holder.spread(ArrayList<Int>()) != "spread" { throw IllegalStateException("generic varargs fallback") }
+
+if Holder.annotated({ text: Text -> text.length() }) != "function3" { throw IllegalStateException("annotated lambda overload") }
+
+if Holder.numberReturn({ text -> text.length() }) != 3 { throw IllegalStateException("boxed Number lambda return") }
+
+if Holder.specific(ArrayList<Text>()) != "list" { throw IllegalStateException("specific list") }
+if Holder.specificReverse(ArrayList<Text>()) != "list" { throw IllegalStateException("specific reverse") }
+if Holder.nullable(null) != "string" { throw IllegalStateException("null specificity") }
+if Holder.arrays(null) != "strings" { throw IllegalStateException("array specificity") }
+if Holder.emptySpread() != "strings" { throw IllegalStateException("empty varargs specificity") }
+if Holder.numericTie(1) != "float" { throw IllegalStateException("numeric tie") }
+import lib.Holder.SpecificConstructor
+if SpecificConstructor(null).kind() != "string" { throw IllegalStateException("constructor specificity") }
+
+let sequence: CharSequence = "text"
+Holder.unrelated(sequence)
+let objectValue: Any = "b"
+Holder.crossed("a", objectValue)
+if Holder.primitiveArray(null) != "ints" { throw IllegalStateException("primitive array root") }
+
+if Holder.byResult({ 7 }) != "int:7" { throw IllegalStateException("lambda result overload") }
+if Holder.byResultReverse({ "safe" }) != "text:safe" { throw IllegalStateException("lambda reverse overload") }
+if Holder.byBody({ value -> value.length() }) != 3 { throw IllegalStateException("lambda text body") }
+if Holder.byBody({ value -> value.intValue() }) != 12 { throw IllegalStateException("lambda integer body") }
+var lambdaCalls = 0
+let chosenLambda = Holder.byResult { lambdaCalls += 1
+    lambdaCalls }
+if chosenLambda != "int:1" or lambdaCalls != 1 { throw IllegalStateException("speculation executed a capture") }
+
+var loopCalls = 0
+var finallyCalls = 0
+while loopCalls < 2 {
+    try {
+        Holder.byResult { loopCalls += 1
+            loopCalls }
+    } finally { finallyCalls += 1 }
+}
+if loopCalls != 2 or finallyCalls != 2 { throw IllegalStateException("trial loop/finally state") }
+
+// Each overload candidate gives nested factories its own parameter context.
+import java.util.Collections
+import lib.Holder.NestChoice
+if Holder.nest(Collections.singletonList(Collections.emptyList())) != "lists0" { throw IllegalStateException("nested overload") }
+if Holder.nestReverse(Collections.singletonList(Collections.emptyList())) != "lists0" { throw IllegalStateException("nested overload reverse") }
+if Holder.shapes(Collections.emptyMap()) != "map0" or Holder.shapes(Collections.emptyList()) != "list0" { throw IllegalStateException("nested shapes") }
+if Holder.paired(Collections.emptyList(), 1) != "int" or Holder.paired(Collections.emptyList(), "x") != "text" { throw IllegalStateException("nested paired") }
+if Holder.nestedSpread("a", Collections.emptyList(), Collections.singletonList("x")) != "spread2" { throw IllegalStateException("nested varargs") }
+if Holder.deep(Holder.wrap(Holder.wrap(Collections.emptyList()), Collections.singletonList(Collections.singletonList("q")))) != "deep0" { throw IllegalStateException("deep nested overloads") }
+if NestChoice(Collections.singletonList(Collections.emptySet())).kind != "sets" { throw IllegalStateException("nested constructor") }
+if Holder<Text>("x").nestInstance(Collections.singletonList(Collections.emptySet())) != "sets" { throw IllegalStateException("nested instance overload") }
+if Holder.lowerOverload(ArrayList<Int>()) != "lower1" or Holder.lowerOverload(ArrayList<Number>()) != "lower1" { throw IllegalStateException("lower wildcard overload") }
+let lowered = ArrayList<Int>()
+Holder.lowerOnly(lowered)
+if lowered.get(0) != 4 { throw IllegalStateException("lower wildcard") }
+
+// Wildcard results read as their bound; the same value can be written back.
+let numbers = Holder.numbers()
+if numbers.get(1).intValue() != 2 { throw IllegalStateException("wildcard read") }
+numbers.add(numbers.get(0))
+if Holder.backingSum() != 4 { throw IllegalStateException("wildcard self write") }
+var numberTotal = 0
+for number in Holder.wildField { numberTotal += number.intValue() }
+if numberTotal != 4 or Holder.numberMap().get("a").intValue() != 1 { throw IllegalStateException("wildcard field and map") }
+if Holder<Text>("x").texts.get(0).length() != 1 { throw IllegalStateException("wildcard instance field") }
+let sink = Holder.sink()
+sink.add(9)
+if sink.size() != 2 or sink.get(0) != "s" { throw IllegalStateException("lower wildcard result") }
+let copied = ArrayList<Number>(Holder.numbers())
+copied.add(2.5)
+if copied.size() != 4 or Holder.backingSum() != 4 { throw IllegalStateException("wildcard copy") }
+Holder.plainField.add(5)
+if Holder.backingSum() != 9 { throw IllegalStateException("generic static field") }
+
+// Expected result types reach inherited, implicit, super and safe Java calls.
+class Contextual(start: Text) extends Holder<Text>(start) {
+    fun implicit(): JavaList<Text> { return contextualEmpty() }
+    fun viaSuper(): JavaList<Text> { return super.contextualEmpty() }
+    fun viaThis(): JavaList<Text> { return this.contextualEmpty() }
+    fun shape(): Text { return shapeOf(2, 3) }
+    fun inheritedStatic(): JavaList<Text> { return listIdentity(Collections.emptyList()) }
+}
+let contextual = Contextual("c")
+let inheritedEmpty: JavaList<Text> = contextual.contextualEmpty()
+if inheritedEmpty.size() + contextual.implicit().size() + contextual.viaSuper().size() + contextual.viaThis().size() != 0 { throw IllegalStateException("inherited context") }
+let maybeHolder: Holder<Text>? = Holder<Text>("m")
+let safeEmpty: JavaList<Text>? = maybeHolder?.contextualEmpty()
+let maybeContextual: Contextual? = contextual
+let safeInherited: JavaList<Text>? = maybeContextual?.contextualEmpty()
+let missingHolder: Holder<Text>? = null
+let skipped: JavaList<Text>? = missingHolder?.contextualEmpty()
+if safeEmpty?.size() != 0 or safeInherited?.size() != 0 or skipped != null { throw IllegalStateException("safe call context") }
+if contextual.shape() != "shape6" or contextual.inheritedStatic().size() != 0 { throw IllegalStateException("inherited static") }
+import lib.Holder.SubHolder
+if SubHolder.listIdentity(Collections.singletonList("s")).get(0) != "s" { throw IllegalStateException("static through subclass") }
+
+// Equally ranked overloads compare type arguments, as javac does.
+if Holder.genericAgree(null) != "arraylist" or Holder.genericVariable(null) != "arraylist-ints" { throw IllegalStateException("generic specificity") }
+
+// Static fields of a Java superclass by bare name, protected ones included.
+class StaticReader(start: Text) extends Holder<Text>(start) {
+    fun read(): Text { return PUBLIC_LABEL + protectedNames.get(0) }
+}
+if StaticReader("s").read() != "publicp" or StaticReader.PUBLIC_LABEL != "public" { throw IllegalStateException("inherited static fields") }

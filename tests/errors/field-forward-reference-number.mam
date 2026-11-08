@@ -1,0 +1,7 @@
+// error: This field is read before its starting value is set
+// Numbers would silently read 0.
+class Counter {
+    let next: Int = start + 1
+    let start: Int = 5
+}
+print(Counter().next)

@@ -1,0 +1,4 @@
+// error: This class is missing a method required by the interface.
+interface A { fun a(): Int }
+interface B extends A { fun b(): Int }
+class C implements B { fun b(): Int { return 1 } }

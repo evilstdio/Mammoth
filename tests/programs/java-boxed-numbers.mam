@@ -1,0 +1,29 @@
+// Java's number boxes are Mammoth numbers: boxed results, and boxed type
+// arguments such as List<Integer>, work with Int, Long, Double, Bool, Char.
+import java.lang.Integer
+import java.lang.Long as JavaLong
+import java.lang.Boolean as JavaBoolean
+import java.util.List as JavaList
+import java.util.ArrayList
+import java.util.stream.IntStream
+
+let seven = Integer.valueOf(7)
+print(seven + 1)
+print(seven == 7)
+print(JavaLong.valueOf(5L) * 2L)
+print(JavaBoolean.valueOf("true") and true)
+
+// Methods of a primitive's box can be called on the primitive.
+print(5.compareTo(3))
+print(seven.compareTo(9))
+print(2.5.isNaN())
+
+// List<Integer> from Java is a List<Int>.
+let boxed: JavaList<Int> = IntStream.range(0, 4).boxed().toList()
+print(boxed.get(3) * 10)
+let mine = ArrayList<Int>()
+mine.addAll(boxed)
+mine.add(9)
+var total = 0
+for value in mine { total += value }
+print(total)

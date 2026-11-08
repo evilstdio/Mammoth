@@ -1,0 +1,30 @@
+// Mammoth classes that implement Java interfaces can call the interfaces'
+// default methods, with the class's type arguments substituted.
+import java.util.function.Function as JavaFunction
+import java.util.Comparator
+import java.util.ArrayList
+
+class Increment implements JavaFunction<Int, Int> {
+    fun apply(value: Int): Int { return value + 1 }
+}
+open class Identity implements JavaFunction<Int, Int> {
+    fun apply(value: Int): Int { return value }
+}
+class Tens extends Identity {
+    override fun apply(value: Int): Int { return value * 10 }
+}
+print(Increment().andThen(Tens()).apply(1))
+print(Tens().compose(Increment()).apply(2))
+let viaJava: JavaFunction<Int, Int> = Tens()
+print(viaJava.apply(4))
+
+class ByLength implements Comparator<Text> {
+    fun compare(left: Text, right: Text): Int { return left.length() - right.length() }
+}
+let words = ArrayList<Text>()
+words.add("ccc")
+words.add("a")
+words.add("bb")
+words.sort(ByLength().reversed())
+print(words)
+print(ByLength().thenComparing(ByLength()).compare("aa", "b"))

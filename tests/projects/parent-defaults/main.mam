@@ -1,0 +1,8 @@
+import defaults.API.numbers
+import defaults.API.source
+import defaults.API.label
+print(numbers().next())
+print(source().next())
+print(source().echo(9))
+print(numbers().keep("kept"))
+print(label())

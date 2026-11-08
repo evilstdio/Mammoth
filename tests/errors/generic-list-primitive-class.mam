@@ -1,0 +1,3 @@
+// error: A generic List<T> holds objects, but this list holds primitive values.
+class Shelf<T>(let items: List<T>)
+let shelf = Shelf([1.5, 2.5])

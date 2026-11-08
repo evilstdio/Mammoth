@@ -1,0 +1,5 @@
+// error: Java type arguments are erased at runtime.
+import java.util.ArrayList
+import java.util.List as JavaList
+let anything: Any = ArrayList<Int>()
+if anything is JavaList<Text> { print("wrong") }

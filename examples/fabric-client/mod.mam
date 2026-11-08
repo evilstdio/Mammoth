@@ -1,0 +1,45 @@
+module demo.mammoth.Controls
+
+java class Object = "java.lang.Object" {}
+java class Client = "net.minecraft.class_310" {}
+
+java class KeyBinding = "net.minecraft.class_304" {
+    new(label: Text, code: Int, category: Text)
+    fun wasPressed(): Bool = "method_1436"
+}
+
+java fun registerKey(binding: KeyBinding): KeyBinding =
+    "net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper.registerKeyBinding"
+
+java interface EndTick = "net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents$EndTick" {
+    fun onEndTick(client: Client)
+}
+
+java class Event = "net.fabricmc.fabric.api.event.Event" {
+    fun register(listener: Object)
+}
+
+java let endTick: Event =
+    "net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK"
+
+class Toggle(key: KeyBinding) implements EndTick {
+    private let binding = key
+    private var enabled = false
+
+    fun onEndTick(client: Client) {
+        while binding.wasPressed() {
+            if enabled {
+                enabled = false
+                print("Mammoth toggle off")
+            } else {
+                enabled = true
+                print("Mammoth toggle on")
+            }
+        }
+    }
+}
+
+export fun initializeClient() {
+    let key = registerKey(KeyBinding("key.mammoth_controls.toggle", 71, "category.mammoth_controls"))
+    endTick.register(Toggle(key))
+}

@@ -1,0 +1,5 @@
+// error: This method must use the generic Java superclass's type arguments
+import java.util.ArrayList
+class Bad extends ArrayList<Text>() {
+    override fun add(value: Int): Bool { return true }
+}

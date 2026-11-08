@@ -1,0 +1,68 @@
+class Box<T>(let value: T) {
+    fun map<R>(convert: (T) -> R): Box<R> { return Box(convert(value)) }
+    fun keep<R>(next: R): R { return next }
+    fun forwarded<R>(next: R): R { return keep(next) }
+    fun missing<R>(): R? { return null }
+}
+let box = Box(21)
+print(box.map { it * 2 }.value)
+print(box.map<Text> { "number {it}" }.value)
+print(box.keep(5L) + 1L)
+print(box.forwarded("forwarded"))
+let absent: Text? = box.missing()
+print(absent ?: "missing")
+class Base {
+    fun keep<T>(value: T): T { return value }
+}
+class Child extends Base() {
+    override fun keep<R>(value: R): R { return super.keep(value) }
+    fun explicit(): Int { return keep<Int>(7) }
+}
+print(Child().keep(8))
+print(Child().explicit())
+interface Identity {
+    fun keep<T>(value: T): T
+}
+class Service implements Identity {
+    fun keep<R>(value: R): R { return value }
+    fun number<R>(): Long { return 5000000000L }
+}
+let identity: Identity = Service()
+print(identity.keep("interface"))
+print(identity.keep<Int>(9) + 1)
+let service = Service()
+print(service.number<Int>())
+let missing: Box<Int>? = null
+print(missing?.keep<Int>(7) ?: 11)
+let shared = service.keep(23)
+fun sharedValue(): Int { return shared }
+print(sharedValue())
+class Inferred { let value = Service().keep("field") }
+print(Inferred().value)
+class Defaults {
+    fun missing<T>(): T? { return null }
+    fun test(): Text? { return missing() }
+}
+print(Defaults().test() ?: "implicit context")
+class DerivedDefaults extends Defaults() {
+    fun parent(): Int? { return super.missing() }
+}
+print(DerivedDefaults().parent() ?: 12)
+var evaluations = 0
+fun next(): Int { evaluations += 1
+return evaluations }
+print(service.keep(next()))
+print(evaluations)
+fun echo(value: Text): Text { return value }
+class Shadow {
+    fun echo<T>(value: T): T { return value }
+    fun run(): Int { echo<Int>(1)
+return 2 }
+}
+print(Shadow().run())
+let present: Box<Int>? = box
+let safeMissing: Text? = present?.missing()
+print(safeMissing ?: "safe context")
+let noBox: Box<Int>? = null
+let skipped: Text? = noBox?.missing()
+print(skipped ?: "skipped")

@@ -1,0 +1,9 @@
+class Counter(@Deprecated(since = "0.4") protected var count: Int) {
+    @Deprecated(since = "0.4")
+    let label = "counter"
+    fun current(): Int { return count }
+}
+class StepCounter extends Counter(1) {
+    fun step(): Int { count += 1 return count }
+}
+print(StepCounter().step())

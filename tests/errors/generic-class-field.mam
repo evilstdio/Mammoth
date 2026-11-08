@@ -1,0 +1,4 @@
+// error: Expected an Int here.
+class Box<T>(var value: T)
+let number = Box(3)
+number.value = "wrong"

@@ -1,0 +1,4 @@
+// error: This Java type argument does not satisfy its declared bounds.
+import java.util.ArrayList
+import java.util.EnumSet
+fun invalid(values: ArrayList<EnumSet<Text>>) {}

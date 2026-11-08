@@ -1,0 +1,12 @@
+java fun squareRoot(value: Double): Double = "java.lang.Math.sqrt"
+
+fun average(values: List<Double>): Double {
+    var total = 0.0
+    for value in values {
+        total = total + value
+    }
+    return total / values.size().toDouble()
+}
+
+let result = average([1.5, 2.5, squareRoot(16.0)])
+print("Average: {result}")

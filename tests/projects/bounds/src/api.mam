@@ -1,0 +1,18 @@
+module ranks.API
+import ranks.Zoo.Animal
+export fun largest<T: Comparable<T>>(a: T, b: T): T {
+    if a.compareTo(b) >= 0 {
+        return a
+    }
+    return b
+}
+class Pen<A: Animal>(var occupant: A) {
+    fun call(): Text { return occupant.name + "!" }
+}
+interface Ranked<T: Comparable<T>> {
+    fun best(): T
+}
+class Scores implements Ranked<Int> {
+    fun best(): Int { return 99 }
+}
+export fun ranked(): Ranked<Int> { return Scores() }

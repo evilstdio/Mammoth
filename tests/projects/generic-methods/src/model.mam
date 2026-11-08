@@ -1,0 +1,4 @@
+module methods.Model
+class Box<T>(let value: T) {
+    fun map<R>(convert: (T) -> R): Box<R> { return Box(convert(value)) }
+}

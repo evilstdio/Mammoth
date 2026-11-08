@@ -1,0 +1,4 @@
+// error: Expected an object that implements the declared interface here.
+interface Source<out T> { fun next(): T }
+class Ints implements Source<Int> { fun next(): Int { return 1 } }
+let longs: Source<Long> = Ints()

@@ -1,0 +1,7 @@
+// A Mammoth subclass of a Java class reads the superclass's static fields
+// by bare name, or through the subclass's name, as Java code can.
+class Worker extends Thread() {
+    fun highest(): Int { return MAX_PRIORITY }
+}
+print(Worker().highest())
+print(Worker.MIN_PRIORITY)

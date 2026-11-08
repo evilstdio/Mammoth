@@ -1,0 +1,96 @@
+open class Box<T>(var value: T) {
+    fun get(): T { return value }
+    fun set(next: T) { value = next }
+    fun describe(): Text { return "Box({value})" }
+    fun pair<R>(other: R): Text { return "{value}/{other}" }
+}
+
+class IntBox(start: Int) extends Box<Int>(start) {
+    fun doubled(): Int { return value * 2 }
+    fun bump() {
+        value += 1
+        set(get() + 10)
+    }
+    override fun describe(): Text { return "IntBox " + super.describe() }
+}
+
+class Labeled<T>(let label: Text, item: T) extends Box<T>(item) {
+    fun show(): Text { return "{label}: {get()}" }
+}
+
+class Named(item: Text) extends Labeled<Text>("name", item) {
+    fun length(): Int { return get().length() + value.length() }
+}
+
+abstract class Shape<T> {
+    abstract fun measure(): T
+    fun report(): Text { return "measured {measure()}" }
+}
+
+class Square(let side: Double) extends Shape<Double>() {
+    override fun measure(): Double { return side * side }
+}
+
+class Pair<A, B>(let first: A, let second: B)
+class Point(x: Int, y: Int) extends Pair<Int, Int>(x, y) {
+    fun sum(): Int { return first + second }
+}
+class Flipped<X>(x: X) extends Pair<Text, X>("flip", x)
+
+fun unwrap<T>(box: Box<T>): T { return box.get() }
+
+let box = IntBox(1)
+print(box.get() + 1)
+print(box.doubled())
+box.bump()
+print(box.value)
+box.value = 40
+box.set(box.value + 2)
+print(box.get())
+print(box.describe())
+print(box.pair("x"))
+let general: Box<Int> = box
+print(general.get())
+print(general.describe())
+print(unwrap(box) + 100)
+let labeled = Labeled("count", 3)
+print(labeled.show())
+print(labeled.get() * 3)
+let named = Named("abc")
+print(named.show())
+print(named.length())
+let asLabeled: Labeled<Text> = named
+print(asLabeled.get().uppercase())
+let square = Square(3.0)
+print(square.report())
+let shape: Shape<Double> = square
+print(shape.measure() + 1.0)
+let point = Point(2, 5)
+print(point.sum())
+print(point.first * 10)
+let pair: Pair<Int, Int> = point
+print(pair.second)
+print(Flipped(9).second + 1)
+print(Flipped(9).first)
+
+interface Producer<T> {
+    fun produce(): T
+}
+open class Plain {
+    fun produce(): Int { return 5 }
+}
+class FromPlain extends Plain() implements Producer<Int> {}
+open class Holder<T>(let held: T) {
+    fun produce(): T { return held }
+}
+class IntHolder extends Holder<Int>(3) implements Producer<Int> {}
+class Override extends Box<Int>(8) implements Producer<Int> {
+    override fun get(): Int { return 80 }
+    fun produce(): Int { return get() + value }
+}
+fun produced(producer: Producer<Int>): Int { return producer.produce() }
+print(produced(FromPlain()))
+print(produced(IntHolder()))
+print(produced(Override()))
+let viaBox: Box<Int> = Override()
+print(viaBox.get())

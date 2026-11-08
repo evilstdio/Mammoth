@@ -1,0 +1,2 @@
+// error: A static method cannot have the same name as an instance method.
+class Tools { fun run() {} static fun run() {} }

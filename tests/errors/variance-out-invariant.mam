@@ -1,0 +1,2 @@
+// error: A type parameter marked 'out' or 'in' cannot appear inside an invariant type
+interface Source<out T> { fun all(): MutableList<T> }

@@ -1,0 +1,3 @@
+// error: An 'in' type parameter cannot appear in a result type.
+interface Source<out T> { fun next(): T }
+interface Sink<in T> { fun source(): Source<T> }

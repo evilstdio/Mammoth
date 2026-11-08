@@ -1,0 +1,4 @@
+// error: Expected an object of the declared class here.
+class Box<T>(let value: T)
+let number = Box(3)
+let text: Box<Text> = number

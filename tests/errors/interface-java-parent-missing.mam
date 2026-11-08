@@ -1,0 +1,4 @@
+// error: This class is missing a method required by the Java interface.
+import java.lang.Runnable
+interface Task extends Runnable { fun label(): Text }
+class Lazy implements Task { fun label(): Text { return "x" } }

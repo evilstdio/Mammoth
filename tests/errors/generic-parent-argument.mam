@@ -1,0 +1,3 @@
+// error: Expected an Int here.
+open class Box<T>(let value: T)
+class Child extends Box<Int>("one") {}

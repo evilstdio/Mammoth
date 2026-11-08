@@ -1,0 +1,10 @@
+module demo.Main
+import demo.Model.Box as Holder
+import demo.Library.read
+import demo.Library.make
+let number = Holder(19)
+print(read(number) + 1)
+let box: Holder<Text> = make("project")
+print(box.get().uppercase())
+box.value = "changed"
+print(read(box))

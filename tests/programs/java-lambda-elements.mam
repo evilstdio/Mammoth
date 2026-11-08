@@ -1,0 +1,20 @@
+// Lambdas passed where a Java generic parameter is erased to Object take the
+// parameter's type argument: Mammoth function types or Java interfaces.
+import java.util.ArrayList
+import java.util.HashMap
+
+let steps = ArrayList<(Int) -> Int>()
+steps.add({ value -> value + 1 })
+steps.add { value -> value * 10 }
+var current = 1
+for step in steps { current = step(current) }
+print(current)
+
+let tasks = ArrayList<Runnable>()
+tasks.add { print("task ran") }
+for task in tasks { task.run() }
+
+let ops = HashMap<Text, (Int, Int) -> Int>()
+ops.put("add", { a, b -> a + b })
+let add = ops.get("add")
+print(add(2, 3))

@@ -1,0 +1,7 @@
+// error: Expected an Int here.
+open class Box<T>(let value: T) {
+    fun get(): T { return value }
+}
+class Child<T>(item: T) extends Box<T>(item) {
+    fun bad(): Int { return get() }
+}

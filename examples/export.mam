@@ -1,0 +1,22 @@
+module demo.mammoth.CounterLogic
+
+interface Counter {
+    fun next(): Int
+}
+
+class StepCounter(start: Int) implements Counter {
+    private var count = start
+    fun next(): Int {
+        count = count + 1
+        return count
+    }
+}
+
+export fun advance(start: Int): Int {
+    let counter: Counter = StepCounter(start)
+    return counter.next()
+}
+
+export fun initialize() {
+    print("Mammoth initialized")
+}

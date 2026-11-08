@@ -1,0 +1,13 @@
+java fun property(name: Text): Text? = "java.lang.System.getProperty"
+
+fun show(value: Text?) {
+    if value == null {
+        print("No value found.")
+    } else {
+        print(value)
+    }
+}
+
+show(property("mammoth.example.unset"))
+show("Mammoth")
+

@@ -1,0 +1,22 @@
+module contracts.Main
+import contracts.API.Source
+import contracts.API.Keyed as Entry
+import contracts.API.numbers
+import contracts.API.named
+import contracts.API.cell
+import contracts.API.drain
+import contracts.API.describe
+import contracts.Model.Cell
+let source: Source<Int> = numbers(0)
+print(source.peek() ?: -1)
+print(drain(source, 3))
+print(source.peek() ?: -1)
+print(source.convert { it * 10 })
+let entry: Entry<Text, Long> = named("big")
+print(entry.value() + 1L)
+print(describe(entry))
+let text = cell("shared")
+print(text.next().length())
+let local: Source<Int> = Cell(41)
+print(local.next() + 1)
+print(drain(Cell(2), 4))

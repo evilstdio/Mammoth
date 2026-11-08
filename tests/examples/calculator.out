@@ -1,0 +1,16 @@
+7.0
+9.0
+512.0
+x = 4.0
+y = 15.0
+12.0
+6.0
+error at 3: division by zero
+error at 0: unknown variable z
+error at 3: unexpected 
+error at 2: unexpected '$'
+bad number
+error at 0: unknown function nope
+error at 6: expected )
+error at 2: trailing input
+[x, y]

@@ -1,0 +1,2 @@
+// error: This Java type needs a different number of type arguments.
+fun invalid(values: Thread<Text>) {}

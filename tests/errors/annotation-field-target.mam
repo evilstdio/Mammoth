@@ -1,0 +1,2 @@
+// error: This Java annotation is not allowed on this declaration.
+class Example { @Override var number = 1 }

@@ -1,0 +1,4 @@
+// error: A class cannot implement the same interface with different type arguments.
+interface Source<T> { fun next(): T }
+open class Base implements Source<Int> { fun next(): Int { return 1 } }
+class C extends Base() implements Source<Text> { }

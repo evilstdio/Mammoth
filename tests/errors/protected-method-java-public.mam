@@ -1,0 +1,2 @@
+// error: A protected method cannot override a public Java method. Keep it public.
+class Named { protected fun toString(): Text { return "x" } }

@@ -1,0 +1,6 @@
+// error: A lambda cannot change a local variable from outside it.
+fun count(): Int {
+    let total = 0
+    let add = { x: Int -> total = x }
+    return total
+}

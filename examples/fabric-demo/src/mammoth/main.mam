@@ -1,0 +1,105 @@
+module demo.mammoth.Demo
+import net.minecraft.block.AbstractBlock.Settings as BlockSettings
+import net.minecraft.item.Item.Settings as ItemSettings
+import net.minecraft.block.Block
+import net.minecraft.block.BlockState
+import net.minecraft.entity.player.PlayerEntity
+import net.minecraft.item.BlockItem
+import net.minecraft.util.ActionResult
+import net.minecraft.util.hit.BlockHitResult
+import net.minecraft.util.math.BlockPos
+import net.minecraft.sound.SoundEvents
+import net.minecraft.sound.SoundCategory
+import net.minecraft.item.Item
+import net.minecraft.item.ItemStack
+import net.minecraft.registry.Registry
+import net.minecraft.registry.Registries
+import net.minecraft.text.Text as ChatText
+import net.minecraft.util.Hand
+import net.minecraft.util.Identifier
+import net.minecraft.util.TypedActionResult
+import net.minecraft.world.World
+
+// A Mammoth subclass of Minecraft's Block. It glows, and right-clicking it
+// plays a chime and counts the uses. `onUse` is a protected Minecraft method.
+class GlowBlock(settings: BlockSettings) extends Block(settings) {
+    private var chimes = 0
+
+    protected override fun onUse(state: BlockState, world: World, pos: BlockPos, player: PlayerEntity, hit: BlockHitResult): ActionResult {
+        if not world.isClient() {
+            chimes += 1
+            world.playSound(null, pos, SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.BLOCKS, 1.0, 1.0)
+            player.sendMessage(ChatText.literal("The glow block chimes ({chimes})"), true)
+        }
+        return ActionResult.SUCCESS
+    }
+}
+
+// A Mammoth subclass of Minecraft's Item: it always shimmers, stacks to 16,
+// and rumbles with a short cooldown when used.
+class TuskItem(settings: ItemSettings) extends Item(settings) {
+    private var uses = 0
+
+    override fun hasGlint(stack: ItemStack): Bool {
+        return true
+    }
+
+    // Protected: subclasses of TuskItem may reuse or change the message.
+    protected fun rumble(): Text {
+        return "The mammoth tusk rumbles ({uses})"
+    }
+
+    override fun use(world: World, user: PlayerEntity, hand: Hand): TypedActionResult<ItemStack> {
+        let stack = user.getStackInHand(hand)
+        if not world.isClient() {
+            uses += 1
+            user.sendMessage(ChatText.literal(rumble()), true)
+            user.getItemCooldownManager().set(this, 20)
+        }
+        return TypedActionResult.success(stack, world.isClient())
+    }
+}
+
+var tusk: TuskItem? = null
+var glowBlock: GlowBlock? = null
+var glowItem: BlockItem? = null
+
+export fun initialize() {
+    let item = Registry.register(Registries.ITEM, Identifier.of("mammoth_demo", "tusk"), TuskItem(ItemSettings().maxCount(16)))
+    if Registries.ITEM.getId(item).toString() != "mammoth_demo:tusk" {
+        throw IllegalStateException("Mammoth item registration failed")
+    }
+    tusk = item
+    print("[Mammoth] Registered mammoth_demo:tusk")
+    let blockId = Identifier.of("mammoth_demo", "glow_block")
+    let block = Registry.register(Registries.BLOCK, blockId, GlowBlock(BlockSettings.create().strength(1.5).luminance { state -> 12 }))
+    let blockItem = Registry.register(Registries.ITEM, blockId, BlockItem(block, ItemSettings()))
+    glowBlock = block
+    glowItem = blockItem
+    print("[Mammoth] Registered block " + Registries.BLOCK.getId(block).toString() + " and item " + Registries.ITEM.getId(blockItem).toString())
+}
+
+// Checks the custom item's behavior without a world: stack size and glint.
+export fun checkTusk(): Text {
+    let item = requireValue(tusk)
+    let stack = ItemStack(item)
+    // Call through Minecraft's Item type, as the game does, to reach the
+    // remapped override.
+    let base: Item = item
+    if stack.getMaxCount() != 16 or not base.hasGlint(stack) {
+        throw IllegalStateException("Mammoth tusk behavior is wrong")
+    }
+    return "maxCount={stack.getMaxCount()}, glint={base.hasGlint(stack)}"
+}
+
+// Checks the block without a world: luminance from the settings lambda,
+// hardness, and the block item's link back to the block.
+export fun checkGlowBlock(): Text {
+    let block = requireValue(glowBlock)
+    let item = requireValue(glowItem)
+    let state = block.getDefaultState()
+    if state.getLuminance() != 12 or item.getBlock() != block {
+        throw IllegalStateException("Mammoth glow block is wrong")
+    }
+    return "luminance={state.getLuminance()}, hardness={block.getHardness()}, item links block={item.getBlock() == block}"
+}

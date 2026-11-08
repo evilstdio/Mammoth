@@ -1,0 +1,4 @@
+// error: Class type arguments are erased at runtime. Check only types whose arguments follow
+interface Source<out T> { fun next(): T }
+class Box<T>(let value: T) implements Source<T> { fun next(): T { return value } }
+fun f(source: Source<Int>): Bool { return source is Box<Text> }

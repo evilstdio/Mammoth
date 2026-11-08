@@ -1,0 +1,4 @@
+// error: The named interface must be a direct parent of this class or interface.
+interface A { fun name(): Text { return "a" } }
+interface B extends A { }
+interface C extends B { fun test(): Text { return super<A>.name() } }

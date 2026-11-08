@@ -1,0 +1,4 @@
+// error: Declare an annotation only once.
+@Deprecated
+@java.lang.Deprecated
+class Bad { }

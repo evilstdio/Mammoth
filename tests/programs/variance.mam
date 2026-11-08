@@ -1,0 +1,122 @@
+abstract class Animal(let name: Text) {
+    abstract fun sound(): Text
+}
+
+class Dog(name: Text) extends Animal(name) {
+    override fun sound(): Text { return "woof" }
+}
+
+class Cat(name: Text) extends Animal(name) {
+    override fun sound(): Text { return "meow" }
+}
+
+interface Source<out T> {
+    fun next(): T
+    fun peek(): T?
+    fun each(action: (T) -> Unit)
+}
+
+interface Sink<in T> {
+    fun put(value: T)
+    fun putAll(values: Source<T>)
+}
+
+interface Transform<in A, out B> {
+    fun apply(value: A): B
+}
+
+class Kennel(let dogs: MutableList<Dog>) implements Source<Dog> {
+    var position = 0
+    fun next(): Dog {
+        position += 1
+        return dogs.get(position - 1)
+    }
+    fun peek(): Dog? {
+        if position < dogs.size() {
+            return dogs.get(position)
+        }
+        return null
+    }
+    fun each(action: (Dog) -> Unit) {
+        for dog in dogs {
+            action(dog)
+        }
+    }
+}
+
+class Numbers(var current: Int) implements Source<Int> {
+    fun next(): Int {
+        current += 1
+        return current
+    }
+    fun peek(): Int? { return current + 1 }
+    fun each(action: (Int) -> Unit) {
+        action(current)
+    }
+}
+
+class Shelter implements Sink<Animal> {
+    var names = ""
+    fun put(value: Animal) {
+        names = names + value.name + ";"
+    }
+    fun putAll(values: Source<Animal>) {
+        var next = values.peek()
+        while next != null {
+            put(values.next())
+            next = values.peek()
+        }
+    }
+}
+
+class Namer implements Transform<Animal, Text> {
+    fun apply(value: Animal): Text { return "{value.name} the {value.sound()}er" }
+}
+
+fun loudest(source: Source<Animal>): Text {
+    return source.next().sound()
+}
+
+fun first<T>(source: Source<T>): T {
+    return source.next()
+}
+
+fun adopt(sink: Sink<Dog>, dog: Dog) {
+    sink.put(dog)
+}
+
+fun describe(transform: Transform<Dog, Any>, dog: Dog): Text {
+    return "described: {transform.apply(dog)}"
+}
+
+let dogs = MutableList<Dog>()
+dogs.add(Dog("rex"))
+dogs.add(Dog("fido"))
+dogs.add(Dog("max"))
+
+let kennel = Kennel(dogs)
+let animals: Source<Animal> = kennel
+print(animals.next().name)
+print(loudest(kennel))
+print(first(animals).sound())
+let anything: Source<Any> = Numbers(10)
+print(anything.next())
+animals.each { print("each {it.name}") }
+
+let shelter = Shelter()
+let dogSink: Sink<Dog> = shelter
+dogSink.put(Dog("spot"))
+adopt(shelter, Dog("buddy"))
+shelter.put(Cat("tom"))
+shelter.putAll(Kennel(dogs))
+print(shelter.names)
+
+let namer = Namer()
+print(describe(namer, Dog("lassie")))
+let specific: Transform<Dog, Text> = namer
+print(specific.apply(Dog("odie")).length())
+
+let sources = MutableList<Source<Animal>>()
+sources.add(Kennel(dogs))
+sources.add(kennel)
+print(sources.size())

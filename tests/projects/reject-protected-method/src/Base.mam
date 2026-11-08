@@ -1,0 +1,16 @@
+module parent.Engine
+abstract class Engine<T>(protected var state: T) {
+    protected abstract fun step(value: T): T
+    protected fun run(times: Int): T {
+        for i in 0 until times {
+            state = step(state)
+        }
+        return state
+    }
+    protected fun peek<R>(change: (T) -> R): R {
+        return change(state)
+    }
+    fun current(): T {
+        return state
+    }
+}

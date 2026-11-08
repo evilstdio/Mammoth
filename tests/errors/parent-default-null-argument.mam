@@ -1,0 +1,4 @@
+// error: Expected an Int here.
+interface Source<T> { fun echo(value: T): T { return value } }
+interface Numbers extends Source<Int> { override fun echo(value: Int): Int { return value } }
+class C implements Numbers { fun bad(): Int { return super<Numbers>.echo(null) } }

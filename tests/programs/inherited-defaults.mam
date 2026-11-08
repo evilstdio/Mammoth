@@ -1,0 +1,28 @@
+// Default methods that a superclass inherits from an interface: subclasses
+// can call them with super and override them, and every call path reaches
+// the override.
+interface Greeter {
+    fun greet(): Text { return "hi" }
+}
+open class Base implements Greeter
+open class Middle extends Base
+class Leaf extends Middle {
+    override fun greet(): Text { return super.greet() + "!" }
+}
+print(Leaf().greet())
+let greeter: Greeter = Leaf()
+print(greeter.greet())
+
+interface Named<T> {
+    fun tag(value: T): Text { return "t{value}" }
+}
+open class Plain implements Named<Int>
+class Fancy extends Plain {
+    override fun tag(value: Int): Text { return "f" + super.tag(value + 1) }
+}
+let named: Named<Int> = Fancy()
+let plain: Plain = Fancy()
+print(Fancy().tag(1))
+print(named.tag(5))
+print(plain.tag(7))
+print(Plain().tag(2))

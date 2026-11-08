@@ -1,0 +1,7 @@
+module school.Report
+import school.Model.Grade
+export fun average(grades: List<Grade>): Double {
+    var sum = 0
+    for grade in grades { sum += grade.score() }
+    return sum.toDouble() / grades.size().toDouble()
+}

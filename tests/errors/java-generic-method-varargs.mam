@@ -1,0 +1,5 @@
+// error: This argument does not match the Java type
+import java.util.ArrayList
+import java.util.Collections
+let words = ArrayList<Text>()
+Collections.addAll(words, "okay", 3)

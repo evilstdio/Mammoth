@@ -1,0 +1,4 @@
+// error: Expected Text here.
+class Box<T>(var value: T) { fun put(value: T) { this.value = value } }
+let text = Box("text")
+text.put(7)

@@ -1,0 +1,6 @@
+// error: This field is read before its starting value is set
+class Greeting {
+    init { print(word.length()) }
+    let word: Text = "hi"
+}
+Greeting()

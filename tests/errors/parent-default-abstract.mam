@@ -1,0 +1,5 @@
+// error: This interface method has no default body to call.
+interface A { fun name(): Text }
+class C implements A {
+    fun name(): Text { return super<A>.name() }
+}

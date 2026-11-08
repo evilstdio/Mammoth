@@ -1,0 +1,24 @@
+module defaults.API
+import defaults.Base.Source
+import defaults.Base.Left
+import defaults.Base.Right
+interface Numbers extends Source<Int> {
+    override fun next(): Int { return 42 }
+    override fun echo(value: Int): Int { return super<Source>.echo(value) + 1 }
+    override fun keep<U>(value: U): U { return super<Source>.keep(value) }
+    fun parent(value: Int): Int { return super<Source>.echo(value) }
+}
+interface Named extends Left, Right {
+    override fun label(): Text { return super<Left>.label() + "+" + super<Right>.label() }
+}
+class Counter implements Numbers, Named { }
+class Changed implements Numbers {
+    override fun next(): Int { return 99 }
+    override fun echo(value: Int): Int { return super<Numbers>.echo(value) + 10 }
+}
+export fun numbers(): Numbers { return Counter() }
+export fun source(): Source<Int> { return Counter() }
+export fun label(): Text { return Counter().label() }
+export fun changed(): Numbers { return Changed() }
+export fun viaNumbers(value: Numbers): Int { return value.next() + value.echo(10) }
+export fun viaSource(value: Source<Int>): Int { return value.next() + value.echo(10) }

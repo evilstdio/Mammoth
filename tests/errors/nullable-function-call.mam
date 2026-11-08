@@ -1,0 +1,3 @@
+// error: Check for null before calling this function value.
+let handler: ((Int) -> Int)? = null
+print(handler(1))

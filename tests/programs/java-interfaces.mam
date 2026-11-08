@@ -1,0 +1,44 @@
+import java.util.ArrayList
+import java.util.Collections
+import java.util.Comparator
+
+class Worker(let label: Text) implements Runnable {
+    fun run() {
+        print("running {label}")
+    }
+}
+
+let thread = Thread(Worker("background"))
+thread.start()
+thread.join()
+Worker("direct").run()
+
+class ByLength implements Comparator {
+    fun compare(left: Text, right: Text): Int {
+        return left.length() - right.length()
+    }
+}
+
+let words = ArrayList()
+words.add("banana")
+words.add("fig")
+words.add("apple")
+Collections.sort(words, ByLength())
+print(words)
+
+class Score(let points: Int) implements Comparable {
+    fun compareTo(other: Score): Int {
+        return points - other.points
+    }
+    fun toString(): Text {
+        return "Score({points})"
+    }
+}
+
+let scores = ArrayList()
+scores.add(Score(30))
+scores.add(Score(10))
+scores.add(Score(20))
+Collections.sort(scores)
+print(scores)
+print(Collections.max(scores))

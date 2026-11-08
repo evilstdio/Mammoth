@@ -1,0 +1,2 @@
+// error: Expected a value of the declared type parameter.
+class Box<T>(var value: T) { fun wrong() { value = "wrong" } }

@@ -1,0 +1,11 @@
+module ranks.Main
+import ranks.API.largest
+import ranks.API.Pen
+import ranks.API.ranked
+import ranks.Zoo.Lion
+print(largest(4, 2))
+print(largest("b", "c"))
+let pen = Pen(Lion("Leo"))
+print(pen.call())
+print(pen.occupant.name.length())
+print(ranked().best() + 1)

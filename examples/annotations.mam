@@ -1,0 +1,6 @@
+@Deprecated(since = "0.2", forRemoval = false)
+class OldGreeter {
+    @Deprecated(since = "0.2")
+    export fun greet(): Text { return "Hello from Mammoth" }
+}
+print(OldGreeter().greet())

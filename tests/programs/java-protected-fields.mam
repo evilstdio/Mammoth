@@ -1,0 +1,32 @@
+import java.io.ByteArrayOutputStream
+import java.io.FilterOutputStream
+import java.io.OutputStream
+
+class Buffer extends ByteArrayOutputStream() {
+    fun used(): Int {
+        return count
+    }
+    fun shrink() {
+        count = count - 1
+    }
+    fun copyFrom(other: Buffer) {
+        this.count = other.count
+    }
+}
+
+class Tee(target: OutputStream) extends FilterOutputStream(target) {
+    fun inner(): OutputStream { return out }
+}
+
+let buffer = Buffer()
+buffer.write(65)
+buffer.write(66)
+buffer.write(67)
+print(buffer.used())
+buffer.shrink()
+print(buffer.toString())
+let other = Buffer()
+other.copyFrom(buffer)
+print(other.used())
+let tee = Tee(buffer)
+print(tee.inner() == buffer)

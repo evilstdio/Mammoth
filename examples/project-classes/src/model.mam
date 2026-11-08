@@ -1,0 +1,9 @@
+module school.Model
+interface Grade {
+    fun score(): Int
+    fun label(): Text
+}
+class Student(let name: Text, let points: Int) implements Grade {
+    fun score(): Int { return points }
+    fun label(): Text { return "{name}: {points}" }
+}

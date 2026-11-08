@@ -1,0 +1,19 @@
+module demo.mammoth.mixin.ClientAccessor
+import net.minecraft.client.MinecraftClient
+import org.spongepowered.asm.mixin.Mixin
+import org.spongepowered.asm.mixin.gen.Accessor
+import org.spongepowered.asm.mixin.gen.Invoker
+
+// An accessor Mixin: Mixin makes MinecraftClient implement this interface,
+// with each method reading, writing, or calling a private member.
+@Mixin(value = MinecraftClient.class)
+interface ClientAccessor {
+    @Accessor(value = "itemUseCooldown")
+    fun cooldown(): Int
+
+    @Accessor(value = "itemUseCooldown")
+    fun setCooldown(value: Int)
+
+    @Invoker(value = "getWindowTitle")
+    fun windowTitle(): Text
+}

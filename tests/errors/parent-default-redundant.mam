@@ -1,0 +1,4 @@
+// error: Call the more specific direct parent instead of this redundant interface.
+interface A { fun name(): Text { return "a" } }
+interface B extends A { }
+class C implements A, B { fun test(): Text { return super<A>.name() } }

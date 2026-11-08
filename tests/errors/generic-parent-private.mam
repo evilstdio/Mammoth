@@ -1,0 +1,5 @@
+// error: This field is private to its class.
+open class Box<T>(private let value: T)
+class Child extends Box<Int>(1) {
+    fun peek(): Int { return this.value }
+}

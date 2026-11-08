@@ -1,0 +1,3 @@
+// error: This method does not take type arguments.
+interface A { fun name(): Text { return "a" } }
+class C implements A { fun test(): Text { return super<A>.name<Int>() } }

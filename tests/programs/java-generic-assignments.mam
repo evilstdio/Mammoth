@@ -1,0 +1,25 @@
+import java.util.ArrayList
+import java.util.Collection
+class Words extends ArrayList<Text>()
+class Bag<T> {
+    fun identity(items: ArrayList<T>): Collection<T> { return items }
+    fun nest(item: ArrayList<T>): Int {
+        let groups = ArrayList<ArrayList<T>>()
+        groups.add(item)
+        return groups.size()
+    }
+}
+fun echo(values: Collection<Text>): Collection<Text> { return values }
+let words = Words()
+words.add("safe")
+let list: Collection<Text> = words
+let collection: Collection<Text> = echo(list)
+print(collection.size())
+print(words.get(0))
+let bag = Bag<Text>()
+print(bag.identity(words).size())
+print(bag.nest(words))
+let maybe: Collection<Text>? = list
+print(requireValue(maybe).size())
+let missing: Collection<Text>? = null
+print(missing == null)

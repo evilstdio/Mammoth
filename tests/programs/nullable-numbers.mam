@@ -1,0 +1,94 @@
+import java.util.HashMap
+
+fun echo(value: Int?): Int? { return value }
+let number: Int? = 42
+let absent: Int? = null
+print(number)
+print(absent)
+print(number ?: 7)
+print(absent ?: 7)
+print(echo(3) ?: 0)
+if number != null { print(number + 1) }
+let decimal: Double? = 1.5
+print(decimal ?: 2.0)
+let length: Int? = "Mammoth"?.length()
+print(length ?: 0)
+let missingText: Text? = null
+print(missingText?.length())
+print(missingText?.length() ?: 99)
+let counts = HashMap<Text, Int>()
+counts["apples"] = 5
+let found: Int? = counts["apples"]
+let missing: Int? = counts["pears"]
+print(found ?: 0)
+print(missing ?: 0)
+
+// Nullable primitive values use boxed Java types; ordinary numbers stay unboxed.
+let large: Long? = 5000000000L
+let flag: Bool? = true
+let letter: Char? = 'x'
+print(large ?: 0L)
+if large != null { print(large + 1L) }
+if flag != null and flag { print("yes") }
+if letter != null { print(letter.uppercase()) }
+print(requireValue(decimal))
+print(large?.toInt())
+let noLong: Long? = null
+print(noLong?.toDouble() ?: 2.5)
+let widened: Double? = 2
+print(widened ?: 0.0)
+
+let values: List<Int?> = [null, 2, 3]
+for value in values { print(value ?: 0) }
+let decimals: MutableList<Double?> = mutableList(null, 1.5)
+decimals.add(2.5)
+for value in decimals { print(value ?: 0.0) }
+let boxed: Any = 3
+print(boxed as? Int)
+print("wrong" as? Int)
+print(Integer.valueOf(8) as Int?)
+let count: Number? = number
+print(count)
+
+let thousand: Int? = 1000
+print(thousand == 1000)
+print(1000 == thousand)
+print(absent == 0)
+print(0 != absent)
+print(5000000000L == large)
+print(decimal == 1.5)
+print(flag == true)
+print('x' == letter)
+print(when thousand {
+    1000 -> "found"
+    else -> "missing"
+})
+
+let doubles = HashMap<Text, Double>()
+let missingDouble: Double? = doubles.get("missing")
+print(missingDouble ?: 1.25)
+let nullableFallback: Int? = absent ?: number
+print(nullableFallback)
+print(absent ?: null)
+
+// A non-null receiver can itself return null: the fallback must still run.
+class Missing {
+    fun number(): Int? { return null }
+}
+print(Missing()?.number() ?: 73)
+data class Reading(let value: Int?)
+let reading = Reading(null)
+print(reading.value)
+print(reading == Reading(null))
+print(Reading(4) == Reading(4))
+var changed: Int? = null
+changed = 6
+print(changed ?: 0)
+changed = null
+print(changed ?: 7)
+
+try {
+    print(requireValue(absent))
+} catch (problem: NullPointerException) {
+    print(problem.getMessage())
+}

@@ -1,0 +1,27 @@
+interface Source<T> {
+    fun next(): T
+}
+
+class Counter(var count: Int) implements Source<Int> {
+    fun next(): Int {
+        count += 1
+        return count
+    }
+}
+
+class Repeat<T>(let value: T) implements Source<T> {
+    fun next(): T { return value }
+}
+
+fun take<T>(source: Source<T>, times: Int): MutableList<T> {
+    let items = MutableList<T>()
+    for i in 0 until times {
+        items.add(source.next())
+    }
+    return items
+}
+
+print(take(Counter(0), 3))
+print(take(Repeat("hi"), 2))
+let numbers: Source<Int> = Counter(10)
+print(numbers.next() * 2)

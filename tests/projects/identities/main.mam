@@ -1,0 +1,21 @@
+module demo.Main
+import demo.Left.Item as LeftItem
+import demo.Right.Item as RightItem
+import demo.Left.make as left
+import demo.Right.make as right
+import demo.Right.holder
+import demo.Right.values
+import demo.Right.callback
+let first: LeftItem = left()
+let second: RightItem = right()
+print(first.name)
+print(second.name)
+print(holder().item.name)
+for item in values() { print(item.name) }
+let format = callback()
+print(format(first))
+print(first == left())
+class Inferred {
+    let label = holder().item.name
+}
+print(Inferred().label)

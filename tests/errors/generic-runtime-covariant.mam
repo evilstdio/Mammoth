@@ -1,0 +1,6 @@
+// error: Class type arguments are erased at runtime.
+open class Animal
+class Dog extends Animal()
+interface Source<out T> { fun next(): T }
+class Box<T>(let value: T) implements Source<T> { fun next(): T { return value } }
+fun f(source: Source<Animal>): Bool { return source is Box<Dog> }

@@ -1,0 +1,2 @@
+import child.Engine.Doubler
+print(Doubler(1).current())

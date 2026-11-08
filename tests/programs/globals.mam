@@ -1,0 +1,27 @@
+var score = 0
+let bonus = 5
+var log: MutableList<Text> = mutableList()
+let title: Text? = "Game"
+
+fun addPoints(points: Int) {
+    score += points + bonus
+    log.add("added {points}")
+}
+
+class Player(let name: Text) {
+    fun win() {
+        addPoints(10)
+        print("{name} won, score is now {score}")
+    }
+}
+
+addPoints(1)
+addPoints(2)
+Player("Maya").win()
+print(score)
+print(log)
+if title != null {
+    print(title.uppercase())
+}
+score = 0
+print(score)

@@ -1,0 +1,4 @@
+// error: Only the first bound can be a class. Later bounds must be interfaces.
+interface Named { fun name(): Text }
+class Base
+fun f<T: Named & Base>(value: T) {}

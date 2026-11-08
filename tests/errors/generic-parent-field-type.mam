@@ -1,0 +1,5 @@
+// error: Expected an Int here.
+open class Box<T>(var value: T)
+class Child extends Box<Int>(1) {
+    fun reset() { value = "zero" }
+}

@@ -1,0 +1,7 @@
+module methods.Main
+import methods.API.service
+import methods.API.contract
+import methods.API.box
+print(service().keep(7))
+print(contract().keep("interface"))
+print(box(3).map { it * 2 }.value)

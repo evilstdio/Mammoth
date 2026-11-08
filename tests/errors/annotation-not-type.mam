@@ -1,0 +1,3 @@
+// error: Use a public Java annotation type after '@'.
+@String
+class Bad { }

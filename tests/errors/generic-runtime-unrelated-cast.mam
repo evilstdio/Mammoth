@@ -1,0 +1,4 @@
+// error: Class type arguments are erased at runtime.
+class Box<T>(let value: T)
+class Other<T>(let value: T)
+fun f(other: Other<Int>): Int { return (other as Box<Int>).value }

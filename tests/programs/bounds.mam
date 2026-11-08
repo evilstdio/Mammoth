@@ -1,0 +1,130 @@
+abstract class Animal(let name: Text) {
+    abstract fun sound(): Text
+    fun greet(): Text { return "{name} says {sound()}" }
+}
+class Dog(name: Text) extends Animal(name) {
+    override fun sound(): Text { return "woof" }
+}
+class Cat(name: Text) extends Animal(name) {
+    override fun sound(): Text { return "meow" }
+}
+interface Scored {
+    fun score(): Int
+}
+class Player(let nick: Text, let points: Int) implements Scored {
+    fun score(): Int { return points }
+}
+interface Source<T> {
+    fun next(): T
+}
+class Ones implements Source<Int> {
+    fun next(): Int { return 1 }
+}
+
+fun largest<T: Comparable<T>>(a: T, b: T): T {
+    if a.compareTo(b) >= 0 {
+        return a
+    }
+    return b
+}
+
+fun loudest<A: Animal>(animals: MutableList<A>): Text {
+    var result = ""
+    for animal in animals {
+        result = result + animal.greet() + ";"
+    }
+    return result
+}
+
+fun best<T: Scored>(first: T, second: T): T {
+    if first.score() >= second.score() {
+        return first
+    }
+    return second
+}
+
+fun twice<S: Source<Int>>(source: S): Int {
+    return source.next() + source.next()
+}
+
+class Shelter<A: Animal>(var resident: A) {
+    fun describe(): Text { return "Shelter of {resident.name}: {resident.sound()}" }
+    fun swap(next: A): A {
+        let old = resident
+        resident = next
+        return old
+    }
+}
+
+class Ranking<T: Comparable<T>>() {
+    let items = MutableList<T>()
+    fun add(item: T) { items.add(item) }
+    fun top(): T? {
+        var found: T? = null
+        for item in items {
+            let current = found
+            if current == null or item.compareTo(current) > 0 {
+                found = item
+            }
+        }
+        return found
+    }
+}
+
+print(largest(3, 9))
+print(largest("pear", "apple"))
+print(largest(2.5, -1.0))
+print(largest<Long>(5L, 7L))
+let dogs = MutableList<Dog>()
+dogs.add(Dog("Rex"))
+dogs.add(Dog("Fido"))
+print(loudest(dogs))
+let players = best(Player("a", 3), Player("b", 8))
+print(players.nick)
+print(twice(Ones()))
+let shelter = Shelter(Cat("Tom"))
+print(shelter.describe())
+let old = shelter.swap(Cat("Kit"))
+print(old.name + " -> " + shelter.resident.name)
+let animal: Animal = shelter.resident
+print(animal.greet())
+let ranking = Ranking<Text>()
+ranking.add("kiwi")
+ranking.add("zucchini")
+ranking.add("apple")
+print(ranking.top() ?: "none")
+let numbers = Ranking<Int>()
+print(numbers.top() ?: -1)
+numbers.add(4)
+numbers.add(11)
+print(numbers.top() ?: -1)
+open class Beast(let name: Text) {
+    fun sound(): Text { return "..." }
+}
+class Hound(name: Text) extends Beast(name)
+open class Refuge<A: Beast>(var resident: A) {
+    fun label(): Text { return resident.name }
+}
+class Kennel<D: Hound>(dog: D) extends Refuge<D>(dog) {
+    fun bark(): Text { return label() + " barks" }
+}
+interface Rated { fun score(): Int }
+class Pts(let n: Int) implements Rated { fun score(): Int { return n } }
+fun largest2<T: Comparable<T>>(a: T, b: T): T {
+    if a.compareTo(b) >= 0 { return a }
+    return b
+}
+fun maxOf3<T: Comparable<T>>(a: T, b: T, c: T): T {
+    return largest2(largest2(a, b), c)
+}
+fun scoreOrZero<T: Rated>(value: T?): Int {
+    return value?.score() ?: 0
+}
+fun asAnimal<A: Beast>(value: A): Beast { return value }
+print(Kennel(Hound("Rex")).bark())
+print(maxOf3(3, 10, 7))
+print(maxOf3("a", "c", "b"))
+print(scoreOrZero(Pts(5)))
+let none: Pts? = null
+print(scoreOrZero(none))
+print(asAnimal(Hound("Max")).name)

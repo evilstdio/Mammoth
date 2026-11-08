@@ -1,0 +1,3 @@
+// error: This method is already declared by a parent interface.
+interface A { fun a(): Int }
+interface B extends A { fun a(): Int }

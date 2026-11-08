@@ -1,0 +1,5 @@
+module demo.Model
+class Box<T>(var value: T) {
+    fun get(): T { return value }
+    fun put(value: T) { this.value = value }
+}

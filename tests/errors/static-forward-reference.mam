@@ -1,0 +1,6 @@
+// error: This static field is read before its starting value is set
+class Table {
+    static let label: Text = Table.name + "!"
+    static let name: Text = "rows"
+}
+print(Table.label)

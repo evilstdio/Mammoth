@@ -1,0 +1,5 @@
+// error: This class inherits two default methods with the same name.
+interface A { fun name(): Text { return "a" } }
+interface B { fun name(): Text { return "b" } }
+class Base implements A { }
+class Child extends Base() implements B { }

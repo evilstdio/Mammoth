@@ -1,0 +1,2 @@
+// error: Use break and continue only inside a loop.
+break

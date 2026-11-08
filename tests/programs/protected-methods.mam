@@ -1,0 +1,75 @@
+abstract class Shape(let name: Text) {
+    protected abstract fun area(): Int
+
+    protected fun label(): Text {
+        return "{name}={area()}"
+    }
+
+    fun describe(): Text {
+        return "shape " + label()
+    }
+}
+
+class Square(let side: Int) extends Shape("square") {
+    protected override fun area(): Int {
+        return side * side
+    }
+
+    fun compare(other: Square): Text {
+        // A subclass may use protected members of receivers of its own type.
+        return "{label()} vs {other.label()}"
+    }
+}
+
+class Cube(side: Int) extends Square(side) {
+    // Widening a protected method to public is allowed.
+    override fun area(): Int {
+        return super.area() * 6
+    }
+
+    protected fun boxed(): Text {
+        return "[" + this.label() + "]"
+    }
+
+    fun show(): Text {
+        return boxed()
+    }
+}
+
+open class Store<T>(var item: T) {
+    protected fun take(): T {
+        return item
+    }
+
+    protected fun convert<R>(change: (T) -> R): R {
+        return change(item)
+    }
+}
+
+class Counter(start: Int) extends Store<Int>(start) {
+    fun next(): Int {
+        item = take() + 1
+        return item
+    }
+
+    fun text(): Text {
+        return convert { "count {it}" }
+    }
+
+    fun later(): () -> Int {
+        return { take() * 10 }
+    }
+}
+
+let square = Square(3)
+print(square.describe())
+print(square.compare(Square(2)))
+let cube = Cube(2)
+print(cube.area())
+print(cube.describe())
+print(cube.show())
+let counter = Counter(4)
+print(counter.next())
+print(counter.text())
+let later = counter.later()
+print(later())

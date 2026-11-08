@@ -1,0 +1,19 @@
+import java.util.AbstractMap.SimpleEntry
+import java.lang.Thread.State
+import java.lang.Character.UnicodeBlock
+import java.awt.geom.Point2D.Float as FloatPoint
+
+// Nested Java classes are imported with dots, like Java source.
+let entry = SimpleEntry<Text, Int>("a", 1)
+entry.setValue(5)
+print(entry.getKey() + entry.getValue())
+print(State.RUNNABLE.toString())
+print(UnicodeBlock.of(65).toString())
+
+// A Double fits a Java float parameter; double overloads still win.
+let point = FloatPoint(1.5, 2.25)
+print(point.getX() + point.getY())
+point.setLocation(0.5, 0.75)
+print(point.getY())
+print(Float.valueOf(2.5).toString())
+print(Math.abs(-2.5))

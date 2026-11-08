@@ -1,0 +1,5 @@
+running background
+running direct
+[fig, apple, banana]
+[Score(10), Score(20), Score(30)]
+Score(30)

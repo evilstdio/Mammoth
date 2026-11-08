@@ -1,0 +1,5 @@
+// error: This collection's type arguments do not match the generic function parameter.
+import java.util.ArrayList
+fun append<T>(values: ArrayList<T>, value: T) { values.add(value) }
+let numbers = ArrayList<Int>()
+append<Text>(numbers, "wrong")

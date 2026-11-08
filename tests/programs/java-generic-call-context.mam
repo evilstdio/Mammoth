@@ -1,0 +1,16 @@
+import java.util.ArrayList
+import java.util.Collections
+
+// The outer List result must never be used to cast its PrintStream argument.
+let outputs = Collections.singletonList(System.out)
+outputs.get(0).println("static field")
+
+// Nested calls during overload probing must not consume the outer receiver's E.
+let words = ArrayList<Text>()
+words.add("zero")
+let counts = ArrayList<Int>()
+print(words.get(counts.size()).toUpperCase())
+
+// Nested constructors and calls must not erase the enclosing generic result.
+let nested = Collections.singletonList(StringBuilder("nested").append("-call").toString())
+print(nested.get(0).toUpperCase())

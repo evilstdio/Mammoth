@@ -1,0 +1,6 @@
+module demo.mammoth.ProjectDemo
+
+import demo.mammoth.Statistics.average
+
+let values = [1.5, 2.5, 5.0]
+print(average(values))

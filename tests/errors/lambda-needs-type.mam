@@ -1,0 +1,2 @@
+// error: Give this lambda parameter a type
+let f = { x -> x * 2 }

@@ -1,0 +1,218 @@
+// A small calculator language: tokenizer, recursive-descent parser,
+// evaluator with variables, functions, and error reporting.
+import java.util.ArrayList
+import java.util.HashMap
+import java.util.Collections
+
+enum Kind { NUMBER, NAME, SYMBOL, END }
+
+data class Token(let kind: Kind, let text: Text, let position: Int)
+
+class CalcError(message: Text, let position: Int) extends RuntimeException(message)
+
+class Lexer(let source: Text) {
+    var index = 0
+
+    fun tokens(): MutableList<Token> {
+        let out = MutableList<Token>()
+        while index < source.length() {
+            let ch = source.charAt(index)
+            if ch == ' ' {
+                index += 1
+            } else if Character.isDigit(ch) {
+                let start = index
+                while index < source.length() and (Character.isDigit(source.charAt(index)) or source.charAt(index) == '.') {
+                    index += 1
+                }
+                out.add(Token(Kind.NUMBER, source.substring(start, index), start))
+            } else if Character.isLetter(ch) {
+                let start = index
+                while index < source.length() and Character.isLetterOrDigit(source.charAt(index)) {
+                    index += 1
+                }
+                out.add(Token(Kind.NAME, source.substring(start, index), start))
+            } else if "+-*/()=,^".indexOf(ch.toString()) >= 0 {
+                out.add(Token(Kind.SYMBOL, ch.toString(), index))
+                index += 1
+            } else {
+                throw CalcError("unexpected '{ch}'", index)
+            }
+        }
+        out.add(Token(Kind.END, "", source.length()))
+        return out
+    }
+}
+
+interface Node {
+    fun eval(env: Env): Double
+}
+
+class Env {
+    let values = HashMap<Text, Double>()
+    let functions = HashMap<Text, (Double) -> Double>()
+    var depth = 0
+}
+
+class Num(let value: Double) implements Node {
+    fun eval(env: Env): Double { return value }
+}
+
+class Var(let name: Text, let position: Int) implements Node {
+    fun eval(env: Env): Double {
+        let value: Double? = env.values.get(name)
+        if value == null { throw CalcError("unknown variable {name}", position) }
+        return requireValue(value)
+    }
+}
+
+class Binary(let op: Text, let left: Node, let right: Node, let position: Int) implements Node {
+    fun eval(env: Env): Double {
+        let a = left.eval(env)
+        let b = right.eval(env)
+        return when (op) {
+            "+" -> a + b
+            "-" -> a - b
+            "*" -> a * b
+            "/" -> {
+                if b == 0.0 { throw CalcError("division by zero", position) }
+                a / b
+            }
+            else -> Math.pow(a, b)
+        }
+    }
+}
+
+class Call(let name: Text, let argument: Node, let position: Int) implements Node {
+    fun eval(env: Env): Double {
+        let function: ((Double) -> Double)? = env.functions.get(name)
+        if function == null { throw CalcError("unknown function {name}", position) }
+        env.depth += 1
+        try {
+            if env.depth > 50 { throw CalcError("too deep", position) }
+            let apply = requireValue(function)
+            return apply(argument.eval(env))
+        } finally {
+            env.depth -= 1
+        }
+    }
+}
+
+class Parser(let tokens: MutableList<Token>) {
+    var at = 0
+
+    fun peek(): Token { return tokens.get(at) }
+    fun next(): Token {
+        let token = tokens.get(at)
+        at += 1
+        return token
+    }
+    fun expect(text: Text) {
+        let token = next()
+        if token.text != text { throw CalcError("expected {text}", token.position) }
+    }
+
+    fun expression(): Node {
+        var node = term()
+        while peek().text == "+" or peek().text == "-" {
+            let op = next()
+            node = Binary(op.text, node, term(), op.position)
+        }
+        return node
+    }
+
+    fun term(): Node {
+        var node = power()
+        while peek().text == "*" or peek().text == "/" {
+            let op = next()
+            node = Binary(op.text, node, power(), op.position)
+        }
+        return node
+    }
+
+    fun power(): Node {
+        let base = unary()
+        if peek().text == "^" {
+            let op = next()
+            return Binary("^", base, power(), op.position)
+        }
+        return base
+    }
+
+    fun unary(): Node {
+        if peek().text == "-" {
+            let op = next()
+            return Binary("-", Num(0.0), unary(), op.position)
+        }
+        return primary()
+    }
+
+    fun primary(): Node {
+        let token = next()
+        when (token.kind) {
+            Kind.NUMBER -> return Num(Double.parseDouble(token.text))
+            Kind.NAME -> {
+                if peek().text == "(" {
+                    next()
+                    let argument = expression()
+                    expect(")")
+                    return Call(token.text, argument, token.position)
+                }
+                return Var(token.text, token.position)
+            }
+            else -> {
+                if token.text == "(" {
+                    let inner = expression()
+                    expect(")")
+                    return inner
+                }
+                throw CalcError("unexpected {token.text}", token.position)
+            }
+        }
+    }
+}
+
+fun run(env: Env, line: Text): Text {
+    try {
+        let tokens = Lexer(line).tokens()
+        if tokens.size() > 2 and tokens.get(0).kind == Kind.NAME and tokens.get(1).text == "=" {
+            let parser = Parser(tokens)
+            parser.at = 2
+            let value = parser.expression().eval(env)
+            env.values.put(tokens.get(0).text, value)
+            return "{tokens.get(0).text} = {value}"
+        }
+        let parser = Parser(tokens)
+        let node = parser.expression()
+        if parser.peek().kind != Kind.END { throw CalcError("trailing input", parser.peek().position) }
+        return node.eval(env).toString()
+    } catch (e: CalcError) {
+        return "error at {e.position}: {e.getMessage()}"
+    } catch (e: NumberFormatException) {
+        return "bad number"
+    }
+}
+
+let env = Env()
+env.functions.put("sqrt", { x -> Math.sqrt(x) })
+env.functions.put("double", { x -> x * 2.0 })
+env.functions.put("loop", { x -> x })
+let lines = ArrayList<Text>()
+lines.add("1 + 2 * 3")
+lines.add("(1 + 2) * 3")
+lines.add("2 ^ 3 ^ 2")
+lines.add("x = 4")
+lines.add("y = x * x - 1")
+lines.add("sqrt(y + 1) + double(x)")
+lines.add("-x + 10")
+lines.add("10 / (x - 4)")
+lines.add("z + 1")
+lines.add("1 +")
+lines.add("3 $ 4")
+lines.add("1.2.3 + 1")
+lines.add("nope(2)")
+lines.add("(1 + 2")
+lines.add("1 2")
+for line in lines { print(run(env, line)) }
+let names = ArrayList<Text>(env.values.keySet())
+Collections.sort(names)
+print(names)

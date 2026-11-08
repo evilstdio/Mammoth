@@ -1,0 +1,14 @@
+fun combine(values: MutableList<Int>, start: Int, step: (Int, Int, Int) -> Int): Int {
+    var total = start
+    var index = 0
+    for value in values {
+        total = step(total, value, index)
+        index += 1
+    }
+    return total
+}
+
+let values = mutableList(3, 4, 5)
+print(combine(values, 0, { total, value, index -> total + value * index }))
+let describe: (Text, Int, Bool) -> Text = { name, age, member -> "{name} ({age}) member={member}" }
+print(describe("Maya", 12, true))

@@ -1,0 +1,8 @@
+// error: The superclass has no method with that name.
+interface Greeter {
+    fun greet(): Text
+}
+open class Base
+class Leaf extends Base implements Greeter {
+    fun greet(): Text { return super.greet() }
+}

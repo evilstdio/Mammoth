@@ -1,0 +1,3 @@
+// error: This interface is already listed here.
+interface Producer<T> { fun produce(): T }
+class Both implements Producer<Int>, Producer<Text> { fun produce(): Int { return 1 } }

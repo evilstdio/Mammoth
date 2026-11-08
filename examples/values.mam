@@ -1,0 +1,13 @@
+fun report(total: Int, ready: Bool) {
+    if ready {
+        if total >= 20 {
+            print("Total: {total}")
+        } else {
+            print("Total is below 20.")
+        }
+    }
+}
+
+let total = (2 + 3) * 4
+let ready = true
+report(total, ready)

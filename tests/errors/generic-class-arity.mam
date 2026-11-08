@@ -1,0 +1,3 @@
+// error: Give one type argument for each type parameter.
+class Box<T>(let value: T)
+print(Box<Int, Text>(1).value)

@@ -1,0 +1,3 @@
+module rejected.Main
+import rejected.API.Pen
+let pen: Pen<Text> = Pen("nope")

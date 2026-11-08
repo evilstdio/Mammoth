@@ -1,0 +1,2 @@
+// error: This variable has not been defined here.
+class Box(var size: Int) { static fun me(): Box { return this } }

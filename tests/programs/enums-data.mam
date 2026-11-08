@@ -1,0 +1,64 @@
+enum Color { Red, Green, Blue }
+
+let favorite = Color.Green
+print(favorite)
+print(favorite.name())
+print(favorite.ordinal())
+print(favorite == Color.Green)
+print(favorite == Color.Red)
+for color in Color.values() {
+    print(color)
+}
+print(Color.valueOf("Blue").ordinal())
+
+fun describe(color: Color): Text {
+    return when color {
+        Color.Red -> "warm"
+        Color.Blue -> "cool"
+        else -> "natural"
+    }
+}
+print(describe(Color.Red))
+print(describe(favorite))
+
+enum Planet(let mass: Double, let radius: Double) {
+    Mercury(3.303e23, 2.4397e6),
+    Earth(5.976e24, 6.37814e6)
+
+    fun gravity(): Double {
+        return 6.67300e-11 * mass / (radius * radius)
+    }
+}
+print(Planet.Earth.mass)
+print(Planet.Earth.gravity() > Planet.Mercury.gravity())
+print(Planet.values().size())
+
+data class Point(let x: Int, let y: Int)
+
+let a = Point(1, 2)
+let b = Point(1, 2)
+let c = Point(3, 4)
+print(a)
+print(a == b)
+print(a == c)
+print(a.hashCode() == b.hashCode())
+print("Point is {c}")
+
+data class Person(let name: Text, var age: Int, let height: Double)
+let person = Person("Maya", 31, 1.68)
+print(person)
+person.age += 1
+print(person.age)
+print(person == Person("Maya", 32, 1.68))
+
+class Plain(let value: Int) {
+    override fun equals(other: Any): Bool {
+        return other is Plain and other.value == value
+    }
+    override fun hashCode(): Int {
+        return value
+    }
+}
+print(Plain(5) == Plain(5))
+print(Plain(5) == Plain(6))
+print(Plain(9).hashCode())

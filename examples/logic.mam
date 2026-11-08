@@ -1,0 +1,10 @@
+fun side(value: Bool): Bool {
+    print("evaluated {value}")
+    return value
+}
+
+let ready = 2 + 3 * 4 >= 14 and not false
+print(ready)
+print(false and side(true))
+print(true or side(false))
+print((false or side(true)) and not false)

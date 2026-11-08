@@ -1,0 +1,2 @@
+// error: Static methods cannot have type parameters yet.
+class Tools { static fun same<T>(value: T): T { return value } }

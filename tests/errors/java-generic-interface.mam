@@ -1,0 +1,5 @@
+// error: Java generic type arguments must match the declared type.
+import java.lang.Comparable
+interface Ranked<T> extends Comparable<T> {}
+fun bad(value: Ranked<Text>): Comparable<Int> { return value }
+

@@ -1,0 +1,3 @@
+// error: This method must have the same parameter and result types as the interface method it overrides.
+interface Sink<T> { fun put(value: T) { } }
+interface Bad extends Sink<Int> { override fun put(value: Text) { } }

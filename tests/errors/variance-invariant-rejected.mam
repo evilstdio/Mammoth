@@ -1,0 +1,6 @@
+// error: Expected an object that implements the declared interface here.
+open class Animal
+class Dog extends Animal()
+interface Box<T> { fun get(): T }
+class DogBox implements Box<Dog> { fun get(): Dog { return Dog() } }
+let box: Box<Animal> = DogBox()

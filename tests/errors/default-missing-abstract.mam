@@ -1,0 +1,6 @@
+// error: This class is missing a method required by the interface.
+interface Named {
+    fun name(): Text
+    fun greet(): Text { return "hi " + name() }
+}
+class Nobody implements Named { }

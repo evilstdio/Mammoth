@@ -1,0 +1,5 @@
+// error: This class is abstract.
+abstract class Shape {
+    abstract fun area(): Double
+}
+let shape = Shape()

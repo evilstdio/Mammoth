@@ -1,0 +1,3 @@
+module demo.Left
+class Box {}
+export fun accept(value: Box): Int { return 1 }

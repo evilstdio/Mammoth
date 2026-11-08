@@ -1,0 +1,4 @@
+// error: This field is protected.
+class Base(protected var value: Int)
+let object = Base(1)
+object.value = 2

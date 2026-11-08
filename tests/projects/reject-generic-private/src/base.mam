@@ -1,0 +1,4 @@
+module hidden.Base
+open class Vault<T>(private let content: T) {
+    private fun open(): T { return content }
+}

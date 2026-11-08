@@ -1,0 +1,8 @@
+// error: unless it names every constant of an enum
+enum Light { RED, AMBER, GREEN }
+fun advice(light: Light): Text {
+    return when (light) {
+        Light.RED -> "stop"
+        Light.GREEN -> "go"
+    }
+}

@@ -1,0 +1,4 @@
+// error: Expected an object that implements the declared interface here.
+interface Producer<T> { fun produce(): T }
+class Counter implements Producer<Int> { fun produce(): Int { return 1 } }
+let p: Producer<Any> = Counter()

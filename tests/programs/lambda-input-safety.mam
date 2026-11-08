@@ -1,0 +1,5 @@
+import java.util.Optional
+let broad: (Text) -> Int = { value: Any -> value.toString().length() }
+print(broad("safe"))
+let mapped = Optional.of(42).map { value: Any -> value.toString().length() }
+print(mapped.get() + 1)

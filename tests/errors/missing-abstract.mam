@@ -1,0 +1,6 @@
+// error: This class must implement every abstract method of its superclass.
+abstract class Shape {
+    abstract fun area(): Double
+}
+class Blob extends Shape {
+}

@@ -1,0 +1,14 @@
+module family.Base
+open class Container<T>(var item: T) {
+    fun take(): T { return item }
+    fun swap(next: T): T {
+        let old = item
+        item = next
+        return old
+    }
+    private fun secret(): Int { return 1 }
+}
+abstract class Measure<T> {
+    abstract fun amount(): T
+    fun label(): Text { return "amount={amount()}" }
+}

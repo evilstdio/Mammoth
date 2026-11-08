@@ -1,0 +1,3 @@
+// error: This value is not a function, so it cannot be called.
+fun three(): Int { return 3 }
+print(three()(1))

@@ -1,0 +1,43 @@
+// Every static type reaches the most derived override, through generic
+// superclasses, generic interfaces, and defaults specialized to Int.
+interface Source<T> {
+    fun get(): T
+}
+interface Mapper<A, B> {
+    fun map(value: A): B
+    fun twice(value: A): Text { return "{map(value)}{map(value)}" }
+}
+open class Box<T>(var item: T) {
+    open fun read(): T { return item }
+    open fun swap(next: T): T { let old = item
+        item = next
+        return old }
+}
+open class IntBox(start: Int) extends Box<Int>(start) implements Source<Int> {
+    override fun read(): Int { return item + 100 }
+    fun get(): Int { return 1 }
+}
+class Deep extends IntBox(5) {
+    override fun read(): Int { return 999 }
+    override fun get(): Int { return 2 }
+    override fun swap(next: Int): Int { return -next }
+}
+open class Len implements Mapper<Text, Int> {
+    fun map(value: Text): Int { return value.length() }
+}
+class LenPlus extends Len {
+    override fun map(value: Text): Int { return value.length() + 10 }
+    override fun twice(value: Text): Text { return "LP" + super.twice(value) }
+}
+let d = Deep()
+let ib: IntBox = d
+let bx: Box<Int> = d
+let src: Source<Int> = d
+print("{d.read()} {ib.read()} {bx.read()}")
+print("{d.get()} {ib.get()} {src.get()}")
+print("{d.swap(3)} {ib.swap(4)} {bx.swap(6)}")
+let lp = LenPlus()
+let l: Len = lp
+let m: Mapper<Text, Int> = lp
+print("{lp.map("ab")} {l.map("ab")} {m.map("ab")}")
+print("{lp.twice("ab")} {l.twice("ab")} {m.twice("ab")}")

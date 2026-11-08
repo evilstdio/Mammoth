@@ -1,0 +1,6 @@
+// error: An overriding interface method must keep its parent's type parameter bounds.
+interface Named { fun name(): Text }
+interface A { fun keep<T>(value: T): T { return value } }
+interface B extends A {
+    override fun keep<T: Named>(value: T): T { return value }
+}

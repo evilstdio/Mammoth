@@ -1,0 +1,10 @@
+module streams.Base
+interface Source<out T> {
+    fun next(): T
+}
+interface Named {
+    fun name(): Text
+    fun shout(): Text {
+        return name() + "!"
+    }
+}

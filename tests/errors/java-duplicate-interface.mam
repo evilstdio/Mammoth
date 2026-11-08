@@ -1,0 +1,2 @@
+// error: This interface is already listed here.
+class Twice implements Runnable, Runnable { fun run() {} }

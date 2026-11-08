@@ -1,0 +1,75 @@
+import java.util.ArrayList
+import java.util.TimerTask
+import java.io.Writer
+import java.io.StringWriter
+import java.io.PrintWriter
+
+class Names extends ArrayList {
+    var additions = 0
+
+    override fun add(item: Any): Bool {
+        additions += 1
+        return super.add(item)
+    }
+
+    fun describe(): Text {
+        return "{size()} names after {additions} additions"
+    }
+}
+
+let names = Names()
+names.add("Maya")
+names.add("Sam")
+print(names.describe())
+print(names.get(1))
+print(names.contains("Maya"))
+print(names)
+
+class Task(let label: Text) extends TimerTask {
+    fun run() {
+        print("task {label} ran")
+    }
+}
+let task = Task("cleanup")
+task.run()
+print(task.cancel())
+
+class Shout extends Writer {
+    let parts = mutableList("")
+
+    fun write(buffer: List<Char>, offset: Int, length: Int) {
+        var index = offset
+        while index < offset + length {
+            parts.add(buffer[index].uppercase().toText())
+            index += 1
+        }
+    }
+
+    fun flush() {}
+
+    fun close() {}
+
+    fun text(): Text {
+        var result = ""
+        for part in parts {
+            result += part
+        }
+        return result
+    }
+}
+
+let shout = Shout()
+let printer = PrintWriter(shout)
+printer.print("hello there")
+printer.flush()
+print(shout.text())
+
+class Errors(text: Text) extends RuntimeException(text) {
+    let code = 42
+}
+
+try {
+    throw Errors("custom failure")
+} catch (error: Errors) {
+    print("{error.getMessage()} with code {error.code}")
+}

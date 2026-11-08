@@ -1,0 +1,3 @@
+module demo.Left
+data class Item(let name: Text)
+export fun make(): Item { return Item("left") }

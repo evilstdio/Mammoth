@@ -1,0 +1,4 @@
+// error: This class inherits two default methods with the same name.
+interface A { fun hello(): Text { return "a" } }
+interface B { fun hello(): Text { return "b" } }
+class Both implements A, B { }

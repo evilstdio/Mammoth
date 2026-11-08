@@ -1,0 +1,59 @@
+interface Source<T> {
+    fun next(): T
+    fun label(): Text
+}
+
+class Box<T>(var value: T) implements Source<T> {
+    fun next(): T { return value }
+    fun label(): Text { return "box" }
+    fun replace(other: T) { value = other }
+}
+
+abstract class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+
+class Pen<A: Animal>(var resident: A)
+
+fun describe(box: Box<*>): Text {
+    let inside: Any = box.value
+    return "holds {inside}"
+}
+
+fun labels(sources: MutableList<Source<*>>): Text {
+    var text = ""
+    for source in sources {
+        text = text + source.label() + ":{source.next()} "
+    }
+    return text
+}
+
+fun resident(pen: Pen<*>): Text {
+    return pen.resident.name
+}
+
+fun kind(value: Any): Text {
+    if value is Box<*> {
+        return "a box with {value.value}"
+    }
+    return when value {
+        is Pen<*> -> "a pen with {value.resident.name}"
+        else -> "something else"
+    }
+}
+
+print(describe(Box(5)))
+print(describe(Box("text")))
+let sources = MutableList<Source<*>>()
+sources.add(Box(1))
+sources.add(Box("two"))
+sources.add(Box(3.5))
+print(labels(sources))
+print(resident(Pen(Dog("rex"))))
+print(kind(Box(true)))
+print(kind(Pen(Dog("fido"))))
+print(kind("plain"))
+let anyBox: Box<*> = Box(10)
+let unknown = anyBox.next()
+print("next {unknown}")
+let back = anyBox as? Box<*>
+print(back != null)

@@ -1,0 +1,16 @@
+open class Box<T>(var value: T) {
+    fun get(): T { return value }
+    fun describe(): Text { return "Box holding {value}" }
+}
+
+class Score(points: Int) extends Box<Int>(points) {
+    fun add(extra: Int) { value += extra }
+    override fun describe(): Text { return "Score: " + super.describe() }
+}
+
+let score = Score(40)
+score.add(2)
+print(score.get())
+print(score.describe())
+let box: Box<Int> = score
+print(box.get())

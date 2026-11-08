@@ -1,0 +1,3 @@
+// error: Write .class after a plain class name
+// Type parameters are erased, so they have no class object.
+fun describe<T>(value: T): Text { return T.class.getName() }

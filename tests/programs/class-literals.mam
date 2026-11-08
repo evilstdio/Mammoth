@@ -1,0 +1,17 @@
+// Type.class gives the java.lang.Class object, typed Class<Type>, for Java
+// APIs such as EnumMap and EnumSet. Int.class is int.class.
+import java.time.DayOfWeek
+import java.util.EnumMap
+import java.util.EnumSet
+import java.util.ArrayList
+
+let hours = EnumMap<DayOfWeek, Int>(DayOfWeek.class)
+hours.put(DayOfWeek.MONDAY, 8)
+hours.put(DayOfWeek.FRIDAY, 6)
+print(hours)
+print(EnumSet.allOf(DayOfWeek.class).size())
+print(Text.class.getName())
+print(Int.class.getName())
+print(ArrayList.class.getSimpleName())
+class Gadget
+print(Gadget.class.getSimpleName().length() > 0)

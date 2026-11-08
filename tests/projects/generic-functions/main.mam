@@ -1,0 +1,12 @@
+module demo.Main
+import demo.Generic.identity as keep
+import demo.Generic.transform
+import demo.Generic.singleton
+import demo.Models.Item
+let stored = keep(Item("global"))
+fun sharedName(): Text { return stored.name }
+print(sharedName())
+print(keep(17) + 1)
+let values = singleton(Item("Maya"))
+print(transform(values) { it.name.uppercase() })
+print(transform(singleton(4)) { it * 2 })

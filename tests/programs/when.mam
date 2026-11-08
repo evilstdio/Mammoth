@@ -1,0 +1,88 @@
+fun describe(number: Int): Text {
+    return when number {
+        0 -> "zero"
+        1, 2, 3 -> "small"
+        in 4..9 -> "medium"
+        else -> "large"
+    }
+}
+
+for n in [0, 2, 7, 50] {
+    print(describe(n))
+}
+
+let temperature = 31
+when {
+    temperature < 0 -> print("freezing")
+    temperature < 25 -> print("mild")
+    else -> {
+        print("hot")
+        print("drink water")
+    }
+}
+
+fun kind(value: Any): Text {
+    return when value {
+        is Text -> "text of {value.length()}"
+        is Int -> "int {value * 2}"
+        else -> "other"
+    }
+}
+print(kind("abc"))
+print(kind(21))
+print(kind(1.5))
+
+let a = 10
+let b = 20
+let biggest = if a > b { a } else { b }
+print(biggest)
+let label = if a > 15 {
+    "big"
+} else if a > 5 {
+    "medium"
+} else {
+    "small"
+}
+print(label)
+
+let command = "stop"
+when command {
+    "go" -> print("going")
+    "stop" -> print("stopping")
+}
+
+let grade = 'B'
+let points = when grade {
+    'A' -> 4
+    'B' -> 3
+    else -> 0
+}
+print(points)
+
+let maybe: Text? = null
+print(maybe ?: "default")
+let present: Text? = "here"
+print(present ?: "default")
+print(maybe?.uppercase())
+print(present?.uppercase())
+print(maybe?.length() ?: 0)
+print(present?.length() ?: 0)
+let home: Text = System.getenv("MAMMOTH_UNSET_VARIABLE") ?: "no home"
+print(home)
+
+class Node(let value: Int) {
+    var next: Node? = null
+}
+let first = Node(1)
+first.next = Node(2)
+print(first.next?.value ?: -1)
+print(first.next?.next?.value ?: -1)
+
+let pick = { n: Int -> when n { 1 -> "one" else -> "many" } }
+print(pick(1))
+print(pick(5))
+let sign = when -3 {
+    -3 -> "minus three"
+    else -> "something"
+}
+print(sign)

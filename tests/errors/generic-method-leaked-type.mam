@@ -1,0 +1,3 @@
+// error: This type has not been defined.
+class Service { fun keep<T>(value: T): T { return value } }
+fun wrong(value: T) { print(value) }

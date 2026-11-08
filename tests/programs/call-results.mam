@@ -1,0 +1,19 @@
+// A call or index that gives a function value can be called directly.
+import java.util.ArrayList
+
+fun adder(amount: Int): (Int) -> Int { return { value -> value + amount } }
+print(adder(2)(5))
+
+let multiply = { left: Int -> { right: Int -> left * right } }
+print(multiply(3)(4))
+
+let steps = ArrayList<(Int) -> Int>()
+steps.add { value -> value * 2 }
+print(steps.get(0)(21))
+
+let table = [{ value: Int -> value + 1 }, { value: Int -> value - 1 }]
+print(table[1](10))
+
+// A parenthesized expression on the next line is not a call.
+let first = adder(1)
+print(first(1))

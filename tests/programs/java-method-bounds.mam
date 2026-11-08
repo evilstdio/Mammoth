@@ -1,0 +1,15 @@
+import java.util.ArrayList
+import java.util.Collections
+let words = ArrayList<Text>()
+words.add("a")
+words.add("z")
+print(Collections.max(words))
+let numbers = ArrayList<Int>()
+numbers.add(3)
+numbers.add(9)
+print(Collections.min(numbers))
+print(Collections.max(numbers))
+class Words extends ArrayList<Text>()
+let inherited = Words()
+inherited.add("okay")
+print(Collections.max(inherited))

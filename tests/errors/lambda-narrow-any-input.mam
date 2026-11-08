@@ -1,0 +1,2 @@
+// error: This parameter type does not match where the lambda is used.
+let invalid: (Any) -> Int = { text: Text -> text.length() }

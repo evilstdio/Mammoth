@@ -1,0 +1,16 @@
+class Box<T>(var value: T) {
+    fun get(): T { return value }
+    fun replace(next: T) { value = next }
+}
+
+let score = Box(42)
+print(score.get() + 1)
+score.replace(95)
+print(score.value)
+
+let name: Box<Text> = Box("Mammoth")
+print(name.get().uppercase())
+
+data class Pair<T, R>(let first: T, let second: R)
+let result = Pair("Maya", 95)
+print("{result.first}: {result.second}")

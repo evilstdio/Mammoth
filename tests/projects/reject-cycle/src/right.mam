@@ -1,0 +1,3 @@
+module demo.Right
+import demo.Left.Left
+class Right extends Left() {}

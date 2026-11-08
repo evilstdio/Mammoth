@@ -1,0 +1,13 @@
+fun sum(numbers: List<Int>): Int {
+    var total = 0
+    for number in numbers {
+        total = total + number
+    }
+    return total
+}
+
+let values = [10, 20, 30]
+print(values[0])
+print(values.size())
+print(sum(values))
+print(sum([]))

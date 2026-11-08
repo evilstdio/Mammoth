@@ -1,0 +1,52 @@
+import java.util.ArrayList
+import java.util.HashMap
+import java.util.Collection
+
+abstract class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+
+class Bag<T> {
+    let items = ArrayList<T>()
+    fun keep(item: T) {
+        items.add(item)
+    }
+    fun count(): Int {
+        return items.size()
+    }
+}
+
+// Type arguments of Java generics are checked, but every value that really
+// fits is still accepted: subclasses, nullable values, boxed numbers, and
+// type parameters.
+let scores = HashMap<Text, Int>()
+scores.put("ann", 3)
+let maybe: Int? = 4
+scores.put("bob", requireValue(maybe))
+print(scores.get("ann") ?: 0)
+
+let animals = ArrayList<Animal>()
+animals.add(Dog("rex"))
+let nothing: Animal? = null
+animals.add(nothing)
+print(animals.size())
+
+let names = ArrayList<Text>()
+let missing: Text? = null
+names.add(missing)
+names.add("cy")
+print(names.size())
+
+let more = ArrayList<Animal>()
+more.addAll(animals)
+let view: Collection<Animal> = more
+print(view.size())
+
+let bag = Bag<Text>()
+bag.keep("x")
+bag.keep("y")
+print(bag.count())
+
+let numbers = ArrayList<Int>()
+numbers.add(1)
+numbers.add(0, 7)
+print(numbers.get(0) + numbers.get(1))

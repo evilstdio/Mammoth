@@ -1,0 +1,4 @@
+// error: Class type arguments are erased at runtime.
+class Box<T>(let value: T)
+let value: Any = Box(1)
+print(value is Box<Int>)

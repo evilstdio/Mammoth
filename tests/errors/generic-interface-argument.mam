@@ -1,0 +1,5 @@
+// error: Expected Text here.
+interface Sink<T> { fun put(value: T) }
+class Printer implements Sink<Text> { fun put(value: Text) { print(value) } }
+let sink: Sink<Text> = Printer()
+sink.put(5)

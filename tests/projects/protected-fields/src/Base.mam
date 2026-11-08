@@ -1,0 +1,2 @@
+module parent.Model
+class Base<T>(protected var value: T, protected let label: Text)

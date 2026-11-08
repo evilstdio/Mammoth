@@ -1,0 +1,3 @@
+// error: A class cannot extend itself, directly or indirectly.
+open class First<T>(let value: T) extends Second<T>(value)
+open class Second<T>(let value: T) extends First<T>(value)

@@ -1,0 +1,4 @@
+// error: Expected an Int here.
+import java.awt.Point
+let point = Point(1, 2)
+point.x = "ten"

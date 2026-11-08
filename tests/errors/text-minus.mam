@@ -1,0 +1,2 @@
+// error: Text can only be joined with +.
+print("a" - 1)

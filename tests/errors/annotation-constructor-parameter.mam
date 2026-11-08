@@ -1,0 +1,2 @@
+// error: Field annotations and protected visibility require a let or var constructor property.
+class Example(@Deprecated number: Int)

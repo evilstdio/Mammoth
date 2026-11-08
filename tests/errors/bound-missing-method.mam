@@ -1,0 +1,4 @@
+// error: This type has no method with that name.
+interface Named { fun name(): Text }
+interface Scored { fun score(): Int }
+fun f<T: Named & Scored>(value: T): Int { return value.weight() }

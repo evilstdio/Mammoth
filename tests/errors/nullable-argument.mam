@@ -1,0 +1,4 @@
+// error: Expected an Int here.
+fun double(value: Int): Int { return value * 2 }
+let number: Int? = null
+print(double(number))

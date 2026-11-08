@@ -1,0 +1,68 @@
+import java.lang.Runnable
+import java.lang.Thread
+import java.lang.Comparable
+import java.util.function.Supplier
+
+interface Task extends Runnable {
+    fun label(): Text
+    fun describe(): Text {
+        return "task " + label()
+    }
+}
+
+interface Ranked<T> extends Comparable<T> {
+    fun rank(): Int
+}
+
+interface Named extends Supplier<Text> {
+    fun prefix(): Text
+}
+
+class Printer(let message: Text) implements Task {
+    fun run() {
+        print("running " + message)
+    }
+    fun label(): Text { return message }
+}
+
+class Score(let points: Int) implements Ranked<Score> {
+    fun rank(): Int { return points }
+    fun compareTo(other: Score): Int { return points - other.points }
+}
+
+class Greeting(let name: Text) implements Named {
+    fun prefix(): Text { return "hi" }
+    fun get(): Text { return prefix() + " " + name }
+}
+
+fun start(task: Task) {
+    task.run()
+    let runnable: Runnable = task
+    let thread = Thread(runnable)
+    thread.start()
+    thread.join()
+}
+
+fun better<T: Ranked<T>>(a: T, b: T): T {
+    if a.compareTo(b) >= 0 {
+        return a
+    }
+    return b
+}
+
+let printer = Printer("report")
+start(printer)
+print(printer.describe())
+let task: Task = printer
+print(task.describe())
+
+print(better(Score(3), Score(9)).rank())
+let ranked: Ranked<Score> = Score(4)
+print(ranked.compareTo(Score(1)))
+let comparable: Comparable<Score> = ranked
+print(comparable.compareTo(Score(10)))
+
+let named: Named = Greeting("Maya")
+print(named.get())
+let supplier: Supplier<Text> = named
+print(supplier.get().length())

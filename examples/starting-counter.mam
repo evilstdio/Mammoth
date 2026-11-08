@@ -1,0 +1,21 @@
+class Counter(start: Int) {
+    private var count = start
+
+    fun next(): Int {
+        count = count + 1
+        return count
+    }
+}
+
+fun makeCounter(start: Int): Counter {
+    return Counter(start)
+}
+
+fun advance(counter: Counter): Int {
+    return counter.next()
+}
+
+let counter = makeCounter(10)
+print(advance(counter))
+print(advance(counter))
+print(advance(Counter(0)))

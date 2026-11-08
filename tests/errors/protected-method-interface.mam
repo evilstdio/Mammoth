@@ -1,0 +1,3 @@
+// error: A method required by an interface must be public, not protected.
+interface Valued { fun value(): Int }
+class Thing implements Valued { protected fun value(): Int { return 1 } }

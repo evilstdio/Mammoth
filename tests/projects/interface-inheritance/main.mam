@@ -1,0 +1,37 @@
+module streams.Main
+import streams.Base.Source
+import streams.API.Stream
+import streams.API.counter
+import streams.API.total
+import streams.API.label
+import streams.API.both
+import streams.API.swapEnds
+import streams.API.peekAny
+import streams.API.job
+class Letters(var index: Int) implements Stream<Text> {
+    fun next(): Text {
+        index += 1
+        return "l{index}"
+    }
+    fun peek(): Text { return "l{index + 1}" }
+    fun name(): Text { return "letters" }
+}
+let stream = counter(0)
+print(stream.next())
+print(label(stream))
+print(total(stream, 3))
+let source: Source<Int> = stream
+print(source.next())
+let letters: Stream<Text> = Letters(0)
+let plain: Source<Text> = letters
+print(plain.next() + letters.peek())
+print(letters.name())
+print(both(counter(20)))
+let anything: Source<Any> = letters
+print(anything.next())
+print(letters.shout())
+let ends = ["first", "middle", "last"]
+swapEnds(ends)
+print(ends[0])
+print(peekAny(letters))
+job().run()

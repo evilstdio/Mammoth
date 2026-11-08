@@ -1,0 +1,3 @@
+// error: This Java type needs a different number of type arguments.
+import java.util.ArrayList
+let invalid = ArrayList<Text, Int>()

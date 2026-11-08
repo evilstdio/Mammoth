@@ -1,0 +1,4 @@
+import java.util.Collections
+// The generic result is a List, while this argument is a PrintStream.
+// Preparing the call must not cast System.out to the result type.
+print(Collections.singletonList(System.out).size())

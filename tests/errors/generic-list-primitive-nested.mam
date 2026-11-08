@@ -1,0 +1,4 @@
+// error: A generic List<T> holds objects, but this list holds primitive values.
+class Box<T>(let value: T)
+fun inner<T>(box: Box<List<T>>): Int { return box.value.size() }
+print(inner(Box([true])))

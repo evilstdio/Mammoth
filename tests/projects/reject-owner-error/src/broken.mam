@@ -1,0 +1,2 @@
+module demo.Broken
+class Value { fun value(): Int { return "text" } }

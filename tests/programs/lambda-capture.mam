@@ -1,0 +1,49 @@
+fun totalLength(words: List<Text>): Int {
+    var total = 0
+    let lengths = mutableList(0)
+    lengths.clear()
+    for word in words {
+        lengths.add(word.length())
+    }
+    lengths.forEach { total += it }
+    return total
+}
+print(totalLength(["one", "three", "five"]))
+
+fun counter(): () -> Int {
+    var count = 0
+    return {
+        count += 1
+        count
+    }
+}
+let next = counter()
+next()
+next()
+print(next())
+let other = counter()
+print(other())
+
+fun describe(): Text {
+    var message = "start"
+    let append = { part: Text -> message = message + " " + part }
+    append("middle")
+    append("end")
+    return message
+}
+print(describe())
+
+fun countEvens(numbers: List<Int>): Int {
+    var evens = 0
+    var odds = 0.0
+    for n in numbers {
+        let check = {
+            evens += if n % 2 == 0 { 1 } else { 0 }
+            odds += if n % 2 == 0 { 0.0 } else { 0.5 }
+        }
+        check()
+    }
+    print(odds)
+    return evens
+}
+print(countEvens([1, 2, 3, 4, 6]))

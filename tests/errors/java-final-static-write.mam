@@ -1,0 +1,3 @@
+// error: This Java field is final, so it cannot be changed.
+import java.awt.GridBagConstraints
+GridBagConstraints.NORTH = 3

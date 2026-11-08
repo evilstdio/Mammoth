@@ -1,0 +1,22 @@
+import java.util.ArrayList
+import java.util.HashMap
+class Table {
+    static var rows = ArrayList<Text>()
+    static let lookup = HashMap<Text, Int>()
+    static var size = 0
+    static init {
+        rows.add("first")
+        lookup.put("first", 1)
+        size = rows.size() + 10
+    }
+    static let doubled = size * 2
+    static let label = make("t")
+    static fun make(name: Text): Text {
+        return name + "!"
+    }
+}
+print(Table.size)
+print(Table.doubled)
+print(Table.rows.get(0))
+print(Table.lookup.get("first") ?: 0)
+print(Table.label)

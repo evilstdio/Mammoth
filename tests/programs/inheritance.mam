@@ -1,0 +1,70 @@
+abstract class Shape(let name: Text) {
+    abstract fun area(): Double
+
+    fun describe(): Text {
+        return "{name} with area {area()}"
+    }
+}
+
+class Circle(radius: Double) extends Shape("circle") {
+    let r = radius
+    fun area(): Double {
+        return 3.0 * r * r
+    }
+}
+
+class Rectangle(let width: Double, let height: Double) extends Shape("rectangle") {
+    override fun area(): Double {
+        return width * height
+    }
+}
+
+class Square(side: Double) extends Rectangle(side, side) {
+    override fun describe(): Text {
+        return "square! " + super.describe()
+    }
+}
+
+let shapes: List<Shape> = [Circle(1), Rectangle(2, 3), Square(2)]
+for shape in shapes {
+    print(shape.describe())
+}
+
+fun totalArea(shapes: List<Shape>): Double {
+    var total = 0.0
+    for shape in shapes {
+        total += shape.area()
+    }
+    return total
+}
+print(totalArea(shapes))
+
+let square = Square(5)
+print(square.width)
+let rectangle: Rectangle = square
+print(rectangle.area())
+
+interface Speaker {
+    fun speak(): Text
+}
+
+class Animal(let name: Text) implements Speaker {
+    fun speak(): Text {
+        return "..."
+    }
+    fun introduce(): Text {
+        return "{name} says {speak()}"
+    }
+}
+
+class Dog(name: Text) extends Animal(name) {
+    override fun speak(): Text {
+        return "Woof"
+    }
+}
+
+let pets: List<Speaker> = [Animal("Generic"), Dog("Rex")]
+for pet in pets {
+    print(pet.speak())
+}
+print(Dog("Fido").introduce())

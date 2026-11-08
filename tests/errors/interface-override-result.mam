@@ -1,0 +1,3 @@
+// error: This method must have the same parameter and result types as the interface method it overrides.
+interface Source<T> { fun next(): T { return make() } fun make(): T }
+interface Bad extends Source<Int> { override fun next(): Text { return "wrong" } }

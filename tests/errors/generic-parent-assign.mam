@@ -1,0 +1,4 @@
+// error: Expected an object of the declared class here.
+open class Box<T>(let value: T)
+class Child extends Box<Int>(1) {}
+let other: Box<Text> = Child()

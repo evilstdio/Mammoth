@@ -1,0 +1,17 @@
+import java.util.Observable
+class Signal extends Observable() {
+    var cleared = 0
+    fun fire() {
+        setChanged()
+        print(hasChanged())
+        notifyObservers()
+        print(hasChanged())
+    }
+    protected override fun clearChanged() {
+        cleared += 1
+        super.clearChanged()
+    }
+}
+let signal = Signal()
+signal.fire()
+print(signal.cleared)

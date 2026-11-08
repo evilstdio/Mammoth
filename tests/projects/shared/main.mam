@@ -1,0 +1,25 @@
+module demo.Main
+import demo.Models.Person
+import demo.Models.Labelled
+import demo.Models.create
+import demo.Models.describe
+import java.util.Scanner
+fun prefix(): Text { return "caller" }
+class Employee(let role: Text) extends Person("Maya") {
+    override fun label(): Text { return "{super.label()}: {role}" }
+}
+let person = Person("Sam")
+print(person.label())
+let worker: Labelled = Employee("developer")
+print(worker.label())
+print(describe(worker))
+print(create("Lee").label())
+let none: Person? = null
+print(none?.label() ?: "missing")
+let people: List<Person> = [person, Employee("tester")]
+for p in people { print(p.label()) }
+person.age = 31
+print(person.age)
+let resource = Scanner(ClassLoader.getSystemResourceAsStream("note.txt"))
+print(resource.nextLine())
+resource.close()

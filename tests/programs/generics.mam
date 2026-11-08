@@ -1,0 +1,72 @@
+import java.util.ArrayList
+import java.util.HashMap
+import java.util.TreeMap
+import java.util.Collections
+import java.util.Collection
+
+let names = ArrayList<Text>()
+names.add("Sam")
+names.add("Alexandra")
+names.add("Lee")
+let first = names.get(0)
+print(first.uppercase())
+print(names.get(1).length())
+names.forEach { print("hi {it.lowercase()}") }
+for name in names {
+    print(name.length())
+}
+names.sort { a, b -> a.length() - b.length() }
+print(names)
+print(Collections.max(names))
+
+let ages: HashMap<Text, Int> = HashMap()
+ages["Maya"] = 31
+ages["Sam"] = 27
+ages["Maya"] += 1
+print(ages["Maya"] + 1)
+print(ages.get("Sam") * 2)
+print(ages.getOrDefault("Nobody", 0))
+let lookup: Text? = HashMap<Text, Text>()["nope"]
+print(lookup ?: "not found")
+
+let counts = TreeMap<Text, Int>()
+for word in "the cat and the hat and the bat".words() {
+    counts[word] = counts.getOrDefault(word, 0) + 1
+}
+for word in counts.keySet() {
+    print("{word}: {counts[word]}")
+}
+for entry in counts.entrySet() {
+    if entry.getValue() > 1 {
+        print("{entry.getKey()} appears {entry.getValue()} times")
+    }
+}
+
+let numbers = mutableList(5, 3, 8)
+let doubled = ArrayList<Int>()
+numbers.forEach { doubled.add(it * 2) }
+print(doubled)
+var total = 0
+for n in doubled {
+    total += n
+}
+print(total)
+
+let collection: Collection = names
+print(collection.size())
+
+for name in names {
+    if name == "Lee" {
+        continue
+    }
+    if name == "Alexandra" {
+        break
+    }
+    print("visited {name}")
+}
+for item in numbers {
+    if item == 3 {
+        break
+    }
+    print("item {item}")
+}

@@ -1,0 +1,4 @@
+// error: Add a type to this field
+class Box {
+    var item = null
+}

@@ -1,0 +1,118 @@
+interface Named {
+    fun name(): Text
+    fun greet(): Text {
+        return "hello, " + name()
+    }
+    fun shout(times: Int): Text {
+        var text = ""
+        for i in 1..times {
+            text = text + this.name() + "!"
+        }
+        return text
+    }
+}
+
+interface Source<T> {
+    fun next(): T
+    fun skip(count: Int): T {
+        var last = next()
+        for i in 2..count {
+            last = next()
+        }
+        return last
+    }
+    fun pair(): Text {
+        return "{next()},{next()}"
+    }
+}
+
+interface Stream<T> extends Source<T> {
+    fun peek(): T
+    fun preview(): Text {
+        return "peek {peek()} then {pair()}"
+    }
+}
+
+class Person(let first: Text) implements Named {
+    fun name(): Text { return first }
+    fun intro(): Text { return greet() + " (" + shout(2) + ")" }
+}
+
+class Polite(let first: Text) implements Named {
+    fun name(): Text { return first }
+    fun greet(): Text { return "good day, " + first }
+}
+
+class Counter(var count: Int) implements Stream<Int> {
+    fun next(): Int {
+        count += 1
+        return count
+    }
+    fun peek(): Int { return count + 1 }
+}
+
+class Words(let items: MutableList<Text>) implements Source<Text> {
+    var index = 0
+    fun next(): Text {
+        index += 1
+        return items.get(index - 1)
+    }
+}
+
+open class Base(let label: Text) implements Named {
+    fun name(): Text { return label }
+}
+
+class Derived(label: Text) extends Base(label)
+
+fun welcome(named: Named): Text {
+    return named.greet()
+}
+
+fun advance<T>(source: Source<T>, count: Int): T {
+    return source.skip(count)
+}
+
+let person = Person("Maya")
+print(person.greet())
+print(person.shout(3))
+print(person.intro())
+print(welcome(person))
+print(welcome(Polite("Sam")))
+let named: Named = Polite("Lee")
+print(named.greet())
+print(named.shout(1))
+
+let counter = Counter(0)
+print(counter.skip(3))
+print(counter.pair())
+print(counter.preview())
+let stream: Stream<Int> = counter
+print(stream.skip(2) + 100)
+print(advance(counter, 4))
+
+let words = MutableList<Text>()
+words.add("a")
+words.add("b")
+words.add("c")
+words.add("d")
+let reader = Words(words)
+print(reader.pair())
+print(advance(reader, 2))
+
+print(Derived("child").greet())
+
+class Jumper(var at: Int) implements Source<Int> {
+    fun next(): Int {
+        at += 1
+        return at
+    }
+    fun skip(count: Int): Int {
+        at += count * 10
+        return at
+    }
+}
+let jumper: Source<Int> = Jumper(0)
+print(jumper.skip(2))
+print(advance(Jumper(5), 1))
+print(jumper.pair())

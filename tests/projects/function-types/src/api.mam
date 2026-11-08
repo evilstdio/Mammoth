@@ -1,0 +1,8 @@
+module calc.API
+class Rule(let name: Text, let apply: (Int, Int, Int) -> Int)
+export fun combine(f: (Int, Int, Int) -> Int): Int { return f(1, 2, 3) }
+export fun joiner(separator: Text): (Text, Text, Text) -> Text {
+    return { a, b, c -> a + separator + b + separator + c }
+}
+export fun visit(action: (Text, Int, Double, Bool) -> Unit) { action("v", 1, 0.5, false) }
+export fun rule(): Rule { return Rule("sum", { a, b, c -> a + b + c }) }

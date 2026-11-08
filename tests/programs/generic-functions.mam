@@ -1,0 +1,73 @@
+fun identity<T>(value: T): T { return value }
+fun orElse<T>(value: T?, fallback: T): T { return value ?: fallback }
+fun first<T>(values: MutableList<T>): T { return values.get(0) }
+fun empty<T>(): MutableList<T> { return mutableList() }
+fun map<T, R>(values: MutableList<T>, convert: (T) -> R): MutableList<R> {
+    let output: MutableList<R> = mutableList()
+    for value in values { output.add(convert(value)) }
+    return output
+}
+print(identity(42) + 1)
+print(identity<Text>("Mammoth").uppercase())
+print(identity(5000000000L) + 1L)
+print(identity(1.5) * 2.0)
+print(identity(true))
+print(identity('x'))
+print(orElse<Int>(null, 7))
+let missing: Text? = null
+print(orElse(missing, "fallback"))
+print(first(mutableList(3, 4)))
+let names: MutableList<Text> = empty()
+names.add("Maya")
+print(names)
+print(map(mutableList(1, 2, 3)) { it * 2 })
+print(map(mutableList("Maya", "Sam")) { it.length() })
+let shared = identity(17)
+fun sharedValue(): Int { return shared }
+print(sharedValue())
+class Holder { let value = identity("inferred field") }
+print(Holder().value)
+fun recursive<T>(value: T, count: Int): T {
+    if count == 0 { return value }
+    return recursive(value, count - 1)
+}
+print(recursive(9, 3))
+fun show<T>(value: T) { print("show: {value}") }
+show(8)
+import java.util.ArrayList
+fun javaFirst<T>(values: ArrayList<T>): T { return values.get(0) }
+fun javaWrap<T>(value: T): ArrayList<T> {
+    let values = ArrayList<T>()
+    values.add(value)
+    return values
+}
+print(javaFirst(javaWrap(25)))
+fun optional<T>(present: Bool, value: T): T? {
+    if present { return value }
+    return null
+}
+print(optional(false, 5000000000L) ?: 8L)
+print(optional(true, 1.25) ?: 0.0)
+class Item(let name: Text)
+print(identity(Item("object")).name)
+print(identity([1, 2, 3]))
+print(identity<List<Int>>([4, 5]))
+var calls = 0
+fun next(): Int { calls += 1
+return calls }
+print(identity(next()))
+print(calls)
+fun make<T, R>(change: (T) -> R, value: T): R { return change(value) }
+print(make({ n: Int -> "value {n}" }, 12))
+fun forwarded<T>(value: T): T { return make({ it }, value) }
+print(forwarded("forwarded"))
+class Shadow {
+    fun identity(value: Int): Int { return value + 10 }
+    fun result(): Int { return identity(2) }
+}
+print(Shadow().result())
+show<Text>("explicit")
+let keptFunction = identity({ value: Int -> value * 3 })
+print(keptFunction(7))
+let keptSupplier = identity({ -> 9 })
+print(keptSupplier())

@@ -1,0 +1,3 @@
+// error: A protected method cannot override a public method. Keep it public.
+open class Base { fun value(): Int { return 1 } }
+class Child extends Base() { protected override fun value(): Int { return 2 } }

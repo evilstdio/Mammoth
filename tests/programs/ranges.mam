@@ -1,0 +1,26 @@
+var sum = 0
+for i in 1..5 {
+    sum += i
+}
+print(sum)
+
+for i in 0 until 3 {
+    print("index {i}")
+}
+
+for letter in 'a'..'e' {
+    if letter == 'c' {
+        continue
+    }
+    print(letter)
+}
+
+let size = 4
+var stars = ""
+for i in 1..size {
+    stars += "*"
+    if i == 3 {
+        break
+    }
+}
+print(stars)

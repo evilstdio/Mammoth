@@ -1,0 +1,9 @@
+module demo.Right
+import demo.Left.Item as OtherItem
+import demo.Left.make as makeOther
+data class Item(let name: Text)
+class Holder(let item: OtherItem)
+export fun make(): Item { return Item("right") }
+export fun holder(): Holder { return Holder(makeOther()) }
+export fun values(): List<Item> { return [make(), Item("again")] }
+export fun callback(): (OtherItem?) -> Text { return { it?.name ?: "none" } }

@@ -1,0 +1,2 @@
+// error: A static member can be public or private, but not protected
+class Tools { protected static fun run() {} }

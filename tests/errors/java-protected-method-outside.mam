@@ -1,0 +1,4 @@
+// error: This type has no method with that name.
+import java.util.Observable
+class Signal extends Observable()
+Signal().setChanged()

@@ -1,0 +1,25 @@
+let secret = randomInt(1, 101)
+var tries = 0
+
+print("I'm thinking of a number from 1 to 100.")
+while true {
+    let text = input("Your guess: ")
+    if text.isBlank() {
+        print("Goodbye!")
+        break
+    }
+    try {
+        let guess = text.trim().toInt()
+        tries += 1
+        when {
+            guess < secret -> print("Higher!")
+            guess > secret -> print("Lower!")
+            else -> {
+                print("You got it in {tries} tries!")
+                break
+            }
+        }
+    } catch (problem: NumberFormatException) {
+        print("Please type a whole number.")
+    }
+}

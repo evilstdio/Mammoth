@@ -1,0 +1,4 @@
+// error: This argument does not match the Java type's type argument
+import java.util.Collections
+// Neither join overload accepts a list of Int, even with nested context.
+print(String.join(",", Collections.singletonList(5)))

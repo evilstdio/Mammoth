@@ -1,0 +1,3 @@
+// error: This method's parameter and result types must match the interface.
+interface Producer<T> { fun produce(): T }
+class Counter implements Producer<Int> { fun produce(): Text { return "no" } }

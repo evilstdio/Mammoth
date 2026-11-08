@@ -1,0 +1,3 @@
+// error: An interface can only extend other interfaces.
+class Base
+interface A extends Base { fun a(): Int }

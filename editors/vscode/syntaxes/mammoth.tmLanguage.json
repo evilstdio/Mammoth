@@ -1,0 +1,90 @@
+{
+  "name": "Mammoth",
+  "scopeName": "source.mammoth",
+  "patterns": [
+    {
+      "name": "comment.line.double-slash.mammoth",
+      "match": "//.*$"
+    },
+    {
+      "name": "string.quoted.double.mammoth",
+      "begin": "\"",
+      "end": "\"|(?=$)",
+      "patterns": [
+        {
+          "name": "constant.character.escape.mammoth",
+          "match": "\\\\[\"\\\\nrt{}]"
+        },
+        {
+          "name": "invalid.illegal.escape.mammoth",
+          "match": "\\\\."
+        },
+        {
+          "match": "(\\{)([^{}\\\"]+)(\\})",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.interpolation.begin.mammoth"
+            },
+            "2": {
+              "name": "variable.other.mammoth"
+            },
+            "3": {
+              "name": "punctuation.section.interpolation.end.mammoth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "match": "\\b(fun|class|interface)(\\s+)([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "keyword.declaration.mammoth"
+        },
+        "3": {
+          "name": "entity.name.mammoth"
+        }
+      }
+    },
+    {
+      "name": "keyword.declaration.mammoth",
+      "match": "\\b(?:let|var|export|module|import|implements|extends|private|override|abstract|open|init|as)\\b|\\bjava\\b(?=\\s+(?:fun|class|interface|let)\\b)"
+    },
+    {
+      "name": "keyword.control.mammoth",
+      "match": "\\b(?:if|else|for|in|until|while|return|break|continue|when|try|catch|finally|throw)\\b"
+    },
+    {
+      "name": "keyword.operator.logical.mammoth",
+      "match": "\\b(?:and|or|not|is|as)\\b"
+    },
+    {
+      "name": "constant.language.mammoth",
+      "match": "\\b(?:true|false|null)\\b"
+    },
+    {
+      "name": "variable.language.this.mammoth",
+      "match": "\\b(?:this|super|it)\\b"
+    },
+    {
+      "name": "support.type.mammoth",
+      "match": "\\b(?:Text|Int|Long|Double|Bool|Char|Any|Unit|List|MutableList)\\b"
+    },
+    {
+      "name": "support.function.mammoth",
+      "match": "\\b(?:print|input|requireValue|mutableList|error|abs|min|max|sqrt|pow|random|randomInt|sleep|exit|currentTimeMillis)\\b(?=\\s*\\()"
+    },
+    {
+      "name": "constant.numeric.mammoth",
+      "match": "(?<![A-Za-z0-9_.])\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?(?![A-Za-z0-9_])"
+    },
+    {
+      "name": "keyword.operator.mammoth",
+      "match": "==|!=|<=|>=|[-+*/%<>=?]"
+    },
+    {
+      "name": "entity.name.function.call.mammoth",
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*\\()"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+// error: This field is read-only.
+class Box<T>(let value: T)
+let number = Box(3)
+number.value = 4

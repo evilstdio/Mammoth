@@ -1,0 +1,15 @@
+// Public fields of Java objects and classes can be assigned, checked
+// against the field's type.
+import java.awt.Point
+import java.awt.GridBagConstraints
+
+let point = Point(1, 2)
+point.x = 10
+point.y = point.y * 3
+print(point.x + point.y)
+
+let constraints = GridBagConstraints()
+constraints.gridx = 2
+constraints.weightx = 0.5
+constraints.anchor = GridBagConstraints.NORTH
+print("{constraints.gridx} {constraints.weightx} {constraints.anchor == GridBagConstraints.NORTH}")

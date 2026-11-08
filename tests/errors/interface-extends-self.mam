@@ -1,0 +1,2 @@
+// error: An interface cannot extend itself, directly or indirectly.
+interface A extends A { fun a(): Int }

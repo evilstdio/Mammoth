@@ -1,0 +1,8 @@
+java class TextBuilder = "java.lang.StringBuilder" {
+    new(start: Text)
+    fun append(text: Text): TextBuilder
+    fun toString(): Text
+}
+
+let message = TextBuilder("Hello")
+print(message.append(", ").append("Mammoth!").toString())

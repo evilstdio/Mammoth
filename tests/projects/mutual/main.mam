@@ -1,0 +1,10 @@
+module demo.Main
+import demo.Left.Node as Left
+import demo.Right.Node as Right
+import demo.Right.Mood
+let left = Left(Right(null))
+print(left.next?.name ?: "none")
+print(left.next?.next?.name ?: "end")
+print(Mood.Ready.name())
+print(Mood.Ready.toString())
+

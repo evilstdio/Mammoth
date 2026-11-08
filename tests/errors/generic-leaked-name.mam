@@ -1,0 +1,3 @@
+// error: This type has not been defined.
+fun identity<T>(value: T): T { return value }
+fun bad(value: T) { print(value) }

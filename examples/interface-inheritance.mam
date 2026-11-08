@@ -1,0 +1,127 @@
+interface Named {
+    fun name(): Text
+}
+
+interface Source<T> {
+    fun next(): T
+}
+
+interface Sized {
+    fun size(): Int
+}
+
+interface Labeled<T> extends Source<T>, Named {
+    fun label(): Text
+}
+
+interface Stream<T> extends Labeled<T>, Sized {
+    fun peek(): T
+}
+
+interface Numbers extends Source<Int> {
+    fun total(): Int
+}
+
+class Counter(var count: Int) implements Stream<Int> {
+    fun next(): Int {
+        count += 1
+        return count
+    }
+    fun peek(): Int {
+        return count + 1
+    }
+    fun name(): Text {
+        return "counter"
+    }
+    fun label(): Text {
+        return "{name()}#{count}"
+    }
+    fun size(): Int {
+        return 3
+    }
+}
+
+class Words(let items: MutableList<Text>) implements Labeled<Text> {
+    var position = 0
+    fun next(): Text {
+        position += 1
+        return items.get(position - 1)
+    }
+    fun name(): Text {
+        return "words"
+    }
+    fun label(): Text {
+        return "words@{position}"
+    }
+}
+
+class Tally(var sum: Int) implements Numbers {
+    fun next(): Int {
+        sum += 10
+        return sum
+    }
+    fun total(): Int {
+        return sum
+    }
+}
+
+class Plain(var value: Int) implements Source<Int>, Named {
+    fun next(): Int {
+        return value
+    }
+    fun name(): Text {
+        return "plain"
+    }
+}
+
+fun drain<T>(source: Source<T>, times: Int): T {
+    var last = source.next()
+    for i in 1..times {
+        last = source.next()
+    }
+    return last
+}
+
+fun describe(named: Named): Text {
+    return "named {named.name()}"
+}
+
+fun twice(labeled: Labeled<Int>): Int {
+    return labeled.next() + labeled.next()
+}
+
+let counter = Counter(0)
+let stream: Stream<Int> = counter
+print(stream.next())
+print(stream.peek())
+print(stream.label())
+print(stream.name())
+print(stream.size())
+let labeled: Labeled<Int> = stream
+print(labeled.next() + 100)
+let source: Source<Int> = stream
+print(source.next())
+print(drain(stream, 2))
+print(drain(counter, 1))
+print(describe(stream))
+print(describe(counter))
+print(twice(counter))
+
+let words = MutableList<Text>()
+words.add("alpha")
+words.add("beta")
+words.add("gamma")
+let reader: Labeled<Text> = Words(words)
+print(reader.next())
+print(drain(reader, 1))
+print(reader.label())
+let text: Text = drain(Words(words), 2)
+print(text)
+
+let tally: Numbers = Tally(5)
+print(tally.next())
+print(drain(tally, 2))
+print(tally.total())
+
+print(drain(Plain(7), 3))
+print(describe(Plain(1)))

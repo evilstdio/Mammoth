@@ -1,0 +1,2 @@
+import demo.Contract.Labelled
+class Broken implements Labelled {}

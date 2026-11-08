@@ -1,0 +1,5 @@
+// error: This inferred Java type argument does not satisfy its declared bounds.
+import java.util.ArrayList
+import java.util.Collections
+let values = ArrayList<Any>()
+Collections.max(values)

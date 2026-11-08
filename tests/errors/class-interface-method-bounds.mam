@@ -1,0 +1,4 @@
+// error: A method implementing an interface must keep its type parameter bounds.
+interface Named { fun name(): Text }
+interface Service { fun keep<T>(value: T): T }
+class Bad implements Service { fun keep<T: Named>(value: T): T { return value } }

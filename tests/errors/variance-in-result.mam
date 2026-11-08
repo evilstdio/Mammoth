@@ -1,0 +1,2 @@
+// error: An 'in' type parameter cannot appear in a result type.
+interface Sink<in T> { fun take(): T }

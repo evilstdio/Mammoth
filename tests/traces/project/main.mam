@@ -1,0 +1,41 @@
+module traces.Main
+import traces.Shapes.Square
+import traces.Shapes.Strict
+import traces.Shapes.later
+
+fun frames(problem: Exception): Text {
+    let trace = problem.getStackTrace()
+    var text = problem.getMessage() ?: "?"
+    var count = trace.size()
+    if count > 3 {
+        count = 3
+    }
+    for i in 0 until count {
+        text = text + " | " + trace[i].getFileName() + ":{trace[i].getLineNumber()} " + trace[i].getMethodName()
+    }
+    return text
+}
+
+try {
+    Square(-2).checked()
+} catch (problem: Exception) {
+    print(frames(problem))
+}
+try {
+    Square(101).area()
+} catch (problem: Exception) {
+    print(frames(problem))
+}
+try {
+    Strict(-1)
+} catch (problem: Exception) {
+    print(frames(problem))
+}
+try {
+    later {
+        let square = Square(200)
+        print(square.area())
+    }
+} catch (problem: Exception) {
+    print(frames(problem))
+}

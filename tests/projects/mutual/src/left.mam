@@ -1,0 +1,3 @@
+module demo.Left
+import demo.Right.Node as Other
+class Node(let next: Other?) { let name = "left" }

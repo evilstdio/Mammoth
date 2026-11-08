@@ -1,0 +1,102 @@
+interface Producer<T> {
+    fun produce(): T
+}
+
+interface Pair<A, B> {
+    fun first(): A
+    fun second(): B
+    fun describe(prefix: Text): Text
+}
+
+interface Store<T> {
+    fun put(value: T)
+    fun get(): T?
+    fun mapped<R>(transform: (T) -> R): R?
+}
+
+class Counter(var count: Int) implements Producer<Int> {
+    fun produce(): Int {
+        count += 1
+        return count
+    }
+}
+
+class Greeter implements Producer<Text> {
+    fun produce(): Text {
+        return "hello"
+    }
+}
+
+class Box<T>(var value: T) implements Producer<T> {
+    fun produce(): T {
+        return value
+    }
+}
+
+class Entry(let key: Text, let amount: Double) implements Pair<Text, Double> {
+    fun first(): Text {
+        return key
+    }
+    fun second(): Double {
+        return amount
+    }
+    fun describe(prefix: Text): Text {
+        return "{prefix}{key}={amount}"
+    }
+}
+
+class IntStore implements Store<Int> {
+    var items = MutableList<Int>()
+    fun put(value: Int) {
+        items.add(value)
+    }
+    fun get(): Int? {
+        if items.size() == 0 {
+            return null
+        }
+        return items.get(items.size() - 1)
+    }
+    fun mapped<R>(transform: (Int) -> R): R? {
+        let last = get()
+        if last == null {
+            return null
+        }
+        return transform(last)
+    }
+}
+
+fun total(producer: Producer<Int>, times: Int): Int {
+    var sum = 0
+    for i in 0 until times {
+        sum += producer.produce()
+    }
+    return sum
+}
+
+fun shout(producer: Producer<Text>): Text {
+    return producer.produce().uppercase()
+}
+
+let counter = Counter(0)
+print(total(counter, 3))
+let p: Producer<Int> = counter
+print(p.produce())
+print(shout(Greeter()))
+print(shout(Box("boxed")))
+print(total(Box(10), 2))
+let entry: Pair<Text, Double> = Entry("rate", 1.5)
+print(entry.first())
+print(entry.second() * 2.0)
+print(entry.describe("> "))
+let store: Store<Int> = IntStore()
+print(store.get() ?: -1)
+store.put(4)
+store.put(7)
+print(store.get() ?: -1)
+print(store.mapped<Text> { it -> "value {it}" } ?: "none")
+let producers = MutableList<Producer<Int>>()
+producers.add(Counter(100))
+producers.add(Box(5))
+for each in producers {
+    print(each.produce())
+}

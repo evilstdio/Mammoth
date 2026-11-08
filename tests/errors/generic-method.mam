@@ -1,0 +1,2 @@
+// error: Expected a value of the declared type parameter.
+class Holder { fun identity<T>(value: T): T { return "wrong" } }

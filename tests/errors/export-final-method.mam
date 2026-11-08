@@ -1,0 +1,2 @@
+// error: An exported method cannot override a final Java method.
+class C { export fun notify() { } }

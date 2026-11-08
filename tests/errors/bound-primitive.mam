@@ -1,0 +1,2 @@
+// error: A bound must be a class or interface type
+fun f<T: Int>(x: T) {}

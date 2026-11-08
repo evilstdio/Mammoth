@@ -1,0 +1,7 @@
+// error: Expected an object that implements the declared interface here.
+interface A { fun a(): Int }
+interface B extends A { fun b(): Int }
+fun take(b: B) {}
+class C implements A { fun a(): Int { return 1 } }
+let value: A = C()
+take(value)

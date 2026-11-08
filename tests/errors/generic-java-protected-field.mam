@@ -1,0 +1,4 @@
+// error: This Java field is protected.
+import java.util.ArrayList
+class Names extends ArrayList<Text>()
+print(Names().modCount)

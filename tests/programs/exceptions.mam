@@ -1,0 +1,87 @@
+fun parse(text: Text): Int {
+    try {
+        return text.toInt()
+    } catch (problem: NumberFormatException) {
+        print("not a number: {text}")
+        return -1
+    }
+}
+
+print(parse("12"))
+print(parse("twelve"))
+
+fun divide(a: Int, b: Int): Int {
+    try {
+        return a / b
+    } catch (error: ArithmeticException) {
+        print("caught {error.getMessage()}")
+        return 0
+    } finally {
+        print("divide finished")
+    }
+}
+
+print(divide(10, 2))
+print(divide(1, 0))
+
+fun check(age: Int) {
+    if age < 0 {
+        throw IllegalArgumentException("age cannot be negative")
+    }
+    print("age {age} is fine")
+}
+
+try {
+    check(5)
+    check(-1)
+    print("not reached")
+} catch error: IllegalArgumentException {
+    print("problem: {error.getMessage()}")
+}
+
+for i in 1..5 {
+    try {
+        if i == 2 {
+            continue
+        }
+        if i == 4 {
+            break
+        }
+        print("loop {i}")
+    } finally {
+        print("cleanup {i}")
+    }
+}
+
+fun nested(): Text {
+    try {
+        try {
+            error("inner failure")
+        } finally {
+            print("inner finally")
+        }
+    } catch {
+        print("outer caught: {error.getMessage()}")
+    } finally {
+        print("outer finally")
+    }
+    return "done"
+}
+print(nested())
+
+fun early(flag: Bool) {
+    if flag {
+        print("leaving early")
+        return
+    }
+    print("ran to the end")
+}
+early(true)
+early(false)
+
+try {
+    let items = [1, 2, 3]
+    print(items[5])
+} catch (error: Exception) {
+    print("index problem")
+}

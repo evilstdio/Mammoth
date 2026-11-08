@@ -1,0 +1,3 @@
+// error: Give this generic class type arguments, such as Box<Int>.
+open class Box<T>(let value: T)
+class Child extends Box(1) {}

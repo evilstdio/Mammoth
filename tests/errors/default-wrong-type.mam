@@ -1,0 +1,4 @@
+// error: Expected Text here.
+interface Named {
+    fun greet(): Text { return 42 }
+}

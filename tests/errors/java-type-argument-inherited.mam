@@ -1,0 +1,4 @@
+// error: This argument does not match the Java type's type argument
+import java.util.ArrayList
+class Names extends ArrayList<Text>()
+Names().add(3.5)

@@ -1,0 +1,7 @@
+// error: same parameter and result types as the method it overrides
+open class Box<T>(let value: T) {
+    fun get(): T { return value }
+}
+class Child extends Box<Int>(1) {
+    override fun get(): Text { return "no" }
+}

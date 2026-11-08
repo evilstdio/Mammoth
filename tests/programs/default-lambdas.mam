@@ -1,0 +1,28 @@
+interface Runner {
+    fun run(action: () -> Unit)
+    fun label(): Text
+    fun twice() {
+        run { print("x {label()}") }
+        run { print("y " + this.label()) }
+    }
+    fun mapped(values: MutableList<Int>): Text {
+        let prefix = label()
+        var text = ""
+        values.forEach { text = text + prefix + "{it}" }
+        return text
+    }
+    fun parsed(text: Text): Int {
+        return text.toIntOrNull() ?: -1
+    }
+}
+class Basic implements Runner {
+    fun run(action: () -> Unit) { action() }
+    fun label(): Text { return "basic" }
+}
+let basic = Basic()
+basic.twice()
+let values = MutableList<Int>()
+values.add(1)
+values.add(2)
+print(basic.mapped(values))
+print(basic.parsed("12") + basic.parsed("no"))

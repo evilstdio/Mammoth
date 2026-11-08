@@ -1,0 +1,8 @@
+module defaults.Base
+interface Source<T> {
+    fun next(): T
+    fun echo(value: T): T { return value }
+    fun keep<R>(value: R): R { return value }
+}
+interface Left { fun label(): Text { return "left" } }
+interface Right { fun label(): Text { return "right" } }

@@ -1,0 +1,2 @@
+module demo.Contract
+interface Labelled { fun label(): Text }

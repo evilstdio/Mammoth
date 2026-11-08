@@ -1,0 +1,22 @@
+fun largest<T: Comparable<T>>(first: T, second: T): T {
+    if first.compareTo(second) >= 0 {
+        return first
+    }
+    return second
+}
+
+abstract class Animal(let name: Text) {
+    abstract fun sound(): Text
+}
+
+class Dog(name: Text) extends Animal(name) {
+    override fun sound(): Text { return "woof" }
+}
+
+class Pen<A: Animal>(let resident: A) {
+    fun call(): Text { return "{resident.name} says {resident.sound()}" }
+}
+
+print(largest(3, 8))
+print(largest("pear", "apple"))
+print(Pen(Dog("Rex")).call())

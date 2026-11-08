@@ -1,0 +1,4 @@
+// error: This argument does not match the Java type
+import java.util.List as JavaList
+import java.util.Collections
+let nested: JavaList<JavaList<Text>> = Collections.singletonList(Collections.singletonList(3))

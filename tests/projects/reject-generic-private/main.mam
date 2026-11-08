@@ -1,0 +1,6 @@
+module hidden.Main
+import hidden.Base.Vault
+class Thief extends Vault<Text>("gold") {
+    fun steal(): Text { return open() }
+}
+print(Thief().steal())

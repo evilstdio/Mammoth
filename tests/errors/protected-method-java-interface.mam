@@ -1,0 +1,3 @@
+// error: A method required by an interface must be public, not protected.
+import java.lang.Runnable
+class Task implements Runnable { protected fun run() {} }

@@ -1,0 +1,32 @@
+// Overloaded Java calls give nested generic factories each candidate's
+// parameter types, and wildcard results read safely as their bounds.
+import java.util.Collections
+import java.util.ArrayList
+import java.util.TreeMap
+import java.util.Comparator
+import java.util.List as JavaList
+import java.util.stream.Collectors
+
+// join(CharSequence, Iterable<? extends CharSequence>) versus join(CharSequence, CharSequence...)
+print("[" + String.join(",", Collections.emptyList()) + "]")
+print(String.join("-", Collections.singletonList("solo")))
+
+// Collector<T, ?, R> results keep working through collect.
+let words = JavaList.of("bb", "a", "cc")
+let upper = words.stream().map { word -> word.toUpperCase() }.collect(Collectors.toList())
+print(upper.get(2).length())
+let grouped = words.stream().collect(Collectors.groupingBy { word: Text -> word.length() })
+print(grouped.get(2).size())
+
+// comparator() is a Comparator<? super Text>: Text values can be compared.
+let sorted = TreeMap<Text, Int>(Comparator.reverseOrder())
+sorted.put("a", 1)
+sorted.put("b", 2)
+print(sorted.firstKey())
+print(sorted.comparator().compare("a", "b") > 0)
+
+// Collections.addAll(Collection<? super T>, T...) with Int elements.
+let numbers = ArrayList<Int>()
+Collections.addAll(numbers, 3, 1, 2)
+Collections.sort(numbers)
+print(numbers)

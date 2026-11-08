@@ -1,0 +1,7 @@
+// error: same parameter and result types as the method it overrides
+class Animal {
+    fun speak(): Text { return "..." }
+}
+class Dog extends Animal {
+    fun speak(): Int { return 1 }
+}

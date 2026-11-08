@@ -1,0 +1,19 @@
+let numbers = [1, 2, 3]
+numbers[0] = 10
+numbers[1] += 5
+print(numbers)
+let names = mutableList("a", "b")
+names[1] = "z"
+names[0] += "!"
+print(names)
+let scores: MutableList<Double> = mutableList()
+scores.add(1)
+scores.add(2.5)
+scores[0] *= 4
+print(scores)
+for i in 0 until numbers.size() {
+    numbers[i] = numbers[i] * 2
+}
+print(numbers)
+print()
+print("done")

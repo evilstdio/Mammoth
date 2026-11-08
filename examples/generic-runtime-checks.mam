@@ -1,0 +1,78 @@
+interface Source<out T> {
+    fun next(): T
+}
+
+interface Stream<T> extends Source<T> {
+    fun skip(): Int
+}
+
+class Box<T>(var value: T) implements Source<T> {
+    fun next(): T { return value }
+}
+
+class Repeat<T>(let value: T, var times: Int) implements Stream<T> {
+    fun next(): T {
+        times -= 1
+        return value
+    }
+    fun skip(): Int { return times }
+}
+
+class Count(var current: Int) implements Source<Int> {
+    fun next(): Int {
+        current += 1
+        return current
+    }
+}
+
+open class Base<T>(let item: T)
+class Child<T>(item: T, let extra: Int) extends Base<T>(item)
+
+fun describe(source: Source<Int>): Text {
+    if source is Box<Int> {
+        source.value += 100
+        return "box {source.value}"
+    }
+    if source is Repeat<Int> {
+        return "repeat {source.times}"
+    }
+    return when source {
+        is Count -> "count {source.current}"
+        else -> "other"
+    }
+}
+
+fun skipped(source: Source<Text>): Int {
+    if source is Stream<Text> {
+        return source.skip()
+    }
+    return -1
+}
+
+fun unwrap<T>(source: Source<T>): T? {
+    if source is Box<T> {
+        return source.value
+    }
+    return null
+}
+
+fun extra(base: Base<Text>): Int {
+    let child = base as? Child<Text>
+    if child == null {
+        return 0
+    }
+    return child.extra
+}
+
+print(describe(Box(1)))
+print(describe(Repeat(5, 3)))
+print(describe(Count(7)))
+print(skipped(Repeat("a", 9)))
+print(skipped(Box("b")))
+print(unwrap(Box("inside")) ?: "none")
+print(unwrap(Count(1)) ?: 0)
+print(extra(Child("x", 42)))
+print(extra(Base("y")))
+let source: Source<Int> = Box(8)
+let box = source as Box<Int>
+print(box.value * 2)

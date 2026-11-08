@@ -1,0 +1,99 @@
+fun swap<T>(items: List<T>, a: Int, b: Int) {
+    let saved = items[a]
+    items[a] = items[b]
+    items[b] = saved
+}
+
+fun reverse<T>(items: List<T>): List<T> {
+    var low = 0
+    var high = items.size() - 1
+    while low < high {
+        swap(items, low, high)
+        low += 1
+        high -= 1
+    }
+    return items
+}
+
+fun fill<T>(items: List<T>, value: T) {
+    for i in 0 until items.size() {
+        items[i] = value
+    }
+}
+
+fun count<T>(items: List<T>, wanted: (T) -> Bool): Int {
+    var total = 0
+    for item in items {
+        if wanted(item) {
+            total += 1
+        }
+    }
+    return total
+}
+
+fun largest<T: Comparable<T>>(items: List<T>): T {
+    var best = items[0]
+    for item in items {
+        if item.compareTo(best) > 0 {
+            best = item
+        }
+    }
+    return best
+}
+
+fun firstOfEach<T>(rows: List<List<T>>): Text {
+    var text = ""
+    for row in rows {
+        text = text + "{row[0]};"
+    }
+    return text
+}
+
+open class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+
+class Shelf<T>(let items: List<T>) {
+    fun get(index: Int): T { return items[index] }
+    fun put(index: Int, value: T) { items[index] = value }
+    fun size(): Int { return items.size() }
+    fun rotate() {
+        let first = items[0]
+        for i in 1 until items.size() {
+            items[i - 1] = items[i]
+        }
+        items[items.size() - 1] = first
+    }
+}
+
+let words = ["pear", "apple", "fig"]
+swap(words, 0, 2)
+print(words[0])
+let same = reverse(words)
+print(same[0] + " " + words[0])
+same[1] = "kiwi"
+print(words[1])
+print(largest(words))
+print(count(words) { it.length() > 3 })
+
+let dogs = [Dog("rex"), Dog("max")]
+reverse(dogs)
+print(dogs[0].name)
+fill(dogs, Dog("odie"))
+print(dogs[1].name)
+
+let animals = [Animal("cat"), Animal("cow")]
+fill(animals, Dog("spot"))
+print(animals[0].name)
+
+let rows = [["a", "b"], ["c"]]
+print(firstOfEach(rows))
+
+let shelf = Shelf(["x", "y", "z"])
+shelf.rotate()
+print(shelf.get(0) + shelf.get(2))
+shelf.put(1, "w")
+print(shelf.items[1])
+print(shelf.size())
+let view: List<Text> = shelf.items
+view[0] = "changed"
+print(shelf.get(0))

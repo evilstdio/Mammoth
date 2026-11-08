@@ -1,0 +1,4 @@
+// error: This argument does not match the Java type's type argument
+import java.util.ArrayList
+let longs = ArrayList<Long>()
+longs.add(5)

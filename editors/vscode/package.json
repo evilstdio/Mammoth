@@ -1,0 +1,116 @@
+{
+  "name": "mammoth-language",
+  "displayName": "Mammoth Language",
+  "version": "0.1.0",
+  "publisher": "mammoth-lang-local",
+  "description": "Syntax highlighting and local compiler commands for the Mammoth language.",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "files": [
+    "extension.js",
+    "language-configuration.json",
+    "syntaxes"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Running the Mammoth compiler requires a trusted workspace.",
+      "restrictedConfigurations": [
+        "mammoth.compilerPath"
+      ]
+    }
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "mammoth",
+        "aliases": [
+          "Mammoth"
+        ],
+        "extensions": [
+          ".mam"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mammoth",
+        "scopeName": "source.mammoth",
+        "path": "./syntaxes/mammoth.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "mammoth.runFile",
+        "title": "Run Mammoth File",
+        "category": "Mammoth",
+        "icon": "$(play)"
+      },
+      {
+        "command": "mammoth.checkJava",
+        "title": "Check Java Bindings",
+        "category": "Mammoth"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "mammoth.runFile",
+          "when": "editorLangId == mammoth && isWorkspaceTrusted",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Mammoth",
+      "properties": {
+        "mammoth.compilerPath": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Path to the Mammoth compiler. When empty, use the workspace release compiler if present, then look for mammoth on PATH."
+        }
+      }
+    },
+    "taskDefinitions": [
+      {
+        "type": "mammoth",
+        "required": [
+          "operation",
+          "file"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "description": "Compiler operation."
+          },
+          "file": {
+            "type": "string",
+            "description": "Path to the Mammoth source file."
+          }
+        }
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "mammoth",
+        "owner": "mammoth",
+        "fileLocation": "absolute",
+        "severity": "error",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+):\\s+(.+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      }
+    ]
+  }
+}

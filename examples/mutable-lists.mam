@@ -1,0 +1,10 @@
+let names = mutableList("Maya", "Sam")
+names.add("Lee")
+names.set(1, "Jordan")
+
+for name in names {
+    print(name)
+}
+
+print(names.removeAt(0))
+print(names.size())

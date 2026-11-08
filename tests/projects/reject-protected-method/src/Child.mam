@@ -1,0 +1,6 @@
+module child.Engine
+import parent.Engine.Engine
+class Doubler(start: Int) extends Engine<Int>(start) {
+    protected override fun step(value: Int): Int { return value * 2 }
+    fun sneak(other: Engine<Int>): Int { return other.run(1) }
+}

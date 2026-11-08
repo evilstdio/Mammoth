@@ -1,0 +1,39 @@
+let big = 5000000000L
+print(big)
+print(big + 1)
+let mixed = 2.5 * 4
+print(mixed)
+let count = 3
+let price = 1.5
+print(price * count)
+let wide: Long = 7
+print(wide * 1000000000)
+print(-count)
+print(-price)
+print(10 / 4)
+print(10.0 / 4)
+print(7 % 3)
+print(count < 3.5)
+print(big > count)
+let letter = 'x'
+print(letter)
+print(letter.toInt())
+print(65.toChar())
+print('7'.isDigit())
+print('q'.uppercase())
+print(3.7.toInt())
+print(3.5.round())
+print(abs(-4))
+print(max(3, 9))
+print(min(2.5, 1))
+print(sqrt(16))
+print(pow(2, 10))
+print(count.toText() + "!")
+fun half(value: Double): Double {
+    return value / 2
+}
+print(half(9))
+let values = [1.5, 2, 3]
+print(values)
+let longs: List<Long> = [1, 2, 3]
+print(longs[2] * 3000000000)

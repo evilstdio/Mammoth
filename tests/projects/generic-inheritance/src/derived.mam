@@ -1,0 +1,14 @@
+module family.Derived
+import family.Base.Container
+import family.Base.Measure as Gauge
+open class Tagged<T>(let tag: Text, value: T) extends Container<T>(value) {
+    fun tagged(): Text { return "{tag}:{take()}" }
+}
+class Score(points: Int) extends Tagged<Int>("score", points) {
+    fun twice(): Int { return take() * 2 }
+}
+class Weight(let kilos: Double) extends Gauge<Double>() {
+    override fun amount(): Double { return kilos }
+}
+export fun score(points: Int): Score { return Score(points) }
+export fun weight(kilos: Double): Gauge<Double> { return Weight(kilos) }

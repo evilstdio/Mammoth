@@ -1,0 +1,27 @@
+fun twice(action: () -> Unit) {
+    action()
+    action()
+}
+fun apply(value: Int, change: (Int) -> Int): Int {
+    return change(value)
+}
+fun make(change: (Int) -> Int): Int {
+    return change(1)
+}
+fun combine<T>(first: T, second: T, join: (T, T) -> T): T {
+    return join(first, second)
+}
+var count = 0
+twice { count += 1 }
+print(count)
+twice() { print("again") }
+print(apply(3) { it * 2 })
+let made = make { it + 41 }
+print(made)
+print(make { value -> value * 7 })
+print(combine("a", "b") { x, y -> y + x })
+let doubled = MutableList<Int>()
+twice {
+    doubled.add(apply(count) { it * 10 })
+}
+print(doubled.size() + doubled.get(1))

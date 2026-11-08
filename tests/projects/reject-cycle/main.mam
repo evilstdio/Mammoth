@@ -1,0 +1,2 @@
+module demo.Main
+print("never")

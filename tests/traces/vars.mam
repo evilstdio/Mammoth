@@ -1,0 +1,23 @@
+fun total(values: List<Int>, bonus: Int): Int {
+    var sum = 0
+    for value in values {
+        let doubled = value * 2
+        sum += doubled
+    }
+    if sum > 10 {
+        let extra = bonus + 1
+        sum += extra
+    }
+    var counter = 0
+    let bump = { counter += 1 }
+    bump()
+    return sum + counter
+}
+class Account(let owner: Text) {
+    fun describe(prefix: Text): Text {
+        let label = prefix + owner
+        return label
+    }
+}
+print(total([1, 2, 3], 5))
+print(Account("maya").describe("hi "))

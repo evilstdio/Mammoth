@@ -1,0 +1,6 @@
+// error: This parameter type does not match where the lambda is used.
+import java.util.function.Function as JavaFunction
+class Increment implements JavaFunction<Int, Int> {
+    fun apply(value: Int): Int { return value + 1 }
+}
+let wrong = Increment().andThen({ text: Text -> text })

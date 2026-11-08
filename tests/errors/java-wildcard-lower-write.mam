@@ -1,0 +1,6 @@
+// error: This argument does not match the Java type's type argument
+import java.util.TreeMap
+let sorted = TreeMap<Text, Int>()
+sorted.put("a", 1)
+// comparator() returns Comparator<? super Text>; only Text can be written.
+print(sorted.comparator().compare(1, 2))

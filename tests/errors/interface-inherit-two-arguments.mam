@@ -1,0 +1,4 @@
+// error: An interface cannot inherit the same interface with different type arguments.
+interface Source<T> { fun next(): T }
+interface Ints extends Source<Int> { fun a(): Int }
+interface Mixed extends Ints, Source<Text> { fun b(): Int }

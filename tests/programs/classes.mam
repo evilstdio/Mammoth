@@ -1,0 +1,73 @@
+class Point(let x: Int, let y: Int) {
+    fun toString(): Text {
+        return "({x}, {y})"
+    }
+
+    fun plus(other: Point): Point {
+        return Point(x + other.x, y + other.y)
+    }
+}
+
+let a = Point(1, 2)
+let b = Point(10, 20)
+print(a.x)
+print(a.plus(b))
+print("Sum is {a.plus(b)}")
+
+class Account(owner: Text, start: Double) {
+    let name = owner.uppercase()
+    var balance = start
+    var history = mutableList("opened")
+    private var secret = 42
+
+    init {
+        print("Created account for {name}")
+    }
+
+    fun deposit(amount: Double) {
+        balance += amount
+        record("deposit {amount}")
+    }
+
+    private fun record(entry: Text) {
+        history.add(entry)
+    }
+
+    fun peek(): Int {
+        return secret
+    }
+}
+
+let account = Account("maya", 10)
+account.deposit(5)
+account.balance -= 2.5
+print(account.balance)
+print(account.history)
+print(account.name)
+print(account.peek())
+
+class Counter {
+    var count = 0
+    fun next(): Int {
+        count += 1
+        return count
+    }
+    fun twice(): Int {
+        next()
+        return next()
+    }
+}
+let counter = Counter()
+print(counter.twice())
+counter.count = 100
+print(counter.next())
+
+class Node(let value: Int) {
+    var next: Node? = null
+}
+let first = Node(1)
+first.next = Node(2)
+let second = first.next
+if second != null {
+    print(second.value)
+}

@@ -1,0 +1,9 @@
+module demo.Models
+interface Labelled { fun label(): Text }
+fun prefix(): Text { return "owner" }
+class Person(let name: Text) implements Labelled {
+    var age = 0
+    fun label(): Text { return "{prefix()} {name}" }
+}
+export fun create(name: Text): Person { return Person(name) }
+export fun describe(person: Labelled): Text { return person.label() }

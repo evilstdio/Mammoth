@@ -1,0 +1,2 @@
+// error: Generic code cannot create a List<T>
+fun make<T>(value: T): List<T> { return [value, value] }

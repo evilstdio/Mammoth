@@ -1,0 +1,39 @@
+module traces.Shapes
+
+interface Shape {
+    fun area(): Int
+    fun checked(): Int {
+        let value = area()
+        if value < 0 {
+            error("negative area")
+        }
+        return value
+    }
+}
+
+class Square(let side: Int) implements Shape {
+    fun area(): Int {
+        return side * side * sign()
+    }
+    fun sign(): Int {
+        if side > 100 {
+            error("side too large")
+        }
+        return if side < 0 { -1 } else { 1 }
+    }
+}
+
+class Strict(let limit: Int) {
+    let doubled = validate(limit)
+}
+
+export fun validate(value: Int): Int {
+    if value < 0 {
+        error("negative limit")
+    }
+    return value * 2
+}
+
+export fun later(action: () -> Unit) {
+    action()
+}

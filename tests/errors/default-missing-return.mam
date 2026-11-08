@@ -1,0 +1,4 @@
+// error: This function must return a value on every path.
+interface Named {
+    fun greet(): Text { print("no return") }
+}

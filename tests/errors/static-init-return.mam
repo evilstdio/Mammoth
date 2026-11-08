@@ -1,0 +1,2 @@
+// error: A static init block cannot return.
+class Tools { static init { return } }

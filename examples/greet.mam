@@ -1,0 +1,7 @@
+fun greet(name: Text) {
+    print("Hello, {name}!")
+}
+
+for name in ["Maya", "Sam"] {
+    greet(name)
+}

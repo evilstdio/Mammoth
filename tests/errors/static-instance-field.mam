@@ -1,0 +1,2 @@
+// error: A static method cannot use the object's fields.
+class Box(var size: Int) { static fun peek(): Int { return size } }

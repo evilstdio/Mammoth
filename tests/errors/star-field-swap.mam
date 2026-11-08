@@ -1,0 +1,5 @@
+// error: This field has a star-projected type (*), so it cannot be changed
+class Box<T>(var value: T)
+let first: Box<*> = Box(1)
+let second: Box<*> = Box("x")
+first.value = second.value

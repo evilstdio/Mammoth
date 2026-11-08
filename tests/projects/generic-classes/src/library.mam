@@ -1,0 +1,5 @@
+module demo.Library
+import demo.Model.Box
+export fun make<T>(value: T): Box<T> { return Box(value) }
+export fun read<T>(box: Box<T>): T { return box.value }
+export fun fixed(): Box<Int> { return Box(12) }

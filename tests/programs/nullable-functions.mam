@@ -1,0 +1,25 @@
+// A function type in parentheses can be nullable: ((Int) -> Int)?.
+// (Int) -> Int? is still a function whose result is nullable.
+import java.util.HashMap
+
+var handler: ((Int) -> Int)? = null
+print(handler == null)
+handler = { value -> value * 3 }
+let present = requireValue(handler)
+print(present(4))
+
+let maybeText: (Int) -> Text? = { value -> if value > 0 { "positive" } else { null } }
+print(maybeText(1))
+print(maybeText(-1))
+
+let actions = HashMap<Text, (Int) -> Int>()
+actions.put("inc", { value -> value + 1 })
+let found: ((Int) -> Int)? = actions.get("inc")
+let missing: ((Int) -> Int)? = actions.get("dec")
+print(missing == null)
+if found != null {
+    let run = requireValue(found)
+    print(run(9))
+}
+let grouped: ((Int) -> Int) = { value -> value - 1 }
+print(grouped(1))

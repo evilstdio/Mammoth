@@ -1,0 +1,9 @@
+java fun maximum(left: Int, right: Int): Int = "java.lang.Math.max"
+java fun numberText(number: Int): Text = "java.lang.Integer.toString"
+java fun isDigit(codePoint: Int): Bool = "java.lang.Character.isDigit"
+
+let biggest = maximum(12, 20)
+let text = numberText(biggest)
+let digit = isDigit(55)
+print("Largest: {text}")
+print("Is 7 a digit? {digit}")

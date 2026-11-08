@@ -1,0 +1,2 @@
+// error: This lambda has the wrong number of parameters for where it is used.
+let f: (Int, Int, Int) -> Int = { a, b -> a }

@@ -1,0 +1,11 @@
+class Box<T>(let value: T) {
+    fun map<R>(convert: (T) -> R): Box<R> {
+        return Box(convert(value))
+    }
+    fun keep<R>(next: R): R { return next }
+}
+
+let score = Box(21)
+print(score.map { it * 2 }.value)
+print(score.map { "Score: {it}" }.value)
+print(score.keep<Text>("Mammoth"))

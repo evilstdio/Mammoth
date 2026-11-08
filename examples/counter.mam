@@ -1,0 +1,14 @@
+class Counter {
+    private var count = 0
+
+    fun next(): Int {
+        count = count + 1
+        return count
+    }
+}
+
+let first = Counter()
+let second = Counter()
+print(first.next())
+print(first.next())
+print(second.next())

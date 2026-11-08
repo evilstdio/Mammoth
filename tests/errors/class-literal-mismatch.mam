@@ -1,0 +1,5 @@
+// error: This argument does not match the Java type
+import java.util.EnumSet
+import java.time.DayOfWeek
+import java.time.Month
+let days: EnumSet<DayOfWeek> = EnumSet.allOf(Month.class)

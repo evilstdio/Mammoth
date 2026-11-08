@@ -1,0 +1,2 @@
+// error: This type has no method with that name.
+fun f<T>(x: T): Int { return x.score() }

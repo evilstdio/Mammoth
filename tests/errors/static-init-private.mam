@@ -1,0 +1,2 @@
+// error: Expected fun, var, let, or init after static.
+class Tools { private static init { } }

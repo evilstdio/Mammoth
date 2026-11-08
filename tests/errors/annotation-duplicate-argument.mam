@@ -1,0 +1,3 @@
+// error: Give each annotation argument only once.
+@Deprecated(since = "one", since = "two")
+class Bad { }

@@ -1,0 +1,5 @@
+// error: Java generic type arguments must match the declared type.
+import java.util.List as JavaList
+import java.util.stream.IntStream
+// A List<Integer> is a List<Int>, not a List<Long>.
+let longs: JavaList<Long> = IntStream.range(0, 2).boxed().toList()

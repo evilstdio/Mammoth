@@ -1,0 +1,15 @@
+module demo.Bound
+java class Builder = "java.lang.StringBuilder" {
+    new(start: Text)
+    fun build(): Text = "toString"
+}
+export fun make(): Builder { return Builder("bound") }
+
+interface Sink { fun render(value: Builder): Text }
+java interface Listener = "java.util.function.IntConsumer" {
+    fun accept(value: Int)
+}
+class Report implements Listener {
+    fun accept(value: Int) { print("callback {value}") }
+}
+export fun listener(): Report { return Report() }

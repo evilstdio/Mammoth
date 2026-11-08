@@ -1,0 +1,5 @@
+// error: This field is private to its class.
+class Safe {
+    private let code = 1234
+}
+print(Safe().code)

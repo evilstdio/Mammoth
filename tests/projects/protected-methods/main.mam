@@ -1,0 +1,11 @@
+import child.Engine.Doubler
+import child.Engine.Loud
+let doubler = Doubler(1)
+print(doubler.go(3))
+print(doubler.twin(Doubler(5)))
+let text = doubler.later()
+print(text())
+let loud = Loud(1)
+print(loud.go(2))
+print(loud.step(10))
+print(loud.current())

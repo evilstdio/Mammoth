@@ -1,0 +1,85 @@
+class Box<T>(var value: T) {
+    fun get(): T { return value }
+    fun set(next: T) { value = next }
+    fun self(): Box<T> { return this }
+}
+let number = Box(42)
+print(number.get() + 1)
+number.value += 2
+print(number.value)
+number.set(9)
+print(number.self().value)
+let text: Box<Text> = Box("Mammoth")
+print(text.get().uppercase())
+let wide = Box<Long>(5000000000L)
+print(wide.get() + 1L)
+let maybe: Box<Int>? = null
+print(maybe?.get() ?: 7)
+fun unbox<T>(box: Box<T>): T { return box.value }
+print(unbox(number))
+data class Pair<T, R>(let first: T, let second: R)
+let pair = Pair(7, "pair")
+print(pair.first + 1)
+print(pair.second.uppercase())
+print(pair)
+print(pair == Pair(7, "pair"))
+print(pair.hashCode() == Pair(7, "pair").hashCode())
+wide.value += 2L
+print(wide.value)
+let flag = Box(true)
+print(flag.value)
+let character = Box('x')
+print(character.get().uppercase())
+let decimal = Box(1.25)
+print(decimal.value * 2.0)
+let array = Box([2, 4, 6])
+print(array.get()[1])
+let nested = Box(Box("nested"))
+print(nested.value.get().uppercase())
+let list = mutableList(Box(1), Box(2))
+for box in list { print(box.get() + 10) }
+let fixed: List<Box<Text>> = [Box("fixed")]
+print(fixed[0].value)
+class Slot<T> {
+    var value: T? = null
+    fun put(next: T) { value = next }
+    fun get(): T? { return value }
+}
+let slot: Slot<Int> = Slot()
+print(slot.get() ?: 0)
+slot.put(17)
+print(slot.get() ?: 0)
+class Mapper<T, R>(let convert: (T) -> R) {
+    fun apply(value: T): R { return convert(value) }
+}
+let length = Mapper({ value: Text -> value.length() })
+print(length.apply("Mammoth"))
+print(length.convert("Sam"))
+let shared = Box(23)
+fun sharedNumber(): Int { return shared.value }
+print(sharedNumber())
+class Inferred { let box = Box("field") }
+print(Inferred().box.value)
+var constructions = 0
+var evaluations = 0
+fun next(): Int { evaluations += 1
+return evaluations }
+class Counted<T>(let value: T) {
+    init { constructions += 1 }
+}
+let counted = Counted(next())
+print(counted.value)
+print(evaluations)
+print(constructions)
+class Worker<T>(let value: T) implements Runnable {
+    fun run() { print("worker {value}") }
+}
+let worker: Runnable = Worker("ready")
+worker.run()
+class Captured<T>(var value: T) {
+    fun getter(): () -> T { return { -> value } }
+}
+let captured = Captured(5)
+let getter = captured.getter()
+captured.value = 8
+print(getter())

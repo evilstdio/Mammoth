@@ -1,0 +1,4 @@
+// error: This Java field is protected. Use it inside a class that extends its Java class.
+import java.io.ByteArrayOutputStream
+class Buffer extends ByteArrayOutputStream()
+class Other { fun reset(buffer: Buffer) { buffer.count = 0 } }

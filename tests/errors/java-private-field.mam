@@ -1,0 +1,4 @@
+// error: This Java field is not visible here.
+import java.io.FilterOutputStream
+import java.io.OutputStream
+class Tee(target: OutputStream) extends FilterOutputStream(target) { fun shut(): Bool { return closed } }

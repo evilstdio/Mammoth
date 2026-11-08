@@ -1,0 +1,14 @@
+module calc.Main
+import calc.API.Rule
+import calc.API.combine
+import calc.API.joiner
+import calc.API.visit
+import calc.API.rule
+print(combine({ a, b, c -> a * 100 + b * 10 + c }))
+let join = joiner("-")
+print(join("x", "y", "z"))
+visit({ t, i, d, b -> print("{t}{i}{d}{b}") })
+let r: Rule = rule()
+print(r.apply(4, 5, 6))
+let local = Rule("product", { a, b, c -> a * b * c })
+print(local.apply(2, 3, 4))

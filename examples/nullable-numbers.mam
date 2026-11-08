@@ -1,0 +1,20 @@
+import java.util.HashMap
+
+// A failed conversion gives null, so you can choose a default.
+let age = "24".toIntOrNull()
+if age != null {
+    print("Next year: {age + 1}")
+}
+print("unknown".toIntOrNull() ?: 0)
+
+// A numeric safe call can be stored for later.
+let nickname: Text? = null
+let length: Int? = nickname?.length()
+print(length ?: 0)
+
+// Numeric maps can report a missing key without throwing an error.
+let scores = HashMap<Text, Int>()
+scores["Maya"] = 95
+let score: Int? = scores["Sam"]
+print(score ?: 0)
+print(scores["Maya"] ?: 0)

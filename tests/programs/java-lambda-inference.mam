@@ -1,0 +1,13 @@
+import java.util.Optional
+import java.util.stream.Stream
+let length = Optional.of("mammoth").map { text -> text.length() }
+print(length.get() + 1)
+let upper = Optional.of("safe").map { text -> text.toUpperCase() }
+print(upper.get().length())
+let stream = Stream.of("a", "bb").map { text -> text.length() }
+print(stream.findFirst().get() + 2)
+var calls = 0
+let mapped = Optional.of("abc").map { text -> calls += 1
+    text.length() }
+print(mapped.get())
+print(calls)

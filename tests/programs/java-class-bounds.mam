@@ -1,0 +1,9 @@
+import java.util.EnumSet
+import java.util.EnumMap
+import java.lang.Thread.State
+import java.util.ArrayList
+fun accepts(values: EnumSet<State>) {}
+fun map(values: EnumMap<State, Text>) {}
+fun nested(values: ArrayList<EnumSet<State>>) {}
+print("Java class bounds checked")
+

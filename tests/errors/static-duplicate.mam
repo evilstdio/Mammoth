@@ -1,0 +1,2 @@
+// error: This name is already used in the class.
+class Tools(let size: Int) { static var size = 1 }

@@ -1,0 +1,4 @@
+// error: This parameter has a star-projected type (*), so no value can be passed to it.
+class Box<T>(var value: T) { fun replace(other: T) { value = other } }
+let box: Box<*> = Box(1)
+box.replace(2)

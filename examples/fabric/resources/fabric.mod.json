@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "mammoth_demo",
+  "version": "0.1.0",
+  "name": "Mammoth Demo",
+  "description": "A Fabric entry point written in Mammoth.",
+  "entrypoints": {
+    "main": ["demo.mammoth.FabricDemo::initialize"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "java": ">=17",
+    "minecraft": "*"
+  }
+}

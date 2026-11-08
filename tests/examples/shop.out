@@ -1,0 +1,18 @@
+15
+out of stock: hammer
+bulk total 725
+due 6.53
+apple 0.50
+bread 2.75
+yoyo 3.50
+hammer 12.99
+[yoyo, hammer]
+FOOD: 2
+TOOL: 1
+TOY: 1
+true
+true
+false
+apple 1
+2
+725

@@ -1,0 +1,212 @@
+import groovy.json.JsonSlurper
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.Type
+import org.objectweb.asm.tree.ClassNode
+import java.util.zip.ZipFile
+
+plugins {
+    id 'fabric-loom' version '1.9.2'
+}
+
+version = project.mod_version
+group = project.maven_group
+def smokeRequested = gradle.startParameter.taskNames.any { it.tokenize(':').last() == 'smokeTest' }
+def smokeEnabled = smokeRequested || providers.gradleProperty('smokeTest').orElse('false').get().toBoolean()
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+loom {
+    // Mammoth emits annotation bytecode directly; Loom remaps Mixin targets.
+    mixin { useLegacyMixinAp = false }
+    runs {
+        client {
+            vmArg '-Xverify:all'
+            vmArg "-Dmammoth_demo.smokeTest=${smokeEnabled}"
+        }
+    }
+}
+
+def compiler = providers.gradleProperty('mammothCompiler').orElse(
+    file('../../target/release/' + (System.getProperty('os.name').startsWith('Windows') ? 'mammoth.exe' : 'mammoth')).absolutePath
+)
+def rawJar = layout.buildDirectory.file('mammoth/raw.jar')
+def mammothClasses = layout.buildDirectory.dir('classes/mammoth/main')
+
+tasks.register('compileMammoth', Exec) {
+    inputs.dir('src/mammoth')
+    inputs.file(compiler)
+    inputs.files(sourceSets.main.compileClasspath)
+    outputs.file(rawJar)
+    doFirst {
+        rawJar.get().asFile.parentFile.mkdirs()
+        environment 'CLASSPATH', sourceSets.main.compileClasspath.asPath
+        commandLine compiler.get(), '--project', file('src/mammoth').absolutePath, rawJar.get().asFile.absolutePath
+    }
+}
+
+tasks.register('unpackMammoth', Sync) {
+    dependsOn 'compileMammoth'
+    from { zipTree(rawJar.get().asFile) }
+    include '**/*.class'
+    into mammothClasses
+}
+
+sourceSets.main.output.dir(mammothClasses, builtBy: 'unpackMammoth')
+sourceSets.main.output.classesDirs.setFrom(mammothClasses)
+tasks.named('classes') { dependsOn 'unpackMammoth' }
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+
+tasks.register('verifyMod') {
+    dependsOn tasks.named('remapJar')
+    inputs.file(tasks.named('remapJar').flatMap { it.archiveFile })
+    doLast {
+        def archive = tasks.named('remapJar').get().archiveFile.get().asFile
+        new ZipFile(archive).withCloseable { zip ->
+            def readJson = { name ->
+                def entry = zip.getEntry(name)
+                assert entry != null : "Missing resource: $name"
+                zip.getInputStream(entry).withCloseable { new JsonSlurper().parse(it) }
+            }
+            def readClass = { binary ->
+                def entry = zip.getEntry(binary.replace('.', '/') + '.class')
+                assert entry != null : "Missing class: $binary"
+                def node = new ClassNode()
+                zip.getInputStream(entry).withCloseable {
+                    new ClassReader(it).accept(node, ClassReader.SKIP_DEBUG)
+                }
+                node
+            }
+            def value = { annotation, name -> annotation.values.collate(2).find { it[0] == name }?.getAt(1) }
+            def metadata = readJson('fabric.mod.json')
+            assert metadata.id == 'mammoth_demo'
+            assert metadata.version == project.version.toString()
+            metadata.entrypoints.values().flatten().each { entry ->
+                def parts = entry.split('::')
+                def node = readClass(parts[0])
+                assert node.methods.any { it.name == parts[1] && it.desc == '()V' && (it.access & 9) == 9 } : "Invalid Fabric entry point: $entry"
+            }
+            def config = readJson('mammoth_demo.mixins.json')
+            assert metadata.entrypoints.values().flatten().every { !it.startsWith(config.package + '.') } : 'Mixin package must be separate from entry point classes'
+            config.client.each { name ->
+                def node = readClass(config.package + '.' + name)
+                def mixin = ((node.visibleAnnotations ?: []) + (node.invisibleAnnotations ?: [])).find { it.desc == 'Lorg/spongepowered/asm/mixin/Mixin;' }
+                assert mixin != null : 'Missing Mixin annotation'
+                assert value(mixin, 'value').any { it instanceof Type && it.internalName == 'net/minecraft/class_310' } : 'MinecraftClient class target was not remapped'
+                if ((node.access & 0x200) != 0) {
+                    // The accessor interface: remapped @Accessor/@Invoker targets.
+                    def annotationOf = { method, desc -> ((method.visibleAnnotations ?: []) + (method.invisibleAnnotations ?: [])).find { it.desc == desc } }
+                    def accessors = node.methods.findAll { annotationOf(it, 'Lorg/spongepowered/asm/mixin/gen/Accessor;') != null }
+                    assert accessors.size() == 2 && accessors.every { value(annotationOf(it, 'Lorg/spongepowered/asm/mixin/gen/Accessor;'), 'value') == 'field_1752' } : 'Accessor target was not remapped'
+                    def invoker = node.methods.find { annotationOf(it, 'Lorg/spongepowered/asm/mixin/gen/Invoker;') != null }
+                    assert invoker != null && value(annotationOf(invoker, 'Lorg/spongepowered/asm/mixin/gen/Invoker;'), 'value') == 'method_24287' && invoker.desc == '()Ljava/lang/String;' : 'Invoker target was not remapped'
+                    return
+                }
+                def shadow = node.fields.find { field ->
+                    ((field.visibleAnnotations ?: []) + (field.invisibleAnnotations ?: [])).any { it.desc == 'Lorg/spongepowered/asm/mixin/Shadow;' }
+                }
+                assert shadow != null && shadow.name == 'field_1752' && shadow.desc == 'I' : 'Shadow field was not remapped correctly'
+                def unique = node.fields.find { field ->
+                    ((field.visibleAnnotations ?: []) + (field.invisibleAnnotations ?: [])).any { it.desc == 'Lorg/spongepowered/asm/mixin/Unique;' }
+                }
+                assert unique != null && unique.desc == 'Z' && (unique.access & 2) == 2 : 'Missing private unique state field'
+                def finalShadow = node.fields.find { field ->
+                    ((field.visibleAnnotations ?: []) + (field.invisibleAnnotations ?: [])).any { it.desc == 'Lorg/spongepowered/asm/mixin/Final;' }
+                }
+                assert finalShadow != null && finalShadow.name == 'field_1690' && finalShadow.desc == 'Lnet/minecraft/class_315;' && (finalShadow.access & 16) == 16 : 'Final shadow reference field was not remapped correctly'
+                def injectOf = { method -> ((method.visibleAnnotations ?: []) + (method.invisibleAnnotations ?: [])).find { it.desc == 'Lorg/spongepowered/asm/mixin/injection/Inject;' } }
+                def handler = node.methods.find { method -> injectOf(method) != null && value(injectOf(method), 'method').any { it.contains('method_1574()V') } }
+                assert handler != null : 'MinecraftClient.tick selector was not remapped'
+                def inject = injectOf(handler)
+                assert value(value(inject, 'at')[0], 'value') == 'HEAD'
+                assert handler.desc == '(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V'
+                // A static handler injected into the static MinecraftClient.getInstance().
+                def staticHandler = node.methods.find { method -> injectOf(method) != null && value(injectOf(method), 'method').any { it.contains('method_1551()Lnet/minecraft/class_310;') } }
+                assert staticHandler != null : 'MinecraftClient.getInstance selector was not remapped'
+                assert (staticHandler.access & 8) == 8 : 'The getInstance handler must be static'
+                assert staticHandler.desc == '(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V'
+                assert node.fields.any { it.name == 'mammothStaticTag' && (it.access & 0x18) == 0x18 } : 'Missing static final Unique field'
+            }
+            // The custom item subclass must override Minecraft's remapped methods.
+            def demoClasses = zip.entries().findAll { it.name ==~ /demo\/mammoth\/Demo\$\$\d+\.class/ }.collect { readClass(it.name.replace('/', '.').replace('.class', '')) }
+            def tusk = demoClasses.find { it.superName == 'net/minecraft/class_1792' }
+            assert tusk != null : 'TuskItem must extend Item'
+            // The custom block overrides the protected, remapped Block.onUse.
+            def glow = demoClasses.find { it.superName == 'net/minecraft/class_2248' }
+            assert glow != null : 'GlowBlock must extend Block'
+            assert glow.methods.any { it.name == 'method_55766' && it.desc == '(Lnet/minecraft/class_2680;Lnet/minecraft/class_1937;Lnet/minecraft/class_2338;Lnet/minecraft/class_1657;Lnet/minecraft/class_3965;)Lnet/minecraft/class_1269;' } : 'GlowBlock.onUse override was not remapped'
+            assert zip.getEntry('assets/mammoth_demo/blockstates/glow_block.json') != null
+            assert zip.getEntry('assets/mammoth_demo/models/block/glow_block.json') != null
+            assert readJson('assets/mammoth_demo/lang/en_us.json')['block.mammoth_demo.glow_block'] == 'Mammoth Glow Block'
+            assert tusk.superName == 'net/minecraft/class_1792' : 'TuskItem must extend Item'
+            assert tusk.methods.any { it.name == 'method_7886' && it.desc == '(Lnet/minecraft/class_1799;)Z' && (it.access & 1) == 1 } : 'TuskItem.hasGlint override was not remapped'
+            assert tusk.methods.any { it.name == 'method_7836' && it.desc == '(Lnet/minecraft/class_1937;Lnet/minecraft/class_1657;Lnet/minecraft/class_1268;)Lnet/minecraft/class_1271;' && (it.access & 1) == 1 } : 'TuskItem.use override was not remapped'
+            // Every Mammoth class records its source file and line numbers.
+            zip.entries().findAll { it.name.startsWith('demo/') && it.name.endsWith('.class') }.each { entry ->
+                def node = new ClassNode()
+                zip.getInputStream(entry).withCloseable { new ClassReader(it).accept(node, 0) }
+                assert node.sourceFile?.endsWith('.mam') : "Missing SourceFile in ${entry.name}"
+                node.methods.findAll { method ->
+                    method.instructions.toArray().any { it instanceof org.objectweb.asm.tree.MethodInsnNode }
+                }.each { method ->
+                    assert method.instructions.toArray().any { it instanceof org.objectweb.asm.tree.LineNumberNode } : "Missing line numbers in ${entry.name} ${method.name}"
+                }
+            }
+            assert zip.getEntry('assets/mammoth_demo/models/item/tusk.json') != null
+            assert readJson('assets/mammoth_demo/lang/en_us.json')['item.mammoth_demo.tusk'] == 'Mammoth Tusk'
+        }
+        logger.lifecycle("Verified remapped Mammoth mod: ${archive.name}")
+    }
+}
+
+tasks.named('check') { dependsOn 'verifyMod' }
+
+if (smokeEnabled) {
+    tasks.named('runClient') { timeout = Duration.ofMinutes(3) }
+}
+
+tasks.register('smokeTest') {
+    dependsOn tasks.named('runClient')
+    doLast {
+        def log = file('run/logs/latest.log')
+        assert log.isFile() : 'The Minecraft client did not produce a log'
+        def markers = [
+            '[Mammoth] Registered mammoth_demo:tusk',
+            '[Mammoth] Client event and G key registered',
+            '[Mammoth] Tusk behavior: maxCount=16, glint=true',
+            '[Mammoth] Registered block mammoth_demo:glow_block and item mammoth_demo:glow_block',
+            '[Mammoth] Glow block: luminance=12, hardness=1.5, item links block=true',
+            // The exact line of the `throw` in Controls.mam, read from the source.
+            '[Mammoth] Stack trace source: Controls.mam:' + (file('src/mammoth/src/Controls.mam').readLines().findIndexOf { it.contains('throw IllegalStateException("trace check")') } + 1),
+            '[Mammoth] Static Mixin executed: tag=static-ready',
+            '[Mammoth] MinecraftClient.tick Mixin executed',
+            '[Mammoth] Shadow field read: itemUseCooldown=',
+            '[Mammoth] Final shadow options field is present',
+            '[Mammoth] Unique initializers: budget=40, tag=tusk-ready',
+            '[Mammoth] Development smoke test queued a G key press',
+            '[Mammoth] G key: enabled=true',
+            '[Mammoth] Accessor: cooldown=0->7, title starts with Minecraft=true',
+            '[Mammoth] SMOKE PASS: item, event, keybind, and Mixin'
+        ]
+        def text = log.getText('UTF-8')
+        assert !text.contains('Shutdown failure') : 'Minecraft did not shut down cleanly'
+        markers.each { assert text.contains(it) : "Missing client smoke marker: $it" }
+        def report = layout.buildDirectory.file('reports/mammoth-smoke.txt').get().asFile
+        report.parentFile.mkdirs()
+        report.setText(text.readLines().findAll { it.contains('[Mammoth]') }.join(System.lineSeparator()) + System.lineSeparator(), 'UTF-8')
+        logger.lifecycle("Real Minecraft client smoke test passed. Report: ${report}")
+    }
+}

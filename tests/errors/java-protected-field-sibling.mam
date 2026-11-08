@@ -1,0 +1,4 @@
+// error: Access this protected Java field through this class or one of its subclasses.
+import java.io.ByteArrayOutputStream
+class Left extends ByteArrayOutputStream()
+class Right extends ByteArrayOutputStream() { fun peek(other: Left): Int { return other.count } }

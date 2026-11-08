@@ -1,0 +1,9 @@
+module stats.Main
+import stats.Registry.Registry
+import stats.Registry.Child
+print(Registry.register("abc"))
+print(Registry.register("z"))
+Registry.count += 5
+print(Registry.count)
+print(Registry.name)
+print(Child().total())

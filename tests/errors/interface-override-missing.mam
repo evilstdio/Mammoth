@@ -1,0 +1,2 @@
+// error: This method does not override a method from a parent interface.
+interface A { override fun name(): Text { return "a" } }

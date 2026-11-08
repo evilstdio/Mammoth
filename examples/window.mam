@@ -1,0 +1,24 @@
+import javax.swing.JFrame
+import javax.swing.JButton
+import javax.swing.JLabel
+import java.awt.FlowLayout
+
+class CounterWindow extends JFrame("Mammoth counter") {
+    var clicks = 0
+    let label = JLabel("No clicks yet")
+
+    init {
+        setLayout(FlowLayout())
+        let button = JButton("Click me")
+        button.addActionListener { event ->
+            clicks += 1
+            label.setText("Clicked {clicks} times")
+        }
+        add(button)
+        add(label)
+        setSize(320, 120)
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
+    }
+}
+
+CounterWindow().setVisible(true)

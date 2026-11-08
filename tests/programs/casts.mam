@@ -1,0 +1,57 @@
+import java.util.HashMap
+
+fun describe(value: Any): Text {
+    if value is Text {
+        return "text of length {value.length()}"
+    } else if value is Int {
+        return "number {value + 1}"
+    } else if not (value is Bool) {
+        return "something else"
+    }
+    return "a bool"
+}
+
+print(describe("hello"))
+print(describe(41))
+print(describe(true))
+print(describe(2.5))
+
+let ages = HashMap()
+ages.put("Maya", 31)
+ages.put("Sam", 27)
+let age = ages.get("Maya") as Int
+print(age + 1)
+let name: Any = "Lee"
+let text = name as Text
+print(text.uppercase())
+let missing = name as? StringBuilder
+print(missing)
+let found = name as? Text
+print(found)
+let boxed = 7 as Any
+print(boxed is Int)
+
+fun firstWord(value: Any?): Text {
+    if value is Text and value.contains(" ") {
+        return value.substring(0, value.indexOf(" "))
+    }
+    return "none"
+}
+print(firstWord("hello world"))
+print(firstWord(null))
+
+fun lengthOf(value: Any): Int {
+    if not (value is Text) {
+        return -1
+    }
+    return value.length()
+}
+print(lengthOf("four"))
+print(lengthOf(4))
+
+try {
+    let bad = name as Int
+    print(bad)
+} catch (error: ClassCastException) {
+    print("cannot cast")
+}

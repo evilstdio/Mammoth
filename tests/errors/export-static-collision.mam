@@ -1,0 +1,5 @@
+// error: An exported instance method cannot replace a static Java method.
+import java.util.concurrent.CompletableFuture
+class C extends CompletableFuture() {
+    export fun completedFuture(value: Any): Any { return value }
+}

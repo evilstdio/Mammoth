@@ -1,0 +1,3 @@
+// error: To join text, start with the text
+let count = 3
+print(count + " items")

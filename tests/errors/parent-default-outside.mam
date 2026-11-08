@@ -1,0 +1,3 @@
+// error: Use super<Interface> inside an instance method or an interface default method.
+interface Named { fun name(): Text { return "name" } }
+print(super<Named>.name())

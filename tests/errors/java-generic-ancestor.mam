@@ -1,0 +1,5 @@
+// error: Java generic type arguments must match the declared type.
+import java.util.ArrayList
+import java.util.Collection
+let words = ArrayList<Text>()
+let numbers: Collection<Int> = words

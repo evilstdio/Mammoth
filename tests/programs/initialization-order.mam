@@ -1,0 +1,34 @@
+// Initializers and init blocks run in source order and may read earlier
+// fields. Casts to parameterized Java types are allowed when the value's
+// type already determines the type arguments.
+import java.util.ArrayList
+import java.util.Collection
+import java.util.HashMap
+import java.util.Map as JavaMap
+
+class Order(let start: Int) {
+    let first: Int = start + 1
+    let label: Text = "order {first}"
+    let later: () -> Text = { -> tail }
+    let tail: Text = "tail"
+    init { print(label + " " + later()) }
+}
+Order(1)
+
+class Totals {
+    static let base: Int = 2
+    static var scaled: Int = base * 10
+    static init { scaled = scaled + 1 }
+}
+print(Totals.scaled)
+
+let names: Collection<Text> = ArrayList<Text>()
+let list = names as ArrayList<Text>
+list.add("ann")
+print(names.size())
+if names is ArrayList<Text> { print("array list") }
+let ages: JavaMap<Text, Int> = HashMap<Text, Int>()
+let hash = ages as? HashMap<Text, Int>
+print(hash?.size())
+let raw = (names as Any) as ArrayList
+print(raw.size())

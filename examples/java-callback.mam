@@ -1,0 +1,17 @@
+java interface IntListener = "java.util.function.IntConsumer" {
+    fun accept(value: Int)
+}
+
+java class OptionalInt = "java.util.OptionalInt" {
+    fun ifPresent(listener: IntListener)
+}
+
+java fun present(value: Int): OptionalInt = "java.util.OptionalInt.of"
+
+class Report implements IntListener {
+    fun accept(value: Int) {
+        print("Java called Mammoth with {value}.")
+    }
+}
+
+present(42).ifPresent(Report())

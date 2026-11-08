@@ -1,0 +1,4 @@
+// error: This parameter type does not match where the lambda is used.
+import java.util.Optional
+let value: Any = 3
+let result = Optional.of(value).map { x: Text -> x.length() }

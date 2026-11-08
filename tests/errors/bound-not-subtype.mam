@@ -1,0 +1,4 @@
+// error: Expected an object of the declared class here.
+abstract class Animal(let name: Text) { abstract fun sound(): Text }
+class Dog(name: Text) extends Animal(name) { override fun sound(): Text { return "woof" } }
+fun f<T: Animal>(x: T): Dog { return x }

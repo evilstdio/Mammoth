@@ -1,0 +1,4 @@
+// error: This function or class has not been defined.
+interface Named {
+    fun greet(): Text { return missing() }
+}

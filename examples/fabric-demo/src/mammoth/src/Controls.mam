@@ -1,0 +1,94 @@
+module demo.mammoth.Controls
+import net.minecraft.client.MinecraftClient
+import net.minecraft.client.option.KeyBinding
+import net.minecraft.client.util.InputUtil
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
+import demo.mammoth.Demo.checkTusk
+import demo.mammoth.Demo.checkGlowBlock
+import demo.mammoth.mixin.ClientAccessor.ClientAccessor
+
+java class Object = "java.lang.Object" {}
+java class Event = "net.fabricmc.fabric.api.event.Event" { fun register(listener: Object) }
+java interface EndTick = "net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents$EndTick" {
+    fun onEndTick(client: MinecraftClient)
+}
+java let endTick: Event = "net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK"
+
+export fun markStaticMixin(tag: Text) {
+    print("[Mammoth] Static Mixin executed: tag={tag}")
+}
+
+export fun markMixinTick(cooldown: Int, optionsPresent: Bool, budget: Int, tag: Text) {
+    if System.getProperty("mammoth_demo.mixinSeen", "false") == "false" {
+        System.setProperty("mammoth_demo.mixinSeen", "true")
+        print("[Mammoth] MinecraftClient.tick Mixin executed")
+        print("[Mammoth] Shadow field read: itemUseCooldown={cooldown}")
+        if not optionsPresent { throw IllegalStateException("The shadowed Minecraft options field was null") }
+        print("[Mammoth] Final shadow options field is present")
+        print("[Mammoth] Unique initializers: budget={budget}, tag={tag}")
+        if budget != 40 or tag != "tusk-ready" { throw IllegalStateException("Mixin field initializers did not run") }
+    }
+}
+
+class Toggle(key: KeyBinding) implements EndTick {
+    private let binding = key
+    private var enabled = false
+    private var smokeChecked = false
+    private var smokePending = false
+    fun onEndTick(client: MinecraftClient) {
+        if not smokeChecked {
+            smokeChecked = true
+            if System.getProperty("mammoth_demo.smokeTest", "false") == "true" {
+                KeyBinding.onKeyPressed(InputUtil.fromKeyCode(71, 0))
+                print("[Mammoth] Development smoke test queued a G key press")
+            }
+        }
+        while binding.wasPressed() {
+            enabled = not enabled
+            print("[Mammoth] G key: enabled={enabled}")
+            if System.getProperty("mammoth_demo.smokeTest", "false") == "true" and System.getProperty("mammoth_demo.mixinSeen", "false") == "true" {
+                smokePending = true
+            }
+        }
+        // Let Minecraft finish its initial resource reload before closing.
+        if smokePending and client.getOverlay() == null {
+            smokePending = false
+            // Read, write, and call private MinecraftClient members through
+            // the Mammoth accessor interface.
+            let accessor = client as ClientAccessor
+            let before = accessor.cooldown()
+            accessor.setCooldown(before + 7)
+            print("[Mammoth] Accessor: cooldown={before}->{accessor.cooldown()}, title starts with Minecraft={accessor.windowTitle().startsWith("Minecraft")}")
+            accessor.setCooldown(before)
+            print("[Mammoth] SMOKE PASS: item, event, keybind, and Mixin")
+            client.scheduleStop()
+        }
+    }
+}
+
+fun failHere() {
+    throw IllegalStateException("trace check")
+}
+
+// Reports where a Mammoth exception was thrown, proving the generated class
+// files carry SourceFile and LineNumberTable data inside the game.
+fun traceSource(): Text {
+    try {
+        failHere()
+    } catch (problem: IllegalStateException) {
+        let top = problem.getStackTrace()[0]
+        return "{top.getFileName()}:{top.getLineNumber()}"
+    }
+    return "missing"
+}
+
+export fun initializeClient() {
+    let key = KeyBindingHelper.registerKeyBinding(KeyBinding("key.mammoth_demo.toggle", 71, "category.mammoth_demo"))
+    endTick.register(Toggle(key))
+    print("[Mammoth] Client event and G key registered")
+    if System.getProperty("mammoth_demo.smokeTest", "false") == "true" {
+        print("[Mammoth] Tusk behavior: " + checkTusk())
+        print("[Mammoth] Glow block: " + checkGlowBlock())
+        print("[Mammoth] Stack trace source: " + traceSource())
+    }
+}

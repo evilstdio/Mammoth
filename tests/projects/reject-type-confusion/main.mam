@@ -1,0 +1,4 @@
+import demo.Left.Box as LeftBox
+import demo.Right.Box as RightBox
+import demo.Left.accept
+print(accept(RightBox()))

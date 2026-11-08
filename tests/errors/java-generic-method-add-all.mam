@@ -1,0 +1,8 @@
+// error: This argument does not match the Java type
+import java.util.ArrayList
+import java.util.Collections
+import java.util.HashMap
+let target = ArrayList<Text>()
+let source = ArrayList<Int>()
+source.add(42)
+target.addAll(source)

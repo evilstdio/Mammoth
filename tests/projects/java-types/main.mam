@@ -1,0 +1,14 @@
+module demo.Main
+import demo.Bound.make as bound
+import demo.Implicit.make as implicit
+import demo.Implicit.labels
+let text = bound()
+print(text.build())
+print(implicit().append("!").toString())
+print(labels().get(0).uppercase())
+
+import demo.Bound.listener
+import demo.Implicit.Renderer
+print(Renderer().render(bound()))
+import java.util.OptionalInt
+OptionalInt.of(42).ifPresent(listener())

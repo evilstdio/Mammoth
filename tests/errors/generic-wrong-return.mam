@@ -1,0 +1,2 @@
+// error: Expected a value of the declared type parameter.
+fun wrong<T>(value: T): T { return "wrong" }

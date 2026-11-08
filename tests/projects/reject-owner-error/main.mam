@@ -1,0 +1,3 @@
+module demo.Main
+import demo.Broken.Value
+let value = Value()

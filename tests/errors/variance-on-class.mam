@@ -1,0 +1,2 @@
+// error: Only interface type parameters can be marked 'out' or 'in'.
+class Box<out T>(let value: T)

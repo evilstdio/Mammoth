@@ -1,0 +1,7 @@
+import child.Model.Child
+let first = Child()
+let second = Child()
+print(first.add(3))
+first.change(second)
+print(first.read(second))
+print(first.describe())

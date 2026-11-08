@@ -1,0 +1,4 @@
+// error: This method does not override
+class Animal {
+    override fun speak(): Text { return "..." }
+}

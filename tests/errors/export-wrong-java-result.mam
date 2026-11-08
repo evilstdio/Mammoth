@@ -1,0 +1,2 @@
+// error: An exported method must match the inherited Java method's parameter and result types.
+class C { export fun toString(): Int { return 1 } }

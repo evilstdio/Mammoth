@@ -1,0 +1,3 @@
+// error: This annotation has no element with that name.
+@Deprecated(missing = true)
+class Bad { }

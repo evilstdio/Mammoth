@@ -1,0 +1,30 @@
+let name = "Mammoth"
+let greeting = "Hello, " + name + "!"
+print(greeting)
+print("Length: " + name.length())
+print(name.uppercase())
+print(name.lowercase())
+print(name.contains("moth"))
+print(name.startsWith("Mam") and name.endsWith("th"))
+print(name.indexOf("m"))
+print(name.substring(3))
+print(name.substring(0, 3))
+print("  padded  ".trim())
+print("a-b-c".replace("-", "+"))
+print("one, two, three".split(", "))
+print("ha".repeat(3))
+print(name.get(0))
+print(name == "Mammoth")
+print(name != "Mammoth")
+print("apple" < "banana")
+print("42".toInt() + 1)
+print("2.5".toDouble() * 2)
+print("{name} has {name.length()} letters and {1 + 2} parts")
+let words = "the quick brown fox".words()
+print(words.size())
+print(words[3])
+var message = "a"
+message += "b"
+message += 3
+print(message)
+print("".isEmpty())

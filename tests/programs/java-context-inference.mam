@@ -1,0 +1,21 @@
+import java.util.List as JavaList
+import java.util.Collections
+import java.util.stream.Stream
+abstract class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+let empty: JavaList<Text> = Collections.emptyList()
+print(empty.size())
+let stream: Stream<Text> = Stream.empty()
+print(stream.count())
+let animals: JavaList<Animal> = Collections.singletonList(Dog("rex"))
+print(animals.get(0).name)
+fun emptyNames(): JavaList<Text> { return Collections.emptyList() }
+print(emptyNames().size())
+fun countNames(values: JavaList<Text>): Int { return values.size() }
+print(countNames(Collections.emptyList()))
+let nested: JavaList<Text> = Collections.unmodifiableList(Collections.singletonList("safe"))
+print(nested.get(0))
+
+import java.util.Collection
+let ancestor: Collection<Text> = Collections.emptyList()
+print(ancestor.size())

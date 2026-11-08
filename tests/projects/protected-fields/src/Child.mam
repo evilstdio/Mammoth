@@ -1,0 +1,8 @@
+module child.Model
+import parent.Model.Base
+class Child extends Base<Int>(2, "value") {
+    fun add(number: Int): Int { value += number return this.value }
+    fun read(other: Child): Int { return other.value }
+    fun change(other: Child) { other.value = 9 }
+    fun describe(): Text { return "{label}:{value}" }
+}

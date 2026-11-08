@@ -1,0 +1,2 @@
+// error: This type has not been defined.
+let items: List<*> = ["a"]

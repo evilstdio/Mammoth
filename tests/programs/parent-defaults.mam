@@ -1,0 +1,80 @@
+interface Left {
+    fun greet(): Text { return "left" }
+}
+interface Right {
+    fun greet(): Text { return "right" }
+}
+interface Joined extends Left, Right {
+    override fun greet(): Text {
+        return super<Left>.greet() + "+" + super<Right>.greet()
+    }
+    fun later(): () -> Text { return { super<Left>.greet() } }
+}
+interface Excited extends Joined {
+    override fun greet(): Text { return super<Joined>.greet() + "!" }
+}
+// Parent order must not hide the most specific override.
+interface Reordered extends Left, Excited { }
+class Friendly implements Reordered { }
+class Combined implements Left, Right {
+    override fun greet(): Text { return super<Right>.greet() + "/" + super<Left>.greet() }
+    fun later(): () -> Text { return { super<Left>.greet() } }
+}
+
+interface Source<T> {
+    fun get(): T
+    fun echo(value: T): T { return value }
+    fun identity<R>(value: R): R { return value }
+    fun report(value: Long) { print(value) }
+}
+interface Forward<T> extends Source<T> {
+    override fun echo(value: T): T { return super<Source>.echo(value) }
+    override fun identity<U>(value: U): U { return super<Source>.identity<U>(value) }
+}
+interface Numbers extends Forward<Int> {
+    override fun get(): Int { return 40 }
+    override fun echo(value: Int): Int { return super<Forward>.echo(value) + 2 }
+    fun older(value: Int): Int { return super<Forward>.echo(value) }
+    fun show() { super<Forward>.report(9000000000L) }
+}
+interface MoreNumbers extends Numbers { }
+class Counter implements MoreNumbers { }
+class Adjusted implements Numbers {
+    override fun get(): Int { return super<Numbers>.get() + 1 }
+    override fun echo(value: Int): Int { return super<Numbers>.echo(value) + 10 }
+}
+class Generic<T>(let value: T) implements Forward<T> {
+    override fun get(): T { return value }
+    fun parent(value: T): T { return super<Forward>.echo(value) }
+    fun chosen<R>(value: R): R { return super<Forward>.identity(value) }
+}
+
+print(Friendly().greet())
+let named: Left = Friendly()
+print(named.greet())
+let inheritedLater = Friendly().later()
+print(inheritedLater())
+print(Combined().greet())
+let later = Combined().later()
+print(later())
+let counter = Counter()
+print(counter.get())
+print(counter.echo(5))
+print(counter.older(5))
+let source: Source<Int> = counter
+print(source.get())
+print(source.echo(10))
+print(source.identity("same"))
+counter.show()
+let words = Generic("Mammoth")
+print(words.parent("hello"))
+print(words.chosen(77))
+let generic: Source<Text> = words
+print(generic.get())
+print(generic.echo("words"))
+let adjusted: Numbers = Adjusted()
+print(adjusted.get())
+print(adjusted.echo(1))
+let adjustedParent: Source<Int> = adjusted
+print(adjustedParent.get())
+print(adjustedParent.echo(1))

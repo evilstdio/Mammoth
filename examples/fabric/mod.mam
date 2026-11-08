@@ -1,0 +1,5 @@
+module demo.mammoth.FabricDemo
+
+export fun initialize() {
+    print("Mammoth Fabric mod initialized")
+}

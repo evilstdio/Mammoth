@@ -1,0 +1,19 @@
+import java.util.Arrays
+import java.util.Collections
+import java.util.ArrayList
+abstract class Animal(let name: Text)
+class Dog(name: Text) extends Animal(name)
+class Cat(name: Text) extends Animal(name)
+let forward = Arrays.asList(Dog("rex"), Cat("mia"))
+let reverse = Arrays.asList(Cat("mia"), Dog("rex"))
+print(forward.get(0).name)
+print(forward.get(1).name)
+print(reverse.get(0).name)
+print(reverse.get(1).name)
+let target = ArrayList<Animal>()
+Collections.addAll(target, Dog("d"), Cat("c"))
+print(target.get(1).name)
+
+// The common superclass is package-private; infer an accessible view instead.
+print(Arrays.asList(StringBuilder("a"), StringBuffer("b")).get(0))
+print(Arrays.asList(StringBuffer("b"), StringBuilder("a")).get(0))

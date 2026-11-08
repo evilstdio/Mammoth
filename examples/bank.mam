@@ -1,0 +1,63 @@
+// Classes, inheritance, and exceptions.
+class InsufficientFunds(needed: Double) extends RuntimeException("Not enough money: need {needed} more") {}
+
+abstract class Account(let owner: Text) {
+    var balance = 0.0
+
+    abstract fun monthlyFee(): Double
+
+    fun deposit(amount: Double) {
+        if amount <= 0 {
+            throw IllegalArgumentException("Deposits must be positive")
+        }
+        balance += amount
+    }
+
+    fun withdraw(amount: Double) {
+        if amount > balance {
+            throw InsufficientFunds(amount - balance)
+        }
+        balance -= amount
+    }
+
+    fun toString(): Text {
+        return "{owner}: {balance}"
+    }
+}
+
+class Checking(owner: Text) extends Account(owner) {
+    override fun monthlyFee(): Double {
+        return 2.5
+    }
+}
+
+class Savings(owner: Text, let rate: Double) extends Account(owner) {
+    override fun monthlyFee(): Double {
+        return 0.0
+    }
+
+    fun addInterest() {
+        balance += balance * rate
+    }
+}
+
+let accounts: List<Account> = [Checking("Maya"), Savings("Sam", 0.02)]
+for account in accounts {
+    account.deposit(100)
+}
+
+try {
+    accounts[0].withdraw(150)
+} catch (error: InsufficientFunds) {
+    print(error.getMessage())
+}
+
+let savings = accounts[1]
+if savings is Savings {
+    savings.addInterest()
+}
+
+for account in accounts {
+    account.withdraw(account.monthlyFee())
+    print(account)
+}

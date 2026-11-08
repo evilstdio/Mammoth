@@ -1,0 +1,4 @@
+// error: Java generic type arguments must match the declared type.
+import java.util.ArrayList
+let raw = ArrayList()
+let numbers: ArrayList<Int> = raw

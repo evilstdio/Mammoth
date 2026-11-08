@@ -1,0 +1,76 @@
+import java.util.ArrayList
+
+class Counter(let name: Text) {
+    static var created = 0
+    static let prefix = "counter-"
+    static var registry: ArrayList<Text> = ArrayList<Text>()
+    private static var secret: Int = 41
+
+    var count = 0
+
+    init {
+        created += 1
+        registry.add(name)
+    }
+
+    fun bump(): Int {
+        count += 1
+        return count + base()
+    }
+
+    fun label(): Text {
+        return prefix + name
+    }
+
+    static fun base(): Int {
+        return 100
+    }
+
+    static fun make(name: Text): Counter {
+        return Counter(name)
+    }
+
+    static fun reveal(): Int {
+        secret += 1
+        return secret
+    }
+
+    static fun describe(counter: Counter): Text {
+        return "{counter.label()} has {counter.count}"
+    }
+}
+
+class Special(name: Text) extends Counter(name) {
+    fun total(): Int {
+        // Subclasses can use inherited static members without the class name.
+        return created + base()
+    }
+}
+
+class Ids {
+    static var next: Long = 1L
+    static fun take(): Long {
+        let id = next
+        next += 1L
+        return id
+    }
+}
+
+let first = Counter.make("a")
+print(first.bump())
+print(Counter.created)
+let second = Counter("b")
+print(Counter.describe(second))
+print(Counter.registry.size())
+print(second.label())
+Counter.created = 10
+Counter.created += 5
+print(Counter.created)
+print(Counter.reveal())
+print(Counter.reveal())
+let special = Special("s")
+print(special.total())
+print(Ids.take() + Ids.take())
+print(Counter.prefix.length())
+let maker = { name: Text -> Counter.make(name) }
+print(maker("z").label())

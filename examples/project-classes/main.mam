@@ -1,0 +1,7 @@
+module school.Main
+import school.Model.Student
+import school.Model.Grade
+import school.Report.average
+let grades: List<Grade> = [Student("Maya", 95), Student("Sam", 80)]
+for grade in grades { print(grade.label()) }
+print("Class average: {average(grades)}")

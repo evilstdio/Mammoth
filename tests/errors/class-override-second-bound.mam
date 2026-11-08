@@ -1,0 +1,7 @@
+// error: An overriding class method must keep its parent's type parameter bounds.
+interface Named { fun name(): Text }
+interface Sized { fun size(): Int }
+class Base { fun keep<T: Named & Sized>(value: T): T { return value } }
+class Bad extends Base() {
+    override fun keep<T: Named>(value: T): T { return value }
+}

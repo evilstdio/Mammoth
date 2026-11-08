@@ -1,0 +1,6 @@
+// error: Expected an object that implements the declared interface here.
+open class Animal
+class Dog extends Animal()
+interface Sink<in T> { fun put(value: T) }
+class Dogs implements Sink<Dog> { fun put(value: Dog) {} }
+let animals: Sink<Animal> = Dogs()

@@ -1,0 +1,14 @@
+fun identity<T>(value: T): T { return value }
+fun orElse<T>(value: T?, fallback: T): T { return value ?: fallback }
+fun transform<T, R>(values: MutableList<T>, convert: (T) -> R): MutableList<R> {
+    let result: MutableList<R> = mutableList()
+    for value in values { result.add(convert(value)) }
+    return result
+}
+
+print(identity(42))
+print(identity("Mammoth"))
+print(orElse(null, "No name yet"))
+let names = mutableList("Maya", "Sam")
+print(transform(names) { it.uppercase() })
+print(transform(names) { it.length() })

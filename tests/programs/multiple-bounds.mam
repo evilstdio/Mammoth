@@ -1,0 +1,95 @@
+interface Named {
+    fun name(): Text
+}
+
+interface Scored {
+    fun score(): Int
+}
+
+interface Source<T> {
+    fun next(): T
+}
+
+abstract class Animal(let legs: Int) {
+    abstract fun sound(): Text
+}
+
+class Dog(let label: Text, let points: Int) extends Animal(4) implements Named, Scored {
+    override fun sound(): Text { return "woof" }
+    fun name(): Text { return label }
+    fun score(): Int { return points }
+}
+
+class Robot(let id: Int) implements Named, Scored, Source<Int> {
+    var count = 0
+    fun name(): Text { return "robot{id}" }
+    fun score(): Int { return id * 10 }
+    fun next(): Int {
+        count += 1
+        return count
+    }
+}
+
+fun announce<T: Named & Scored>(item: T): Text {
+    return "{item.name()} scored {item.score()}"
+}
+
+fun best<T: Named & Scored>(first: T, second: T): T {
+    if first.score() >= second.score() {
+        return first
+    }
+    return second
+}
+
+fun describe<A: Animal & Named>(animal: A): Text {
+    return "{animal.name()} says {animal.sound()} on {animal.legs} legs"
+}
+
+fun total(scored: Scored): Int {
+    return scored.score()
+}
+
+fun pull<T: Named & Source<Int>>(source: T, times: Int): Text {
+    var sum = 0
+    for i in 1..times {
+        sum += source.next()
+    }
+    return "{source.name()}:{sum}"
+}
+
+fun largest<T: Comparable<T> & Named>(items: MutableList<T>): Text {
+    var top = items.get(0)
+    for item in items {
+        if item.compareTo(top) > 0 {
+            top = item
+        }
+    }
+    return top.name()
+}
+
+class Version(let number: Int) implements Comparable<Version>, Named {
+    fun compareTo(other: Version): Int { return number - other.number }
+    fun name(): Text { return "v{number}" }
+}
+
+class Shelf<T: Named & Scored>(var item: T) {
+    fun summary(): Text {
+        return "{item.name()}/{item.score() + total(item)}"
+    }
+}
+
+print(announce(Dog("rex", 7)))
+print(announce(Robot(3)))
+print(best(Dog("a", 1), Dog("b", 9)).name())
+print(best(Robot(5), Robot(2)).id)
+print(describe(Dog("fido", 2)))
+print(pull(Robot(1), 4))
+let versions = MutableList<Version>()
+versions.add(Version(2))
+versions.add(Version(11))
+versions.add(Version(5))
+print(largest(versions))
+let shelf = Shelf(Robot(4))
+print(shelf.summary())
+shelf.item = Robot(6)
+print(shelf.summary())

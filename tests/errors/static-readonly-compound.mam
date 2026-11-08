@@ -1,0 +1,3 @@
+// error: This static field is read-only.
+class Settings { static let limit = 3 }
+Settings.limit += 4

@@ -1,0 +1,9 @@
+import java.util.List as JavaList
+import java.util.Map as javaMap
+import java.util.Collections
+let nested: JavaList<JavaList<Text>> = Collections.singletonList(Collections.emptyList())
+print(nested.get(0).size())
+let deep: JavaList<JavaList<JavaList<Text>>> = Collections.singletonList(Collections.singletonList(Collections.emptyList()))
+print(deep.get(0).get(0).size())
+let map: javaMap<Text, JavaList<Int>> = Collections.singletonMap("x", Collections.emptyList())
+print(map.get("x").size())

@@ -1,0 +1,12 @@
+module demo.Generic
+export fun identity<T>(value: T): T { return value }
+export fun singleton<T>(value: T): MutableList<T> {
+    let values: MutableList<T> = mutableList()
+    values.add(value)
+    return values
+}
+export fun transform<T, R>(values: MutableList<T>, convert: (T) -> R): MutableList<R> {
+    let result: MutableList<R> = mutableList()
+    for value in values { result.add(convert(value)) }
+    return result
+}

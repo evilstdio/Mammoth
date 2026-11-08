@@ -1,0 +1,21 @@
+module child.Engine
+import parent.Engine.Engine
+class Doubler(start: Int) extends Engine<Int>(start) {
+    protected override fun step(value: Int): Int {
+        return value * 2
+    }
+    fun go(times: Int): Int {
+        return run(times)
+    }
+    fun twin(other: Doubler): Int {
+        return other.run(1) + this.peek { it + 1 }
+    }
+    fun later(): () -> Text {
+        return { peek { "state {it}" } }
+    }
+}
+class Loud(start: Int) extends Doubler(start) {
+    override fun step(value: Int): Int {
+        return super.step(value) + 1
+    }
+}

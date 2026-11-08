@@ -1,0 +1,4 @@
+// error: Call this protected method through this class or one of its subclasses.
+open class Base { protected fun value(): Int { return 1 } }
+class Left extends Base()
+class Right extends Base() { fun peek(other: Left): Int { return other.value() } }

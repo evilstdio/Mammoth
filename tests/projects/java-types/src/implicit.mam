@@ -1,0 +1,13 @@
+module demo.Implicit
+import java.util.ArrayList
+export fun make(): StringBuilder { return StringBuilder("implicit") }
+export fun labels(): ArrayList<Text> {
+    let values = ArrayList<Text>()
+    values.add("generic")
+    return values
+}
+
+import demo.Bound.Sink
+class Renderer implements Sink {
+    fun render(value: StringBuilder): Text { return value.toString() }
+}

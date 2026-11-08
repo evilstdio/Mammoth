@@ -1,0 +1,2 @@
+// error: An 'out' type parameter cannot appear in a parameter type.
+interface Source<out T> { fun put(value: T) }

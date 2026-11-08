@@ -1,0 +1,6 @@
+// error: This type argument does not satisfy the bound of its type parameter.
+interface Named { fun name(): Text }
+interface Scored { fun score(): Int }
+class OnlyNamed implements Named { fun name(): Text { return "x" } }
+fun f<T: Named & Scored>(value: T): Int { return value.score() }
+print(f(OnlyNamed()))

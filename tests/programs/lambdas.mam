@@ -1,0 +1,55 @@
+import java.util.ArrayList
+
+let double = { x: Int -> x * 2 }
+print(double(21))
+let greet: (Text) -> Text = { name -> "Hello, {name}!" }
+print(greet("Maya"))
+fun applyTwice(f: (Int) -> Int, value: Int): Int {
+    return f(f(value))
+}
+print(applyTwice({ it + 3 }, 10))
+print(applyTwice(double, 5))
+let factor = 3
+let triple = { x: Int -> x * factor }
+print(triple(7))
+let say: () -> Unit = { print("said") }
+say()
+let add = { a: Int, b: Int -> a + b }
+print(add(2, 3))
+
+let thread = Thread { print("in a thread") }
+thread.start()
+thread.join()
+
+let names = mutableList("Sam", "Alexandra", "Lee")
+names.forEach { print("name: {it}") }
+names.sort { a: Text, b: Text -> a.length() - b.length() }
+print(names)
+names.removeIf { name: Text -> name.startsWith("L") }
+print(names)
+
+class Button(let label: Text) {
+    var onClick: (Text) -> Unit = { print("nothing") }
+    fun click() {
+        onClick(label)
+    }
+}
+let button = Button("OK")
+button.click()
+button.onClick = { label -> print("clicked {label}") }
+button.click()
+
+class Counter {
+    var count = 0
+    fun makeIncrementer(): () -> Int {
+        return {
+            count += 1
+            count
+        }
+    }
+}
+let counter = Counter()
+let next = counter.makeIncrementer()
+next()
+print(next())
+print(counter.count)

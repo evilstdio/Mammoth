@@ -1,0 +1,22 @@
+interface Greeter {
+    fun greet(name: Text): Text
+}
+
+class Friendly implements Greeter {
+    fun greet(name: Text): Text {
+        return "Hi, {name}!"
+    }
+}
+
+class Formal implements Greeter {
+    fun greet(name: Text): Text {
+        return "Good day, {name}."
+    }
+}
+
+fun welcome(greeter: Greeter) {
+    print(greeter.greet("Maya"))
+}
+
+welcome(Friendly())
+welcome(Formal())

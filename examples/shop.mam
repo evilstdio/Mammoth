@@ -1,0 +1,138 @@
+// An inventory and order system exercising generics, Java collections,
+// streams, sorting, statics, inheritance, and exceptions together.
+import java.util.ArrayList
+import java.util.HashMap
+import java.util.Comparator
+import java.util.List as JavaList
+import java.util.stream.Collectors
+
+enum Category { FOOD, TOOL, TOY }
+
+data class Item(let name: Text, let category: Category, let cents: Int)
+
+class OutOfStock(let item: Text) extends RuntimeException("out of stock: " + item)
+
+interface Priced {
+    fun total(): Int
+    fun label(): Text { return "total {total()}" }
+}
+
+class Shelf<T>(let capacity: Int) {
+    let slots = ArrayList<T>()
+    fun put(value: T): Bool {
+        if slots.size() >= capacity { return false }
+        slots.add(value)
+        return true
+    }
+    fun take(index: Int): T { return slots.remove(index) }
+    fun count(): Int { return slots.size() }
+}
+
+class Inventory {
+    static var created = 0
+    let stock = HashMap<Text, Int>()
+    let items = HashMap<Text, Item>()
+    init { created += 1 }
+
+    fun add(item: Item, amount: Int) {
+        items.put(item.name, item)
+        let current: Int? = stock.get(item.name)
+        stock.put(item.name, (current ?: 0) + amount)
+    }
+
+    fun remove(name: Text, amount: Int) {
+        let current: Int? = stock.get(name)
+        if current == null or requireValue(current) < amount { throw OutOfStock(name) }
+        stock.put(name, requireValue(current) - amount)
+    }
+
+    fun byCategory(): HashMap<Category, MutableList<Text>> {
+        let groups = HashMap<Category, MutableList<Text>>()
+        for name in items.keySet() {
+            let item = items.get(name)
+            let existing: MutableList<Text>? = groups.get(item.category)
+            if existing == null {
+                let fresh = MutableList<Text>()
+                fresh.add(name)
+                groups.put(item.category, fresh)
+            } else {
+                requireValue(existing).add(name)
+            }
+        }
+        return groups
+    }
+}
+
+open class Order(let id: Int) implements Priced {
+    let lines = ArrayList<Item>()
+    fun total(): Int {
+        var sum = 0
+        for line in lines { sum += line.cents }
+        return sum
+    }
+    open fun discount(): Int { return 0 }
+    fun due(): Int { return total() - discount() }
+}
+
+class BulkOrder(id: Int) extends Order(id) {
+    override fun discount(): Int { return if lines.size() >= 3 { total() / 10 } else { 0 } }
+    override fun label(): Text { return "bulk " + super.label() }
+}
+
+fun cents(value: Int): Text {
+    let rest = value % 100
+    return "{value / 100}." + (if rest < 10 { "0" } else { "" }) + rest
+}
+
+let inventory = Inventory()
+let apple = Item("apple", Category.FOOD, 50)
+let hammer = Item("hammer", Category.TOOL, 1299)
+let yoyo = Item("yoyo", Category.TOY, 350)
+let bread = Item("bread", Category.FOOD, 275)
+inventory.add(apple, 10)
+inventory.add(hammer, 1)
+inventory.add(yoyo, 3)
+inventory.add(bread, 2)
+inventory.add(apple, 5)
+print(inventory.stock.get("apple"))
+
+let order = BulkOrder(1)
+for item in [apple, apple, bread, yoyo] {
+    try {
+        inventory.remove(item.name, 1)
+        order.lines.add(item)
+    } catch (e: OutOfStock) {
+        print("skip " + e.item)
+    }
+}
+try {
+    inventory.remove("hammer", 2)
+} catch (e: OutOfStock) {
+    print(e.getMessage())
+}
+print(order.label())
+print("due " + cents(order.due()))
+
+let sorted = ArrayList<Item>(inventory.items.values())
+sorted.sort(Comparator.comparing { item: Item -> item.cents })
+for item in sorted { print("{item.name} {cents(item.cents)}") }
+
+let expensive = sorted.stream().filter { item -> item.cents > 300 }.map { item -> item.name }.collect(Collectors.toList())
+print(expensive)
+
+let groups = inventory.byCategory()
+for category in Category.values() {
+    let names: MutableList<Text>? = groups.get(category)
+    let count = if names == null { 0 } else { requireValue(names).size() }
+    print("{category}: {count}")
+}
+
+let shelf = Shelf<Item>(2)
+print(shelf.put(apple))
+print(shelf.put(bread))
+print(shelf.put(yoyo))
+print(shelf.take(0).name + " " + shelf.count())
+let second = Inventory()
+print(Inventory.created)
+let priced: Priced = order
+print(priced.total())

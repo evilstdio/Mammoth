@@ -1,0 +1,47 @@
+let grid = [[1, 2, 3], [4, 5, 6]]
+print(grid)
+print(grid[1][2])
+grid[0][0] = 9
+print(grid[0])
+var sum = 0
+for row in grid {
+    for cell in row {
+        sum += cell
+    }
+}
+print(sum)
+
+fun board(size: Int): List<List<Char>> {
+    let rows: MutableList<List<Char>> = mutableList()
+    for r in 0 until size {
+        rows.add(['.', '.', '.'])
+    }
+    let result: List<List<Char>> = [rows[0], rows[1], rows[2]]
+    return result
+}
+let b = board(3)
+b[1][1] = 'X'
+for row in b {
+    var line = ""
+    for cell in row {
+        line += cell
+    }
+    print(line)
+}
+
+let tasks: MutableList<MutableList<Text>> = mutableList()
+tasks.add(mutableList("wash", "dry"))
+tasks.add(mutableList("cook"))
+tasks[1].add("eat")
+print(tasks)
+print(tasks[1].size())
+
+let maybe: List<Text?> = ["a", null, "c"]
+for item in maybe {
+    print(item ?: "missing")
+}
+
+let actions: List<(Int) -> Int> = [{ x: Int -> x + 1 }, { x: Int -> x * 10 }]
+for action in actions {
+    print(action(5))
+}

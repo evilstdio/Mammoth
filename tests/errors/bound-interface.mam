@@ -1,0 +1,5 @@
+// error: This type argument does not satisfy the bound of its type parameter.
+abstract class Animal(let name: Text) { abstract fun sound(): Text }
+class Dog(name: Text) extends Animal(name) { override fun sound(): Text { return "woof" } }
+interface Ranked<T: Comparable<T>> { fun top(): T }
+class Kennel implements Ranked<Dog> { fun top(): Dog { return Dog("x") } }

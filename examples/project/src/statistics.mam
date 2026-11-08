@@ -1,0 +1,9 @@
+module demo.mammoth.Statistics
+
+export fun average(values: List<Double>): Double {
+    var total = 0.0
+    for value in values {
+        total = total + value
+    }
+    return total / values.size().toDouble()
+}

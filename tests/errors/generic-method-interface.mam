@@ -1,0 +1,3 @@
+// error: This method's parameter and result types must match the interface.
+interface Identity { fun keep<T>(value: T): T }
+class Broken implements Identity { fun keep(value: Any): Any { return value } }

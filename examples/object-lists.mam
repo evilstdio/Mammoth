@@ -1,0 +1,20 @@
+interface Greeter {
+    fun greet(): Text
+}
+
+class Friendly implements Greeter {
+    fun greet(): Text { return "Hello!" }
+}
+
+class Formal implements Greeter {
+    fun greet(): Text { return "Good day." }
+}
+
+fun welcome(greeters: List<Greeter>) {
+    for greeter in greeters {
+        print(greeter.greet())
+    }
+}
+
+let greeters: List<Greeter> = [Friendly(), Formal()]
+welcome(greeters)

@@ -1,0 +1,66 @@
+import java.util.ArrayList
+import java.util.Collection
+class Loud extends ArrayList<Text>() {
+    override fun add(value: Text): Bool {
+        return super.add(value.toUpperCase())
+    }
+    override fun get(index: Int): Text {
+        return "<" + super.get(index) + ">"
+    }
+}
+class Bag<T> extends ArrayList<T>() {
+    fun firstOr(fallback: T): T {
+        if isEmpty() {
+            return fallback
+        }
+        return get(0)
+    }
+}
+class Names extends ArrayList<Text>() {
+    fun shout(): Text {
+        var text = ""
+        for i in 0 until size() {
+            text = text + get(i).toUpperCase() + " "
+        }
+        return text
+    }
+    fun firstLength(): Int {
+        return this.get(0).length()
+    }
+    fun trim(count: Int) {
+        removeRange(0, count)
+    }
+    fun changes(): Int {
+        return modCount
+    }
+}
+let loud = Loud()
+loud.add("hi")
+let collection: Collection<Text> = loud
+collection.add("there")
+print(loud.get(1))
+print(loud.size())
+let plain: ArrayList<Text> = loud
+print(plain.get(0))
+let bag = Bag<Int>()
+print(bag.firstOr(7))
+bag.add(41)
+print(bag.firstOr(7) + 1)
+let words = Bag<Text>()
+words.add("x")
+print(words.firstOr("none").length())
+
+let names = Names()
+names.add("ann")
+names.add("bob")
+names.add("cy")
+print(names.shout())
+print(names.firstLength())
+print(names.get(1).length())
+names.trim(1)
+print(names.size())
+print(names.changes())
+let list2: Collection<Text> = names
+print(list2.iterator().next().length())
+let plain2: ArrayList<Text> = names
+print(plain2.size())

@@ -1,0 +1,6 @@
+let name = input("What is your name? ")
+print("Hello, {name}!")
+let age = input().toInt()
+print("Next year you will be {age + 1}.")
+let missing = input()
+print("[{missing}]")

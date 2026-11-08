@@ -1,0 +1,23 @@
+let boxed: Int? = Integer.valueOf(5)
+print(boxed ?: 0)
+print("123".toIntOrNull())
+print("bad".toIntOrNull())
+print("2147483648".toIntOrNull() ?: -1)
+print("5000000000".toLongOrNull())
+print("1.25".toDoubleOrNull())
+print("bad".toDoubleOrNull() ?: 3.5)
+let parsed = "9".toIntOrNull()
+if parsed != null { print(parsed * 2) }
+let nothing: Text? = null
+print(nothing?.toIntOrNull())
+print("bad"?.toIntOrNull() ?: 7)
+let n: Int? = null
+let anything: Any? = n
+print(anything)
+let number: Number? = parsed
+print(number)
+let texts: List<Text> = ["1", "bad", "3"]
+for text in texts { print(text.toIntOrNull() ?: 0) }
+print("9223372036854775808".toLongOrNull())
+print("".toIntOrNull())
+print("1e309".toDoubleOrNull())

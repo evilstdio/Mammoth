@@ -1,0 +1,4 @@
+// error: This type argument does not satisfy the bound of its type parameter.
+interface Ranked<T: Comparable<T>> { fun best(): T }
+class Thing
+interface Bad extends Ranked<Thing> { fun x(): Int }
