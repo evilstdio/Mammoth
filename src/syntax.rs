@@ -680,6 +680,14 @@ fn add_data_members<'a>(class: &mut Class<'a>) {
 /// The built-in library. Only the functions a program mentions are kept.
 const PRELUDE: &str = include_str!("prelude.mam");
 
+/// Whether `word` appears outside comments and text on some line.
+fn in_code(source: &str, word: &str) -> bool {
+    source.lines().any(|line| {
+        let code = line.split("//").next().unwrap_or(line);
+        code.split('"').step_by(2).any(|part| part.contains(word))
+    })
+}
+
 /// Whether `source` calls a member named `name`, as `.name(` or `.name {`.
 fn calls_member(source: &str, name: &str) -> bool {
     source.match_indices(name).any(|(at, _)| {
@@ -726,8 +734,8 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         .any(|text| source.contains(text));
     if !destructuring
         && !source.contains("Pair(")
-        && !source.contains(" in ")
-        && !source.contains(" to ")
+        && !in_code(source, " in ")
+        && !in_code(source, " to ")
         && !source.contains("Triple(")
         && !PRELUDE_FUNCTIONS
             .iter()
@@ -762,7 +770,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
                 let needs_pair = matches!(name, "zip" | "partition");
                 name == "toMutableList"
                     || (destructures && name.starts_with("component"))
-                    || (name == "contains" && source.contains(" in "))
+                    || (name == "contains" && in_code(source, " in "))
                     || (matches!(name, "plus" | "minus") && list_operators)
                     || (name == "toSet" && calls_function(source, "setOf"))
                     || (calls_member(source, name) && !(needs_pair && user_pair))
@@ -775,7 +783,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         && (calls_member(source, "zip")
             || calls_member(source, "partition")
             || source.contains("Pair(")
-            || source.contains(" to ")
+            || in_code(source, " to ")
             || calls_member(source, "toList")
             || calls_member(source, "associate")
             || needs_map);

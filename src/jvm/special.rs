@@ -170,6 +170,7 @@ impl<'a> Emitter<'a> {
         let mut added = 0;
         if !declared.contains_key("toString") {
             let mut method = Method::new(vec![Local::Object(this_class)]);
+            self.mark_line(&mut method, class.name.offset);
             let builder = self.refs.builder;
             instruction(&mut method.code, 0xbb, builder); // new
             method.code.push(0x59); // dup
@@ -217,6 +218,7 @@ impl<'a> Emitter<'a> {
         if !declared.contains_key("equals") {
             let object = self.runtime_class("java/lang/Object");
             let mut method = Method::new(vec![Local::Object(this_class), Local::Object(object)]);
+            self.mark_line(&mut method, class.name.offset);
             method.code.extend([0x2a, 0x2b]); // aload_0, aload_1
             let different = method.code.len();
             instruction(&mut method.code, 0xa6, 0); // if_acmpne
@@ -286,6 +288,7 @@ impl<'a> Emitter<'a> {
         }
         if !declared.contains_key("hashCode") {
             let mut method = Method::new(vec![Local::Object(this_class)]);
+            self.mark_line(&mut method, class.name.offset);
             push_int(&mut method.code, 0);
             for field in &fields {
                 push_int(&mut method.code, 31);
