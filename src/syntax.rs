@@ -973,6 +973,38 @@ fn add_delegated_methods<'a>(program: &mut Program<'a>) -> Result<(), Error> {
     Ok(())
 }
 
+thread_local! {
+    /// Infix and never-returning names declared by the other files of a project.
+    static PROJECT_NAMES: std::cell::RefCell<(Vec<String>, Vec<String>)> =
+        const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
+}
+
+/// Records the names that change how calls in every file of a project parse.
+pub fn declare_project_names(sources: &[String]) {
+    let infix: Vec<String> = sources
+        .iter()
+        .flat_map(|source| infix_names(source))
+        .map(str::to_owned)
+        .collect();
+    let nothing: Vec<String> = sources
+        .iter()
+        .flat_map(|source| nothing_names(source))
+        .map(str::to_owned)
+        .collect();
+    PROJECT_NAMES.with(|names| *names.borrow_mut() = (infix, nothing));
+}
+
+/// Names declared by another file of the project, kept for this compile.
+fn project_names(infix: bool) -> Vec<&'static str> {
+    PROJECT_NAMES.with(|names| {
+        let names = names.borrow();
+        let list = if infix { &names.0 } else { &names.1 };
+        list.iter()
+            .map(|name| &*Box::leak(name.clone().into_boxed_str()))
+            .collect()
+    })
+}
+
 /// Every function whose header says `: Nothing`.
 fn nothing_names(source: &str) -> Vec<&str> {
     let mut names = Vec::new();
@@ -1235,9 +1267,15 @@ fn parse_with<'a>(
         hoisted_functions: Vec::new(),
         object_scopes: Vec::new(),
         lambda_prefix: Vec::new(),
-        infix_names: infix_names(source),
+        infix_names: infix_names(source)
+            .into_iter()
+            .chain(project_names(true))
+            .collect(),
         reading_extension_property: false,
-        nothing_names: nothing_names(source),
+        nothing_names: nothing_names(source)
+            .into_iter()
+            .chain(project_names(false))
+            .collect(),
         function_start: 0,
         current_type: "",
         declared_functions: Vec::new(),
@@ -1295,7 +1333,25 @@ fn parse_with<'a>(
             program.module = Some(parser.module()?);
         } else if name.text == "import" && identifier(parser.rest(), parser.offset).is_some() {
             program.imports.push(parser.import()?);
-        } else if name.text == "export" && parser.take_word("fun") {
+        } else if name.text == "export" && {
+            for modifier in ["infix", "inline", "tailrec", "operator"] {
+                parser.take_word(modifier);
+            }
+            let property = (parser.rest_trimmed().starts_with("let ")
+                || parser.rest_trimmed().starts_with("val "))
+                && {
+                    let start = parser.offset;
+                    parser.name().is_ok() && {
+                        let ahead = parser.extension_property_ahead();
+                        if !ahead {
+                            parser.offset = start;
+                        }
+                        ahead
+                    }
+                };
+            parser.reading_extension_property = property;
+            property || parser.take_word("fun")
+        } {
             parser.top_level_function = true;
             let mut function = parser.function(true)?;
             parser.top_level_function = false;

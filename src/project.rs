@@ -21,6 +21,7 @@ pub fn run(directory: &Path, output: Option<&Path>) -> Result<ExitCode, String> 
                 .map_err(|error| format!("Could not read {}: {error}", path.display()))
         })
         .collect::<Result<_, _>>()?;
+    syntax::declare_project_names(&sources);
     let programs: Vec<_> = sources
         .iter()
         .zip(&paths)

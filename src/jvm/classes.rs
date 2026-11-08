@@ -2058,7 +2058,12 @@ impl<'a> Emitter<'a> {
         let name = self.symbols.class_declarations[class].inner_of?;
         match self.type_scope.names.get(name) {
             Some(&Kind::Object(outer)) => Some(outer),
-            _ => None,
+            // Code in another file may not have imported the outer class.
+            _ => self
+                .symbols
+                .class_declarations
+                .iter()
+                .position(|class| class.name.text == name),
         }
     }
 

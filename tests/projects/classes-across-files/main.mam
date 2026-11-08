@@ -1,0 +1,42 @@
+module demo.Main
+import demo.Lib.Point
+import demo.Lib.Account
+import demo.Lib.Shape
+import demo.Lib.Named
+import demo.Lib.Tag
+import demo.Lib.Outer
+import demo.Lib.Counter
+import demo.Lib.Box
+import demo.Lib.Level
+import demo.Lib.plusTwo
+import demo.Lib.shout
+import demo.Lib.fail
+import demo.Lib.makeRunner
+print(Point(3).y)
+print(Point(1, 2).y)
+let a = Account()
+a.balance = 0 - 5
+print(a.balance)
+a.balance += 7
+print(a.balance)
+a.touch()
+print(a.uses)
+class Square extends Shape {
+    override let sides: Int = 4
+    override let name: Text = "square"
+}
+print(Square().describe())
+let n: Named = Tag("a")
+n.label = "b"
+print(n.label)
+let c = Outer(10).Counter(2)
+c.bump()
+print(c.bump())
+let b: Box<Any> = Box<Text>("x")
+print(b.value)
+print(Level.High.weight())
+print(1 plusTwo 2)
+print("a".shout)
+fun checked(x: Int?): Int = x ?: fail()
+print(checked(1))
+makeRunner(4).run()

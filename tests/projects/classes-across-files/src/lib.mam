@@ -1,0 +1,41 @@
+module demo.Lib
+class Point(let x: Int, let y: Int) {
+    constructor(both: Int) : this(both, both)
+}
+class Account {
+    var balance = 0
+        set(value) { field = value.coerceAtLeast(0) }
+    var uses = 0
+        private set
+    fun touch() { uses += 1 }
+}
+abstract class Shape {
+    abstract let sides: Int
+    open let name: Text = "shape"
+    fun describe(): Text = name + ":" + sides.toString()
+}
+interface Named { var label: Text }
+class Tag(var label: Text) implements Named
+class Outer(let base: Int) {
+    private var hits = 0
+    inner class Counter(let step: Int) {
+        fun bump(): Int {
+            hits += step
+            return hits + base
+        }
+    }
+}
+class Box<out T>(let value: T)
+enum Level {
+    Low { override fun weight(): Int = 1 },
+    High { override fun weight(): Int = 9 };
+    abstract fun weight(): Int
+}
+export infix fun Int.plusTwo(o: Int): Int = this + o + 2
+export let Text.shout: Text get() = this.uppercase() + "!"
+export fun fail(): Nothing = throw IllegalStateException("no")
+export fun makeRunner(n: Int): Runnable {
+    return object implements Runnable {
+        override fun run() { print(n * 2) }
+    }
+}
