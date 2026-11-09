@@ -5,6 +5,7 @@ import java.util.LinkedHashSet as __LinkedHashSet
 import java.util.Map as __Map
 import java.util.Map.Entry as __Entry
 import java.util.NoSuchElementException as __NoSuchElement
+import java.util.TreeMap as M__TreeMap
 import java.util.Iterator as __Iterator
 import java.util.regex.Pattern as M__Pattern
 import java.util.Collections as M__Collections
@@ -536,6 +537,12 @@ fun repeat(times: Int, action: (Int) -> Unit) {
 }
 fun maxOf(a: Int, b: Int): Int = if a > b { a } else { b }
 fun minOf(a: Int, b: Int): Int = if a < b { a } else { b }
+fun maxOf(a: Long, b: Long): Long = if a > b { a } else { b }
+fun minOf(a: Long, b: Long): Long = if a < b { a } else { b }
+fun maxOf(a: Double, b: Double): Double = if a > b { a } else { b }
+fun minOf(a: Double, b: Double): Double = if a < b { a } else { b }
+fun maxOf(a: Int, b: Int, c: Int): Int = maxOf(maxOf(a, b), c)
+fun minOf(a: Int, b: Int, c: Int): Int = minOf(minOf(a, b), c)
 fun Text.trimIndent(): Text {
     let lines = this.split("\n")
     var margin = -1
@@ -1274,3 +1281,273 @@ fun Iterable<__T>.slice<__T>(positions: Iterable<Int>): MutableList<__T> {
 fun Iterable<__T>.forEach<__T>(action: (__T) -> Unit) {
     for item in this { action(item) }
 }
+
+fun __rangeTo(first: Long, last: Long): MutableList<Long> {
+    let out = MutableList<Long>()
+    var value = first
+    while value <= last {
+        out.add(value)
+        value += 1L
+    }
+    return out
+}
+
+fun __rangeUntil(first: Long, end: Long): MutableList<Long> {
+    let out = MutableList<Long>()
+    var value = first
+    while value < end {
+        out.add(value)
+        value += 1L
+    }
+    return out
+}
+
+fun __rangeTo(first: Char, last: Char): MutableList<Char> {
+    let out = MutableList<Char>()
+    var value = first
+    while value <= last {
+        out.add(value)
+        if value == last { break }
+        value = value + 1
+    }
+    return out
+}
+
+fun __rangeStep(items: MutableList<Int>, step: Int): MutableList<Int> {
+    if step <= 0 { throw IllegalArgumentException("Step must be positive.") }
+    let out = MutableList<Int>()
+    var index = 0
+    while index < items.size() {
+        out.add(items[index])
+        index += step
+    }
+    return out
+}
+
+fun __Comparator<__T>.thenBy<__T, __K: Comparable<__K>>(selector: (__T) -> __K): __Comparator<__T> {
+    let first = this
+    return { a: __T, b: __T ->
+        let order = first.compare(a, b)
+        if order != 0 { order } else { selector(a).compareTo(selector(b)) }
+    }
+}
+
+fun __Comparator<__T>.thenByDescending<__T, __K: Comparable<__K>>(selector: (__T) -> __K): __Comparator<__T> {
+    let first = this
+    return { a: __T, b: __T ->
+        let order = first.compare(a, b)
+        if order != 0 { order } else { selector(b).compareTo(selector(a)) }
+    }
+}
+
+
+fun Iterable<__T>.indexOfLast<__T>(predicate: (__T) -> Bool): Int {
+    var index = 0
+    var found = -1
+    for item in this {
+        if predicate(item) { found = index }
+        index += 1
+    }
+    return found
+}
+
+fun Iterable<__T>.lastOrNull<__T>(predicate: (__T) -> Bool): __T? {
+    var found: __T? = null
+    for item in this {
+        if predicate(item) { found = item }
+    }
+    return found
+}
+
+fun Iterable<__T>.dropLast<__T>(count: Int): MutableList<__T> {
+    let items = MutableList<__T>()
+    for item in this { items.add(item) }
+    let out = MutableList<__T>()
+    var index = 0
+    while index < items.size() - count {
+        out.add(items[index])
+        index += 1
+    }
+    return out
+}
+
+fun Iterable<__T>.takeLast<__T>(count: Int): MutableList<__T> {
+    let items = MutableList<__T>()
+    for item in this { items.add(item) }
+    let out = MutableList<__T>()
+    var index = if items.size() > count { items.size() - count } else { 0 }
+    while index < items.size() {
+        out.add(items[index])
+        index += 1
+    }
+    return out
+}
+
+fun Iterable<__T>.getOrElse<__T>(position: Int, fallback: (Int) -> __T): __T {
+    var index = 0
+    for item in this {
+        if index == position { return item }
+        index += 1
+    }
+    return fallback(position)
+}
+
+fun Iterable<__T>.foldRight<__T, __R>(initial: __R, combine: (__T, __R) -> __R): __R {
+    let items = MutableList<__T>()
+    for item in this { items.add(item) }
+    var result = initial
+    var index = items.size() - 1
+    while index >= 0 {
+        result = combine(items[index], result)
+        index -= 1
+    }
+    return result
+}
+
+fun Iterable<__T>.zipWithNext<__T>(): MutableList<Pair<__T, __T>> {
+    let items = MutableList<__T>()
+    for item in this { items.add(item) }
+    let out = MutableList<Pair<__T, __T>>()
+    var index = 0
+    while index + 1 < items.size() {
+        out.add(Pair<__T, __T>(items[index], items[index + 1]))
+        index += 1
+    }
+    return out
+}
+
+fun MutableList<__T>.sort<__T: Comparable<__T>>() {
+    M__Collections.sort(this)
+}
+
+fun MutableList<__T>.reverse<__T>() {
+    M__Collections.reverse(this)
+}
+
+fun MutableList<__T>.removeAll<__T>(predicate: (__T) -> Bool): Bool {
+    let kept = MutableList<__T>()
+    for item in this {
+        if not predicate(item) { kept.add(item) }
+    }
+    let changed = kept.size() != this.size()
+    this.clear()
+    for item in kept { this.add(item) }
+    return changed
+}
+
+fun Iterable<Int>.toIntArray(): List<Int> {
+    var count = 0
+    for item in this { count += 1 }
+    let out = List<Int>(count)
+    var index = 0
+    for item in this {
+        out[index] = item
+        index += 1
+    }
+    return out
+}
+
+fun __Map<__K, __V>.any<__K, __V>(predicate: (__Entry<__K, __V>) -> Bool): Bool {
+    for entry in this.entrySet() {
+        if predicate(entry) { return true }
+    }
+    return false
+}
+
+fun __Map<__K, __V>.all<__K, __V>(predicate: (__Entry<__K, __V>) -> Bool): Bool {
+    for entry in this.entrySet() {
+        if not predicate(entry) { return false }
+    }
+    return true
+}
+
+fun __Map<__K, __V>.count<__K, __V>(predicate: (__Entry<__K, __V>) -> Bool): Int {
+    var total = 0
+    for entry in this.entrySet() {
+        if predicate(entry) { total += 1 }
+    }
+    return total
+}
+
+fun __Map<__K, __V>.maxByOrNull<__K, __V, __R: Comparable<__R>>(selector: (__Entry<__K, __V>) -> __R): __Entry<__K, __V>? {
+    var best: __Entry<__K, __V>? = null
+    var score: __R? = null
+    for entry in this.entrySet() {
+        let value = selector(entry)
+        let current = score
+        if current == null or value.compareTo(current) > 0 {
+            best = entry
+            score = value
+        }
+    }
+    return best
+}
+
+fun __Map<__K, __V>.toSortedMap<__K, __V>(): M__TreeMap<__K, __V> = M__TreeMap<__K, __V>(this)
+
+fun __Map<__K, __V>.forEach<__K, __V>(action: (__Entry<__K, __V>) -> Unit) {
+    for entry in this.entrySet() { action(entry) }
+}
+
+fun Text.substringBefore(separator: Text): Text {
+    let at = this.indexOf(separator)
+    return if at < 0 { this } else { this.substring(0, at) }
+}
+
+fun Text.substringAfter(separator: Text): Text {
+    let at = this.indexOf(separator)
+    return if at < 0 { this } else { this.substring(at + separator.length()) }
+}
+
+fun Text.substringBeforeLast(separator: Text): Text {
+    let at = this.lastIndexOf(separator)
+    return if at < 0 { this } else { this.substring(0, at) }
+}
+
+fun Text.substringAfterLast(separator: Text): Text {
+    let at = this.lastIndexOf(separator)
+    return if at < 0 { this } else { this.substring(at + separator.length()) }
+}
+
+fun Text.removePrefix(prefix: Text): Text = if this.startsWith(prefix) { this.substring(prefix.length()) } else { this }
+fun Text.removeSuffix(suffix: Text): Text = if this.endsWith(suffix) { this.substring(0, this.length() - suffix.length()) } else { this }
+
+fun Text.replaceFirstChar<__R>(change: (Char) -> __R): Text {
+    if this.length() == 0 { return this }
+    return "{change(this.charAt(0))}" + this.substring(1)
+}
+
+fun Text.chunked(size: Int): MutableList<Text> {
+    let out = MutableList<Text>()
+    var at = 0
+    while at < this.length() {
+        let end = if at + size < this.length() { at + size } else { this.length() }
+        out.add(this.substring(at, end))
+        at += size
+    }
+    return out
+}
+
+fun Text.toBoolean(): Bool = this.equalsIgnoreCase("true")
+
+fun Text.toLongOrNull(): Long? {
+    return try { java.lang.Long.parseLong(this) } catch (e: NumberFormatException) { null }
+}
+
+fun Text.toDoubleOrNull(): Double? {
+    return try { java.lang.Double.parseDouble(this) } catch (e: NumberFormatException) { null }
+}
+
+fun Text.compareTo(other: Text, ignoreCase: Bool): Int = if ignoreCase { this.compareToIgnoreCase(other) } else { this.compareTo(other) }
+fun Text.contains(other: Text, ignoreCase: Bool): Bool = if ignoreCase { this.toLowerCase().contains(other.toLowerCase()) } else { this.contains(other) }
+
+fun Text.split(pattern: Regex): MutableList<Text> = pattern.split(this)
+fun Text.replace(pattern: Regex, replacement: Text): Text = pattern.replace(this, replacement)
+
+fun Double.roundToInt(): Int = java.lang.Math.round(this).toInt()
+fun Double.pow(power: Double): Double = java.lang.Math.pow(this, power)
+fun Double.pow(power: Int): Double = java.lang.Math.pow(this, power.toDouble())
+let Int.absoluteValue: Int get() = java.lang.Math.abs(this)
+let Long.absoluteValue: Long get() = java.lang.Math.abs(this)
+let Double.absoluteValue: Double get() = java.lang.Math.abs(this)
+fun Int.toString(radix: Int): Text = java.lang.Integer.toString(this, radix)

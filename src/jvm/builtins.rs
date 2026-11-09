@@ -751,6 +751,8 @@ impl<'a> Emitter<'a> {
     ) -> Result<(u8, u8), Error> {
         let method = _method_unused;
         match comparison {
+            Comparison::Same => Ok((0xa5, 0xa6)),
+            Comparison::NotSame => Ok((0xa6, 0xa5)),
             Comparison::Eq | Comparison::Ne => {
                 let equals = self.runtime_member(
                     "java/util/Objects",

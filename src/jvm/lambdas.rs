@@ -742,6 +742,22 @@ impl<'a> Emitter<'a> {
                 name,
                 "Check for null before calling this function value.",
             )),
+            // A value whose class declares `invoke` can be called.
+            other
+                if self
+                    .symbols
+                    .types
+                    .native_class(other)
+                    .is_some_and(|class| self.symbols.find_method(class, "invoke").is_some()) =>
+            {
+                let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(name)));
+                let invoke = Name {
+                    text: "invoke",
+                    offset: name.offset,
+                };
+                self.method_call(method, receiver, invoke, args, base)
+                    .map(Some)
+            }
             _ => Ok(None),
         }
     }

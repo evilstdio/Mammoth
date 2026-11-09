@@ -1,0 +1,52 @@
+[a, b]
+1
+2
+3
+[a, b, c]
+[1, 2]
+[0, 5, 10]
+3
+true
+false
+true
+2
+2
+0
+1
+[1]
+[2]
+0
+3
+[Pair(first=1, second=2), Pair(first=2, second=3)]
+[1, 2]
+[2, 1]
+[2]
+1
+{a=2, b=1}
+true
+false
+1
+b
+a1
+a
+b=c
+a=b
+c
+b
+a
+Ab
+[ab, cd, e]
+true
+1
+null
+-1
+true
+[a, b]
+ax
+2
+8.0
+1
+ff
+3
+1.0
+2

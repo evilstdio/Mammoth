@@ -1,2 +1,2 @@
-// error: Expected an Int
+// error: No version
 let r = "a".."b"

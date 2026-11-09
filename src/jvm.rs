@@ -593,6 +593,7 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
         ));
     }
     match name.text {
+        "IntRange" => Ok(Kind::MutableList(ListKind::Int)),
         "IntArray" => Ok(Kind::List(ListKind::Int)),
         "LongArray" => Ok(Kind::List(ListKind::Long)),
         "DoubleArray" => Ok(Kind::List(ListKind::Double)),
@@ -4498,7 +4499,10 @@ impl<'a> Emitter<'a> {
             }
             Expr::Compare(left, comparison, right) => {
                 // `==` and `!=` handle null, so a null Java result is fine here.
-                let equality = matches!(comparison, Comparison::Eq | Comparison::Ne);
+                let equality = matches!(
+                    comparison,
+                    Comparison::Eq | Comparison::Ne | Comparison::Same | Comparison::NotSame
+                );
                 self.allow_null = equality;
                 let lhs = self.expression(method, left, base)?;
                 if !equality
@@ -4613,8 +4617,8 @@ impl<'a> Emitter<'a> {
         let (yes, no) = if lhs == Kind::Long && rhs == Kind::Long {
             method.code.push(0x94); // lcmp
             match comparison {
-                Comparison::Eq => (0x99, 0x9a),
-                Comparison::Ne => (0x9a, 0x99),
+                Comparison::Eq | Comparison::Same => (0x99, 0x9a),
+                Comparison::Ne | Comparison::NotSame => (0x9a, 0x99),
                 Comparison::Lt => (0x9b, 0x9c),
                 Comparison::Le => (0x9e, 0x9d),
                 Comparison::Gt => (0x9d, 0x9e),
@@ -4631,8 +4635,8 @@ impl<'a> Emitter<'a> {
         } else if lhs == Kind::Double && rhs == Kind::Double {
             // Choose the NaN ordering that makes ordered comparisons false.
             let (compare, yes, no) = match comparison {
-                Comparison::Eq => (0x97, 0x99, 0x9a),
-                Comparison::Ne => (0x97, 0x9a, 0x99),
+                Comparison::Eq | Comparison::Same => (0x97, 0x99, 0x9a),
+                Comparison::Ne | Comparison::NotSame => (0x97, 0x9a, 0x99),
                 Comparison::Lt => (0x98, 0x9b, 0x9c),
                 Comparison::Le => (0x98, 0x9e, 0x9d),
                 Comparison::Gt => (0x97, 0x9d, 0x9e),
@@ -4644,6 +4648,8 @@ impl<'a> Emitter<'a> {
             match comparison {
                 Comparison::Eq if lhs.is_reference() && rhs.is_reference() => (0xa5, 0xa6),
                 Comparison::Ne if lhs.is_reference() && rhs.is_reference() => (0xa6, 0xa5),
+                Comparison::Same if lhs.is_reference() && rhs.is_reference() => (0xa5, 0xa6),
+                Comparison::NotSame if lhs.is_reference() && rhs.is_reference() => (0xa6, 0xa5),
                 _ => {
                     return Err(Error {
                         offset: left.offset(),
@@ -4669,8 +4675,8 @@ impl<'a> Emitter<'a> {
                 }
             }
             match comparison {
-                Comparison::Eq => (0x9f, 0xa0),
-                Comparison::Ne => (0xa0, 0x9f),
+                Comparison::Eq | Comparison::Same => (0x9f, 0xa0),
+                Comparison::Ne | Comparison::NotSame => (0xa0, 0x9f),
                 Comparison::Lt => (0xa1, 0xa2),
                 Comparison::Le => (0xa4, 0xa3),
                 Comparison::Gt => (0xa3, 0xa4),
@@ -5060,6 +5066,23 @@ impl<'a> Emitter<'a> {
         body: &'a [Statement<'a>],
     ) -> Result<(), Error> {
         let kind = self.expression(method, start, 0)?;
+        if kind == Kind::Long {
+            // Long ranges hold their numbers in a list.
+            method.code.push(kind.pop_opcode());
+            let function = Name {
+                text: if inclusive {
+                    "__rangeTo"
+                } else {
+                    "__rangeUntil"
+                },
+                offset: name.offset,
+            };
+            let list: &'a Expr<'a> = Box::leak(Box::new(Expr::Call(
+                function,
+                vec![start.clone(), end.clone()],
+            )));
+            return self.loop_over(method, name, list, body);
+        }
         if !matches!(kind, Kind::Int | Kind::Char) {
             return Err(Error {
                 offset: start.offset(),

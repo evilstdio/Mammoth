@@ -392,6 +392,10 @@ pub type Condition<'a> = Expr<'a>;
 pub enum Comparison {
     Eq,
     Ne,
+    /// `===`: the same object.
+    Same,
+    /// `!==`: different objects.
+    NotSame,
     Lt,
     Le,
     Gt,
@@ -748,7 +752,7 @@ fn calls_function(source: &str, name: &str) -> bool {
             .chars()
             .next();
         !before.is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '.')
-            && matches!(after, Some('(' | '{'))
+            && matches!(after, Some('(' | '{' | '<'))
     })
 }
 
@@ -1087,7 +1091,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             .interfaces
             .iter()
             .any(|interface| interface.name.text == "Pair");
-    let destructures = ["let (", "var (", "for ("]
+    let destructures = ["let (", "var (", "for (", ") ->"]
         .iter()
         .any(|text| source.contains(text));
     let list_operators =
@@ -1123,6 +1127,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             || calls_function(source, "Pair")
             || in_code(source, " to ")
             || calls_member(source, "toList")
+            || calls_member(source, "zipWithNext")
             || calls_member(source, "associate")
             || needs_map);
     let needs_indexed = calls_member(source, "withIndex");
@@ -1174,10 +1179,15 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             .parameters
             .iter()
             .any(|(_, kind)| kind.text.starts_with("Pair<"));
+        let wants_regex = function
+            .parameters
+            .iter()
+            .any(|(_, kind)| kind.text == "Regex");
         // A program's own function replaces every library version of that name.
         if keep(function.name.text)
             && !declared.contains(&function.overload_of.unwrap_or(function.name.text))
             && (!wants_pair || needs_pair)
+            && (!wants_regex || needs_regex)
         {
             function.in_prelude = true;
             program.functions.push(function);
@@ -4725,6 +4735,8 @@ impl<'a> Parser<'a> {
             self.offset = start;
         }
         for (token, operator) in [
+            ("===", Comparison::Same),
+            ("!==", Comparison::NotSame),
             ("==", Comparison::Eq),
             ("!=", Comparison::Ne),
             ("<=", Comparison::Le),
@@ -4785,7 +4797,16 @@ impl<'a> Parser<'a> {
             offset: first.offset(),
         };
         let last = self.logical(0, depth)?;
-        Ok(Expr::Call(name, vec![first, last]))
+        let list = Expr::Call(name, vec![first, last]);
+        if self.take_word("step") {
+            let every = Name {
+                text: "__rangeStep",
+                offset: name.offset,
+            };
+            let step = self.logical(0, depth)?;
+            return Ok(Expr::Call(every, vec![list, step]));
+        }
+        Ok(list)
     }
 
     /// An expression directly followed by a block, as in `if ready { ... }`.
@@ -5053,7 +5074,7 @@ impl<'a> Parser<'a> {
             // the call or index gives. The `(` must follow directly, so a
             // parenthesized expression on the next line stays separate.
             if self.rest().starts_with('(')
-                && self.source[..self.offset].ends_with([')', ']', '}'])
+                && self.source[..self.offset].ends_with([')', ']', '}', '!'])
                 && matches!(
                     receiver,
                     Expr::Call(..) | Expr::MethodCall(..) | Expr::Index(..)
