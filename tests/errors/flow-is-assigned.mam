@@ -1,0 +1,8 @@
+// error: no public field
+fun f() {
+    var v: Any = "a"
+    if v is Text {
+        v = 1
+        print(v.length)
+    }
+}

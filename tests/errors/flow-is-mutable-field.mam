@@ -1,0 +1,4 @@
+// error: no public field
+class K(var a: Any)
+let k = K("x")
+if k.a is Text { print(k.a.length) }

@@ -1,0 +1,6 @@
+// error: no public field
+open class K { open let a: Any = "x" }
+fun f(k: K): Int {
+    if k.a is Text { return k.a.length }
+    return 0
+}

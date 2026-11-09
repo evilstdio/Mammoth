@@ -1824,6 +1824,19 @@ impl<'a> Emitter<'a> {
         let allow_null = std::mem::take(&mut self.allow_null);
         let kind = self.expression(method, receiver, base)?;
         let result = self.field_on(method, kind, name, base, allow_null)?;
+        if let Expr::Variable(owner) = receiver
+            && let Some(binding) = method.binding(*owner)
+            && !binding.mutable
+            && let Some(narrowed) = method.field_type_fact(binding.slot, name.text)
+            && let Some(class) = self.symbols.types.native_class(binding.kind.non_null())
+            && self
+                .symbols
+                .find_field(class, name.text)
+                .is_some_and(|(_, field)| !field.mutable && !field.lateinit)
+        {
+            self.cast_top(method, result, narrowed, base);
+            return Ok(narrowed);
+        }
         // A read-only field already checked against null needs no second check.
         if matches!(result, Kind::Nullable(_))
             && let Expr::Variable(owner) = receiver

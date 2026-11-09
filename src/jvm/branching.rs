@@ -39,7 +39,7 @@ impl<'a> Emitter<'a> {
         let variable = match expr {
             Expr::Variable(name) => method
                 .binding(*name)
-                .filter(|binding| !binding.mutable)
+                .filter(|binding| !method.boxed_slots.contains(&binding.slot))
                 .map(|binding| binding.slot),
             _ => None,
         };

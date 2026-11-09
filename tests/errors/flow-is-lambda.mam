@@ -1,0 +1,9 @@
+// error: no public field
+fun f() {
+    var v: Any = "a"
+    let g = { v = 1 }
+    if v is Text {
+        g()
+        print(v.length)
+    }
+}

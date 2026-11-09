@@ -1,0 +1,24 @@
+class K(let a: Any) {
+    fun f(): Int {
+        if a is Text { return a.length }
+        return 0
+    }
+    fun g(): Int = if this.a is Int { this.a + 1 } else { 0 }
+}
+print(K("ab").f())
+print(K(4).g())
+let k = K("abc")
+if k.a is Text { print(k.a.length) }
+fun h(start: Any) {
+    var v = start
+    if v is Text { print(v.length) }
+    when (v) {
+        is Int -> print(v + 1)
+        else -> print("other")
+    }
+    v = 5
+    if v !is Int { return }
+    print(v + 2)
+}
+h("xy")
+h(1)

@@ -3337,6 +3337,13 @@ impl<'a> Emitter<'a> {
             }
             if !field.mutable
                 && !field.lateinit
+                && let Some(narrowed) = method.field_type_fact(0, name.text)
+            {
+                self.cast_top(method, field.kind, narrowed, base);
+                return Ok(narrowed);
+            }
+            if !field.mutable
+                && !field.lateinit
                 && matches!(field.kind, Kind::Nullable(_))
                 && method.field_is_checked(0, name.text)
             {
@@ -4730,12 +4737,38 @@ impl<'a> Emitter<'a> {
                 }
             }
             Expr::Is(value, annotation) if when => {
-                if let Expr::Variable(name) = value.as_ref()
-                    && let Some(binding) = method.binding(*name)
-                    && !binding.mutable
-                    && let Ok(kind) = resolve_type(&self.type_scope, *annotation)
-                {
-                    facts.push((binding.slot, kind.non_null()));
+                let Ok(kind) = resolve_type(&self.type_scope, *annotation) else {
+                    return;
+                };
+                let this = Name {
+                    text: "this",
+                    offset: 0,
+                };
+                match value.as_ref() {
+                    Expr::Variable(name) => match method.binding(*name) {
+                        Some(binding) if !method.boxed_slots.contains(&binding.slot) => {
+                            facts.push((binding.slot, kind.non_null()));
+                        }
+                        Some(_) => {}
+                        None => {
+                            if method.binding(this).is_some()
+                                && let Some(id) = method.field_fact(0, name.text)
+                            {
+                                facts.push((id, kind.non_null()));
+                            }
+                        }
+                    },
+                    Expr::Field(object, field) => {
+                        if let Expr::Variable(owner) = object.as_ref()
+                            && let Some(binding) = method.binding(*owner)
+                            && !binding.mutable
+                            && !method.boxed_slots.contains(&binding.slot)
+                            && let Some(id) = method.field_fact(binding.slot, field.text)
+                        {
+                            facts.push((id, kind.non_null()));
+                        }
+                    }
+                    _ => {}
                 }
             }
             _ => {}
@@ -5648,7 +5681,7 @@ struct MethodState {
     local_table: usize,
     open_locals: Vec<(usize, usize)>,
     variables_low: usize,
-    type_facts: usize,
+    type_facts: Vec<(u16, Kind)>,
     code: usize,
     line_count: usize,
     last_line: Option<(u16, u16)>,
@@ -5764,7 +5797,7 @@ impl<'a> Method<'a> {
             local_table: self.local_table.len(),
             open_locals: self.open_locals.clone(),
             variables_low: self.variables_low,
-            type_facts: self.type_facts.len(),
+            type_facts: self.type_facts.clone(),
             code: self.code.len(),
             line_count: self.lines.len(),
             last_line: self.lines.last().copied(),
@@ -5792,7 +5825,7 @@ impl<'a> Method<'a> {
             }
         }
         self.open_locals = state.open_locals;
-        self.type_facts.truncate(state.type_facts);
+        self.type_facts = state.type_facts;
         self.locals = state.locals;
         self.stack = state.stack;
         self.variables.truncate(state.variables);
@@ -5886,6 +5919,23 @@ impl<'a> Method<'a> {
                 *fact = u16::MAX;
             }
         }
+        for fact in &mut self.type_facts {
+            if fact.0 == slot {
+                fact.0 = u16::MAX;
+            }
+        }
+    }
+
+    /// The type that an `is` check has shown this field of this variable has.
+    fn field_type_fact(&self, slot: u16, name: &'a str) -> Option<Kind> {
+        let known = self.field_facts.borrow();
+        let position = known.iter().position(|entry| *entry == (slot, name))?;
+        let id = u16::try_from(position).ok()?.checked_add(FIELD_FACTS)?;
+        self.type_facts
+            .iter()
+            .rev()
+            .find(|(fact, _)| *fact == id)
+            .map(|(_, kind)| *kind)
     }
 
     fn non_null_facts(&self, condition: &Condition<'a>, when: bool) -> Vec<u16> {
