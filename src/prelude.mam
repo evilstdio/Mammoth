@@ -1551,3 +1551,22 @@ let Int.absoluteValue: Int get() = java.lang.Math.abs(this)
 let Long.absoluteValue: Long get() = java.lang.Math.abs(this)
 let Double.absoluteValue: Double get() = java.lang.Math.abs(this)
 fun Int.toString(radix: Int): Text = java.lang.Integer.toString(this, radix)
+
+fun MutableList<__T>.component1<__T>(): __T = this[0]
+fun MutableList<__T>.component2<__T>(): __T = this[1]
+fun MutableList<__T>.component3<__T>(): __T = this[2]
+fun MutableList<__T>.component4<__T>(): __T = this[3]
+fun MutableList<__T>.component5<__T>(): __T = this[4]
+
+fun Text.dropLast(count: Int): Text = if count >= this.length() { "" } else { this.substring(0, this.length() - count) }
+fun Text.takeLast(count: Int): Text = if count >= this.length() { this } else { this.substring(this.length() - count) }
+
+fun Iterable<__T>.filterIndexed<__T>(predicate: (Int, __T) -> Bool): MutableList<__T> {
+    let out = MutableList<__T>()
+    var index = 0
+    for item in this {
+        if predicate(index, item) { out.add(item) }
+        index += 1
+    }
+    return out
+}

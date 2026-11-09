@@ -1,0 +1,170 @@
+// A little robot simulation: operators, scope functions, state machines,
+// companion factories, lazy values, extension functions and local functions.
+
+data class Vec(val x: Int, val y: Int) {
+    fun plus(o: Vec): Vec = Vec(x + o.x, y + o.y)
+    fun minus(o: Vec): Vec = Vec(x - o.x, y - o.y)
+    fun times(k: Int): Vec = Vec(x * k, y * k)
+    fun unaryMinus(): Vec = Vec(-x, -y)
+    val length: Int get() = abs(x) + abs(y)
+
+    companion object {
+        val ZERO = Vec(0, 0)
+        fun of(text: Text): Vec {
+            val (a, b) = text.split(",").map { it.trim().toInt() }
+            return Vec(a, b)
+        }
+    }
+}
+
+fun abs(n: Int): Int = if n < 0 { -n } else { n }
+
+enum Direction(val step: Vec) {
+    North(Vec(0, -1)),
+    East(Vec(1, 0)),
+    South(Vec(0, 1)),
+    West(Vec(-1, 0));
+
+    fun right(): Direction = entries[(ordinal + 1) % entries.size]
+    fun left(): Direction = entries[(ordinal + 3) % entries.size]
+}
+
+sealed class Command {
+    data class Forward(val distance: Int = 1) extends Command
+    object Left extends Command
+    object Right extends Command
+    data class Say(val message: Text) extends Command
+    data class Repeat(val times: Int, val body: MutableList<Command>) extends Command
+}
+
+fun parseProgram(source: Text): MutableList<Command> {
+    val tokens = source.split(" ").filter { it.isNotEmpty() }
+    var index = 0
+
+    fun block(): MutableList<Command> {
+        val out = mutableListOf<Command>()
+        while index < tokens.size and tokens[index] != "]" {
+            val word = tokens[index]
+            index += 1
+            val command: Command = when (word) {
+                "F" -> Command.Forward()
+                "L" -> Command.Left
+                "R" -> Command.Right
+                else -> when {
+                    word.startsWith("F") -> Command.Forward(word.drop(1).toInt())
+                    word.startsWith("say:") -> Command.Say(word.removePrefix("say:"))
+                    word.endsWith("[") -> {
+                        val count = word.dropLast(1).toInt()
+                        val body = block()
+                        index += 1
+                        Command.Repeat(count, body)
+                    }
+                    else -> throw IllegalArgumentException("bad token " + word)
+                }
+            }
+            out.add(command)
+        }
+        return out
+    }
+    return block()
+}
+
+interface Observer {
+    fun moved(from: Vec, to: Vec) { }
+    fun spoke(text: Text) { }
+}
+
+class Trail implements Observer {
+    val points = mutableListOf<Vec>()
+    override fun moved(from: Vec, to: Vec) { points.add(to) }
+}
+
+class Transcript implements Observer {
+    private val lines = StringBuilder()
+    override fun spoke(text: Text) {
+        if lines.length > 0 { lines.append("; ") }
+        lines.append(text)
+    }
+    override fun toString(): Text = lines.toString()
+}
+
+open class Robot(val name: Text, start: Vec = Vec.ZERO, var facing: Direction = Direction.North) {
+    var position: Vec = start
+        protected set
+    private val observers = mutableListOf<Observer>()
+    lateinit var lastSaid: Text
+    val summary: Text by lazy { name + " started at " + start.toString() }
+
+    fun watch(vararg items: Observer): Robot = apply {
+        for item in items { observers.add(item) }
+    }
+
+    open fun stride(distance: Int): Vec = facing.step * distance
+
+    fun run(program: MutableList<Command>) {
+        for command in program {
+            when (command) {
+                is Command.Forward -> {
+                    val from = position
+                    position = position + stride(command.distance)
+                    observers.forEach { it.moved(from, position) }
+                }
+                Command.Left -> facing = facing.left()
+                Command.Right -> facing = facing.right()
+                is Command.Say -> {
+                    lastSaid = command.message
+                    observers.forEach { it.spoke(name + ": " + command.message) }
+                }
+                is Command.Repeat -> repeat(command.times) { run(command.body) }
+            }
+        }
+    }
+}
+
+class Sprinter(name: Text) extends Robot(name, facing = Direction.East) {
+    override fun stride(distance: Int): Vec = super.stride(distance) * 2
+}
+
+fun MutableList<Vec>.farthest(): Vec? = maxByOrNull { it.length }
+fun <T> MutableList<T>.everyOther(): MutableList<T> = filterIndexed { index, _ -> index % 2 == 0 }
+
+val trail = Trail()
+val transcript = Transcript()
+val robot = Robot("r2").watch(trail, transcript)
+robot.run(parseProgram("F2 R F say:hi 2[ L F3 ] say:done"))
+print(robot.position)
+print(robot.facing)
+print(robot.lastSaid)
+print(robot.summary)
+print(trail.points)
+print(trail.points.farthest())
+print(trail.points.everyOther().size)
+print(transcript)
+
+val sprinter = Sprinter("fast").also { it.run(parseProgram("F F3")) }
+print(sprinter.position)
+print(-sprinter.position)
+print((sprinter.position - Vec.of("1, 1")).length)
+print(sprinter is Robot)
+
+val message = try {
+    parseProgram("F x")
+    "parsed"
+} catch (e: IllegalArgumentException) {
+    e.message ?: "unknown"
+}
+print(message)
+
+val late = Robot("late")
+try {
+    print(late.lastSaid)
+} catch (e: RuntimeException) {
+    print(e.getClass().simpleName)
+}
+
+with(Vec(3, 4)) { print(x * y) }
+val described = Vec(1, 2).run { "x=" + x.toString() + " y=" + y.toString() }
+print(described)
+print(Vec(1, 2).let { (a, b) -> a + b })
+print(Direction.valueOf("West").step)
+print(Direction.values().map { it.right().name }.joinToString(","))

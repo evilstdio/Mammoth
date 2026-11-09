@@ -1053,7 +1053,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         .iter()
         .filter_map(|function| function.extension_of)
         .collect();
-    let destructuring = ["let (", "var (", "for ("]
+    let destructuring = ["let (", "val (", "var (", "for (", ") ->"]
         .iter()
         .any(|text| source.contains(text));
     if !destructuring
@@ -1078,7 +1078,9 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
                 "mutableMapOf",
             ])
             .any(|name| calls_function(source, name))
-        && !extensions.iter().any(|name| calls_member(source, name))
+        && !extensions
+            .iter()
+            .any(|name| calls_member(source, name) || calls_function(source, name))
     {
         return;
     }
@@ -1091,7 +1093,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             .interfaces
             .iter()
             .any(|interface| interface.name.text == "Pair");
-    let destructures = ["let (", "var (", "for (", ") ->"]
+    let destructures = ["let (", "val (", "var (", "for (", ") ->"]
         .iter()
         .any(|text| source.contains(text));
     let list_operators =
@@ -1107,6 +1109,7 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
                 let needs_pair = matches!(name, "zip" | "partition");
                 name == "toMutableList"
                     || (name.starts_with("__sumOf") && calls_member(source, "sumOf"))
+                    || (matches!(name, "apply" | "run") && calls_function(source, name))
                     || (matches!(name, "union" | "intersect" | "subtract")
                         && in_code(source, &format!(" {name} ")))
                     || (destructures && name.starts_with("component"))
@@ -1115,7 +1118,8 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
                     || (name == "toSet"
                         && (calls_function(source, "setOf")
                             || calls_function(source, "mutableSetOf")))
-                    || (calls_member(source, name) && !(needs_pair && user_pair))
+                    || ((calls_member(source, name) || calls_function(source, name))
+                        && !(needs_pair && user_pair))
             })
         })
         .map(|function| function.name.text)
@@ -1286,6 +1290,7 @@ fn parse_with<'a>(
             .chain(project_names(true))
             .collect(),
         reading_extension_property: false,
+        recursive_holders: Vec::new(),
         nothing_names: nothing_names(source)
             .into_iter()
             .chain(project_names(false))
@@ -1507,6 +1512,8 @@ struct Parser<'a> {
     lambda_prefix: Vec<Statement<'a>>,
     /// Names written as `infix fun`, usable as `a name b`.
     infix_names: Vec<&'a str>,
+    /// Lists that hold local functions being read, so they can call themselves.
+    recursive_holders: Vec<&'a str>,
     /// The next function read is `let Receiver.name: Type get() = ...`.
     reading_extension_property: bool,
     /// Functions declared to return `Nothing`.
@@ -2407,10 +2414,34 @@ impl<'a> Parser<'a> {
                                 "Give a lazy field a type, such as let total: Int by lazy { ... }.",
                             ));
                         };
+                        let lazy_start = self.offset;
                         let (body, value) = self.value_body(1)?;
                         let Some(value) = value else {
                             return Err(self.error("A lazy block must end with a value."));
                         };
+                        // The block runs later, so constructor values it uses are kept.
+                        let text = &self.source[lazy_start..self.offset];
+                        for &(parameter, kind) in &parameters {
+                            if !fields
+                                .iter()
+                                .any(|field: &Field<'a>| field.name.text == parameter.text)
+                                && text
+                                    .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+                                    .any(|word| word == parameter.text)
+                            {
+                                initializers.insert(0, Initializer::Field(fields.len()));
+                                fields.push(Field {
+                                    annotations: Vec::new(),
+                                    protected: false,
+                                    name: parameter,
+                                    annotation: Some(kind),
+                                    value: Some(Expr::Variable(parameter)),
+                                    mutable: false,
+                                    private: true,
+                                    is_lateinit: false,
+                                });
+                            }
+                        }
                         let (field, getter) = lazy_field(name, result, body, *value, private);
                         initializers.push(Initializer::Field(fields.len()));
                         fields.push(field);
@@ -3499,6 +3530,17 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self, mut name: Name<'a>, depth: usize) -> Result<Statement<'a>, Error> {
+        if let Some(&(_, hidden)) = self
+            .local_aliases
+            .iter()
+            .rev()
+            .find(|(plain, _)| *plain == name.text)
+            && self.recursive_holders.contains(&hidden)
+            && self.rest().starts_with('(')
+        {
+            self.offset = name.offset;
+            return Ok(Statement::MethodCall(self.expression()?));
+        }
         if matches!(name.text, "field" | "this")
             && let Some(&(_, hidden)) = self
                 .local_aliases
@@ -3825,12 +3867,23 @@ impl<'a> Parser<'a> {
         let args = if let Expr::Variable(_) = receiver
             && let Some(lambda) = self.trailing_lambda(0)?
         {
-            vec![lambda]
+            vec![if matches!(
+                name.text.split('<').next(),
+                Some("buildString" | "buildList" | "apply" | "run")
+            ) {
+                with_receiver(lambda)
+            } else {
+                lambda
+            }]
         } else {
             self.expect("(", "Expected '(' for a call or '=' for an assignment.")?;
             let mut args = self.list(")", |parser| parser.argument(0))?;
             if let Some(lambda) = self.trailing_lambda(0)? {
-                args.push(lambda);
+                args.push(if name.text == "with" {
+                    with_receiver(lambda)
+                } else {
+                    lambda
+                });
             }
             args
         };
@@ -4095,6 +4148,11 @@ impl<'a> Parser<'a> {
         self.local_aliases.push((plain.text, hidden));
         let aliases = self.local_aliases.len();
         let enclosing = std::mem::replace(&mut self.top_level_function, false);
+        let marks = (
+            self.hoisted_functions.len(),
+            self.nested_classes.len(),
+            self.declared_functions.len(),
+        );
         let mut function = self.function(true)?;
         self.top_level_function = enclosing;
         self.local_aliases.truncate(aliases);
@@ -4115,12 +4173,28 @@ impl<'a> Parser<'a> {
         }
         // Recursion needs the hidden name, which only the hoisted form has.
         self.local_aliases.pop();
-        if text.matches(plain.text).count() > 1 && recursive_call(text, plain.text) {
-            return Err(Error {
-                offset: plain.offset,
-                message: "A local function that uses outer variables cannot call itself yet.",
-            });
-        }
+        let holder = if text.matches(plain.text).count() > 1 && recursive_call(text, plain.text) {
+            // Read it again with calls going through a list that will hold
+            // the function, since a lambda cannot name itself.
+            let holder: &'a str =
+                Box::leak(format!("__rec{}_{}", plain.offset, plain.text).into_boxed_str());
+            self.hoisted_functions.truncate(marks.0);
+            self.nested_classes.truncate(marks.1);
+            self.declared_functions.truncate(marks.2);
+            self.offset = start;
+            self.local_aliases.push((plain.text, holder));
+            self.recursive_holders.push(holder);
+            let enclosing = std::mem::replace(&mut self.top_level_function, false);
+            let reread = self.function(true);
+            self.top_level_function = enclosing;
+            self.recursive_holders.pop();
+            self.local_aliases.pop();
+            function = reread?;
+            self.finished_helpers.clear();
+            Some(holder)
+        } else {
+            None
+        };
         let inputs: Vec<&str> = function
             .parameters
             .iter()
@@ -4143,11 +4217,39 @@ impl<'a> Parser<'a> {
             value: None,
             receiver: false,
         };
-        Ok(Statement::Binding(
+        let binding = Statement::Binding(
             plain,
             Expr::Lambda(Box::new(lambda)),
             false,
             Some(annotation),
+        );
+        let Some(holder) = holder else {
+            return Ok(binding);
+        };
+        let holder = Name {
+            text: holder,
+            offset: plain.offset,
+        };
+        let list = Name {
+            text: Box::leak(format!("MutableList<{}>", annotation.text).into_boxed_str()),
+            offset: plain.offset,
+        };
+        let add = Name {
+            text: "add",
+            offset: plain.offset,
+        };
+        self.extra_statements.push(binding);
+        self.extra_statements
+            .push(Statement::MethodCall(Expr::MethodCall(
+                Box::new(Expr::Variable(holder)),
+                add,
+                vec![Expr::Variable(plain)],
+            )));
+        Ok(Statement::Binding(
+            holder,
+            Expr::Call(list, Vec::new()),
+            false,
+            None,
         ))
     }
 
@@ -5529,6 +5631,17 @@ impl<'a> Parser<'a> {
                         lambda
                     });
                 }
+                if self.recursive_holders.contains(&name.text) {
+                    let invoke = Name {
+                        text: "invoke",
+                        offset,
+                    };
+                    let target = Expr::Index(
+                        Box::new(Expr::Variable(name)),
+                        Box::new(Expr::Int(offset, 0)),
+                    );
+                    return Ok(Expr::MethodCall(Box::new(target), invoke, args));
+                }
                 if self.nothing_names.contains(&name.text) {
                     let call = Expr::Call(name, args);
                     return Ok(Expr::Jump(Box::new(Statement::Throw(name, call))));
@@ -5540,7 +5653,7 @@ impl<'a> Parser<'a> {
             {
                 let lambda = if matches!(
                     name.text.split('<').next(),
-                    Some("buildString" | "buildList")
+                    Some("buildString" | "buildList" | "apply" | "run")
                 ) {
                     with_receiver(lambda)
                 } else {
@@ -5668,6 +5781,7 @@ impl<'a> Parser<'a> {
             lambda_prefix: Vec::new(),
             infix_names: self.infix_names.clone(),
             reading_extension_property: false,
+            recursive_holders: self.recursive_holders.clone(),
             nothing_names: self.nothing_names.clone(),
             function_start: self.function_start,
             current_type: "",

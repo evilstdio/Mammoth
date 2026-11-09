@@ -2646,6 +2646,15 @@ impl<'a> Emitter<'a> {
             if let Some(path) = self.outer_path(method, name, true) {
                 return self.method_call_expected(method, path, name, args, base, expected);
             }
+            // An extension can be called on the current object without naming it.
+            let this = Name {
+                text: "this",
+                offset: name.offset,
+            };
+            if self.symbols.extensions.contains_key(name.text) && method.binding(this).is_some() {
+                let receiver: &'a Expr<'a> = Box::leak(Box::new(Expr::Variable(this)));
+                return self.method_call_expected(method, receiver, name, args, base, expected);
+            }
             let known: Vec<&str> = self
                 .symbols
                 .functions
@@ -3408,6 +3417,18 @@ impl<'a> Emitter<'a> {
             && let Some(kind) = self.read_static_field(method, class, name, base)?
         {
             return Ok(kind);
+        }
+        if name.text == "entries"
+            && let Some(class) = self.current_class
+            && self.symbols.enum_values[class].is_some()
+        {
+            let values = Name {
+                text: "values",
+                offset: name.offset,
+            };
+            if let Some(kind) = self.enum_static_call(method, class, values, &[], base)? {
+                return Ok(kind);
+            }
         }
         // Inside an enum, `name` and `ordinal` describe the current value.
         if matches!(name.text, "name" | "ordinal")

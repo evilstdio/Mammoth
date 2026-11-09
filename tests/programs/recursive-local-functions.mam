@@ -1,0 +1,28 @@
+fun walk(n: Int): Int {
+    var total = 0
+    fun go(i: Int) {
+        if i == 0 { return }
+        total += i
+        go(i - 1)
+    }
+    go(n)
+    return total
+}
+print(walk(4))
+fun fib(limit: Int): Int {
+    val seen = mutableMapOf<Int, Int>()
+    fun at(n: Int): Int {
+        if n < 2 { return n }
+        return seen.getOrPut(n) { at(n - 1) + at(n - 2) }
+    }
+    return at(limit)
+}
+print(fib(20))
+fun outer(k: Int): Int {
+    fun one(x: Int): Int {
+        fun two(y: Int): Int = if y == 0 { k } else { two(y - 1) + 1 }
+        return two(x)
+    }
+    return one(3)
+}
+print(outer(2))

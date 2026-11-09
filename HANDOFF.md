@@ -21,6 +21,8 @@ Work continues on branch `compiler-correctness`, local only, identity `sss47 <ss
 
 **Fabric.** `build` and `verifyMod` passed and produced JAR `3A62CD15...29CB`, the hash already smoke-tested. If a build seems stale, delete `build/libs`, `build/devlibs` and `build/loom-cache/remapped_working` under `examples/fabric-demo`.
 
+**Recursive local functions** that capture are read twice. On the second reading, calls go through a one-item list (`__rec<offset>_name`, `recursive_holders`) that receives the lambda after it is built.
+
 **Known limits.** No coroutines, no `Float`, `Byte`, `Short` or unsigned types in Mammoth source, no reified type parameters, non-local `return` from lambdas is not supported (a plain `return` leaves the lambda). See the object expression limits in the README. Top-level `obj.fail()` methods returning `Nothing` are not treated as jumps.
 
 **Probes.** `tests/fuzz/kotlin_probe.py` and `tests/fuzz/probe2.py` list everyday constructs, `tests/fuzz/advcases5.py` and `advcases6.py` are adversarial batteries for this session.
@@ -43,7 +45,7 @@ The goal is closing the feature gap with Kotlin. Work is on branch `compiler-cor
 - **Property reads** fall back in `field_on` to `name()`, `getName()` and extensions. **Interface properties** are abstract methods; a class field of that name gets a generated getter (`property_getters`).
 - Real programs: `examples/json.mam`, `algorithms.mam`, `library.mam`.
 
-**Known limits.** No coroutines. Local functions that use outer variables cannot call themselves. Implicit receiver members work in a lambda inside an extension only through `this`. A constructor default cannot mention the class's type parameters. Overloaded names are hidden from Java. Overloads with a generic parameter type may not line up with an override written with concrete types. Prelude errors are reported as "in the built-in library". `a to b` works only in call arguments.
+**Known limits.** No coroutines. Implicit receiver members work in a lambda inside an extension only through `this`. A constructor default cannot mention the class's type parameters. Overloaded names are hidden from Java. Overloads with a generic parameter type may not line up with an override written with concrete types. Prelude errors are reported as "in the built-in library". `a to b` works only in call arguments.
 
 **Probe.** `tests/fuzz/kotlin_probe.py` runs 171 everyday constructs; 142 passed at last count. Remaining: setters, secondary constructors, `inner` classes, overriding properties, class-level `out`/`in`, `MutableList<*>`, runtime-sized arrays, `Nothing` in expressions, unary operator methods, sequences, and coroutines. The `:` inheritance spelling is intentionally not adopted.
 
