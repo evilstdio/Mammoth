@@ -1000,7 +1000,7 @@ Classes can mark type parameters `out` or `in`, with the same rules as interface
 
 ### More class and flow features
 
-An `inner class` holds a reference to the object that made it. Its code can use the outer object's members by name, including private ones, and `this@Outer` names the outer object. Create one inside the outer class with `Inner()`, or from outside with `outer.Inner()`. An inner class of a generic class is not supported yet, and an inner class cannot have default constructor values, more constructors or static members yet.
+An `inner class` holds a reference to the object that made it. Its code can use the outer object's members by name, including private ones, and `this@Outer` names the outer object. Create one inside the outer class with `Inner()`, or from outside with `outer.Inner()`. An inner class of a generic class shares its type parameters and cannot add its own yet. An inner class cannot have default constructor values, more constructors or static members yet.
 
 `implements I by value` forwards every abstract method of `I` to `value`. The interface must be declared in the same file and have no type parameters. Methods the class writes itself win.
 
@@ -1014,7 +1014,7 @@ The library has lazy sequences: `asSequence()`, `generateSequence`, and on a seq
 
 Java types can be written in full, as in `java.util.Iterator<Int>`, and `catch (e: java.io.IOException)`. Classes can be used in full too, as in `java.util.Objects.hash(1)`. `Runnable { ... }` makes a Java functional interface from a lambda. `IntArray(3)` and `Array<Text>(2) { "" }` are other spellings of `List<Int>(3)` and `List<Text>(2) { "" }`.
 
-`is` narrows local `var`s and read-only fields by the same rules as null checks. An object with an `iterator()` method, whose result has `hasNext()` and `next()`, can be used in a `for` loop. `listOf`, `setOf` and `mapOf` work in generic code. `++count` and `--count` are statements. `require` and `check` take a message or a block that makes one. `value class` is a data class here, without the unboxed representation.
+`is` narrows local `var`s and read-only fields by the same rules as null checks. An object with an `iterator()` method, whose result has `hasNext()` and `next()`, can be used in a `for` loop. `listOf`, `setOf` and `mapOf` work in generic code. `a === b` compares object identity. A value whose class declares `invoke` can be called. `++count` and `--count` are statements. `require` and `check` take a message or a block that makes one. `value class` is a data class here, without the unboxed representation.
 
 ### Objects
 

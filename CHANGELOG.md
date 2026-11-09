@@ -16,6 +16,7 @@
 - Errors suggest close names, and explain `and`, `or`, `not` and `extends` to people arriving from other languages.
 - Infix and never-returning functions work across the files of a project.
 - `is` narrowing for local `var`s and read-only fields, `Runnable { ... }` SAM constructors, classes and types written in full, `IntArray`/`Array` spellings, positional annotation values, the `iterator()` loop convention, `++x` statements, `value class`, `toString` and friends on interface values, `listOf`/`setOf`/`mapOf` in generic code.
+- Inner classes of generic classes, `===` and `!==`, callable objects with `invoke`, `step` and `Long` ranges, and about forty more library operations on lists, maps, text and numbers.
 - Soundness: a lambda can no longer be passed as the element of a Java collection whose element type is not a function type, which caused a `ClassCastException` found by the soundness fuzzer.
 - `examples/tasks.mam`, `interpreter.mam` and `structures.mam` exercise these features together.
 - Fixes: generated data class methods keep line tables after library functions, the library's `Pair` is selected only when called, the Fabric demo's jar now tracks its compiled classes, top-level initialization order follows property reads and writes, names declared inside a top-level lambda no longer force a type on a same-named top-level variable.

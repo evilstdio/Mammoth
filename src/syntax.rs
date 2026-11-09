@@ -2244,13 +2244,14 @@ impl<'a> Parser<'a> {
                 member.text,
                 "class" | "data" | "enum" | "sealed" | "object" | "interface"
             ) {
-                if inner_member && (member.text != "class" || !type_parameters.is_empty()) {
+                if inner_member && member.text != "class" {
                     return Err(Error {
                         offset: member.offset,
-                        message: "Only a class inside a class without type parameters can be inner.",
+                        message: "Only a class can be inner.",
                     });
                 }
-                self.nested_type(member, abstract_member, name, inner_member)?;
+                let outer_generics = (type_parameters.clone(), bounds.clone());
+                self.nested_type(member, abstract_member, name, inner_member, outer_generics)?;
                 continue;
             }
             if is_static {
@@ -4207,6 +4208,7 @@ impl<'a> Parser<'a> {
         is_abstract: bool,
         outer: Name<'a>,
         inner: bool,
+        outer_generics: (Vec<Name<'a>>, Vec<Vec<Name<'a>>>),
     ) -> Result<(), Error> {
         let mut interface = None;
         let mut class = None;
@@ -4249,6 +4251,28 @@ impl<'a> Parser<'a> {
                 let holder = Name {
                     text: "__outer",
                     offset: class.name.offset,
+                };
+                // An inner class of a generic class shares its type parameters.
+                let (generics, bounds) = outer_generics;
+                let outer = if generics.is_empty() {
+                    outer
+                } else {
+                    if !class.type_parameters.is_empty() {
+                        return Err(Error {
+                            offset: class.name.offset,
+                            message: "An inner class of a generic class cannot add type parameters yet.",
+                        });
+                    }
+                    let names: Vec<&str> = generics.iter().map(|name| name.text).collect();
+                    class.variances = vec![Variance::Invariant; generics.len()];
+                    class.type_parameters = generics;
+                    class.bounds = bounds;
+                    Name {
+                        text: Box::leak(
+                            format!("{}<{}>", outer.text, names.join(", ")).into_boxed_str(),
+                        ),
+                        offset: outer.offset,
+                    }
                 };
                 class.parameters.insert(0, (holder, outer));
                 class

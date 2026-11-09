@@ -188,6 +188,8 @@ struct Types<'a> {
     functions: Rc<RefCell<Vec<FunctionType>>>,
     parameters: Rc<RefCell<Vec<&'a str>>>,
     class_parameters: Rc<RefCell<Vec<TypeParameters<'a>>>>,
+    /// Classes declared `inner`, whose type arguments can come from the scope.
+    inner_classes: Rc<RefCell<HashSet<usize>>>,
     interface_parameters: Rc<RefCell<Vec<TypeParameters<'a>>>>,
     /// The bound of each type parameter, by `Kind::TypeParameter` index.
     bounds: Rc<RefCell<Vec<Vec<Kind>>>>,
@@ -579,6 +581,23 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
     if let Some(&Kind::Object(class)) = types.names.get(name.text)
         && !types.class_parameters.borrow()[class].is_empty()
     {
+        // Inside a generic class, `Inner` means `Inner` of the same type arguments.
+        if types.inner_classes.borrow().contains(&class) {
+            let parameters = types.class_parameters.borrow()[class].clone();
+            let arguments: Option<Vec<Kind>> = parameters
+                .iter()
+                .map(|(parameter, _)| {
+                    types
+                        .names
+                        .get(parameter.text)
+                        .copied()
+                        .filter(|kind| matches!(kind, Kind::TypeParameter(_)))
+                })
+                .collect();
+            if let Some(arguments) = arguments {
+                return Ok(types.apply_class(class, arguments));
+            }
+        }
         return Err(at(
             name,
             "Give this generic class type arguments, such as Box<Int>.",

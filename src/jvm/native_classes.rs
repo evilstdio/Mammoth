@@ -306,6 +306,11 @@ impl<'a> Emitter<'a> {
         if self.symbols.types.class_parameters.borrow()[class].is_empty() {
             return Ok(None);
         }
+        if self.symbols.class_declarations[class].inner_of.is_some()
+            && !std::mem::take(&mut self.inner_ready)
+        {
+            return self.create_inner(method, class, name, args, base, None);
+        }
         if method.binding(local).is_some()
             || self.fields.contains_key(local.text)
             || self.symbols.global(local.text).is_some()

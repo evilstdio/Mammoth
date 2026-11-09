@@ -1,0 +1,3 @@
+// error: Expected Text
+class O<T>(let v: T) { inner class I { fun g(): T = v } }
+let x: Text = O(1).I().g()

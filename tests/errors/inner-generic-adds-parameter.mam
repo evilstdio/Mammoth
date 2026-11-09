@@ -1,0 +1,2 @@
+// error: cannot add type parameters
+class O<T>(let v: T) { inner class I<R> }

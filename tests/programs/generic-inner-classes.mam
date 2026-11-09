@@ -1,0 +1,36 @@
+import java.util.Iterator
+class Chain<T> implements Iterable<T> {
+    private class Link<T>(let value: T, var next: Link<T>?)
+    private var head: Link<T>? = null
+    private var count = 0
+
+    fun push(value: T) {
+        head = Link<T>(value, head)
+        count += 1
+    }
+
+    inner class Walker implements Iterator<T> {
+        private var at: Link<T>? = head
+        override fun hasNext(): Bool = at != null
+        override fun next(): T {
+            val link = at!!
+            at = link.next
+            return link.value
+        }
+        fun total(): Int = count
+    }
+
+    override fun iterator(): Iterator<T> = Walker()
+    fun walker(): Walker = Walker()
+}
+val c = Chain<Text>()
+c.push("a")
+c.push("bc")
+for x in c { print(x.length) }
+print(c.walker().total())
+val w = c.Walker()
+print(w.next().length)
+val n = Chain<Int>()
+n.push(4)
+print(n.iterator().next() + 1)
+print(n.map { it * 2 })

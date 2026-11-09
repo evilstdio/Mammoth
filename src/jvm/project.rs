@@ -36,6 +36,7 @@ pub(super) fn resolve<'a>(
     let functions = Rc::new(RefCell::new(Vec::new()));
     let parameters = Rc::new(RefCell::new(Vec::new()));
     let class_parameters = Rc::new(RefCell::new(Vec::new()));
+    let inner_classes = Rc::new(RefCell::new(HashSet::new()));
     let interface_parameters = Rc::new(RefCell::new(Vec::new()));
     let bounds = Rc::new(RefCell::new(Vec::new()));
     let variances = Rc::new(RefCell::new(Vec::new()));
@@ -76,6 +77,7 @@ pub(super) fn resolve<'a>(
                 functions: functions.clone(),
                 parameters: parameters.clone(),
                 class_parameters: class_parameters.clone(),
+                inner_classes: inner_classes.clone(),
                 interface_parameters: interface_parameters.clone(),
                 bounds: bounds.clone(),
                 variances: variances.clone(),
@@ -245,6 +247,9 @@ pub(super) fn resolve<'a>(
                     unreachable!()
                 };
                 variances.borrow_mut()[parameter] = variance;
+            }
+            if class.inner_of.is_some() {
+                inner_classes.borrow_mut().insert(index);
             }
             class_parameters.borrow_mut()[index] = names;
         }
