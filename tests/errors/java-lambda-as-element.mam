@@ -1,0 +1,4 @@
+// error: does not match
+import java.util.ArrayList
+let l = ArrayList<Int>()
+l.add({ x: Text -> x })

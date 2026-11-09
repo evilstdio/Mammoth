@@ -53,6 +53,30 @@ impl<'a> Emitter<'a> {
         args: &'a [Expr<'a>],
         base: u16,
     ) -> Result<Option<Kind>, Error> {
+        // Arrays are lists here, so `IntArray(3)` and `Array<Text>(2) { "" }` work too.
+        let name = match name.text {
+            "IntArray" | "LongArray" | "DoubleArray" | "BooleanArray" | "CharArray"
+                if !self.symbols.types.names.contains_key(name.text)
+                    && !self.symbols.functions.contains_key(name.text) =>
+            {
+                let element = match name.text {
+                    "IntArray" => "Int",
+                    "LongArray" => "Long",
+                    "DoubleArray" => "Double",
+                    "BooleanArray" => "Bool",
+                    _ => "Char",
+                };
+                Name {
+                    text: Box::leak(format!("List<{element}>").into_boxed_str()),
+                    offset: name.offset,
+                }
+            }
+            text if text.starts_with("Array<") => Name {
+                text: Box::leak(format!("List{}", &text["Array".len()..]).into_boxed_str()),
+                offset: name.offset,
+            },
+            _ => name,
+        };
         let growable = name.text.starts_with("MutableList<");
         if !growable && !name.text.starts_with("List<") {
             return Ok(None);

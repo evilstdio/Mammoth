@@ -479,7 +479,7 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
         .text
         .strip_suffix('>')
         .and_then(|text| text.split_once('<'))
-        && matches!(container.trim(), "List" | "MutableList")
+        && matches!(container.trim(), "List" | "MutableList" | "Array")
     {
         let trimmed = element.trim();
         if container.trim() == "MutableList" && trimmed == "*" {
@@ -496,7 +496,7 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
         )?;
         let list = ListKind::for_element(element)
             .ok_or_else(|| at(name, "List elements need a non-null value or object type."))?;
-        return Ok(if container.trim() == "List" {
+        return Ok(if container.trim() != "MutableList" {
             Kind::List(list)
         } else {
             Kind::MutableList(list)
@@ -593,6 +593,11 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
         ));
     }
     match name.text {
+        "IntArray" => Ok(Kind::List(ListKind::Int)),
+        "LongArray" => Ok(Kind::List(ListKind::Long)),
+        "DoubleArray" => Ok(Kind::List(ListKind::Double)),
+        "BooleanArray" => Ok(Kind::List(ListKind::Bool)),
+        "CharArray" => Ok(Kind::List(ListKind::Char)),
         "Text" => Ok(Kind::Text),
         "Int" => Ok(Kind::Int),
         "Double" => Ok(Kind::Double),
@@ -2414,6 +2419,28 @@ impl<'a> Emitter<'a> {
             instruction(&mut method.code, 0xb7, init); // invokespecial
             return Ok(Some(Kind::Any));
         }
+        // `Runnable { ... }` makes a Java interface from a lambda.
+        if let [Expr::Lambda(lambda)] = args
+            && method.binding(name).is_none()
+            && !self.symbols.functions.contains_key(name.text)
+            && let Ok(kind @ Kind::Java(_)) = resolve_type(&self.type_scope, name)
+            && self
+                .symbols
+                .types
+                .runtime_class_name(kind)
+                .is_some_and(|class| self.symbols.types.is_java_interface(&class))
+        {
+            let target = match expected.map(Kind::non_null) {
+                Some(wanted @ Kind::Java(_))
+                    if self.symbols.types.runtime_class_name(wanted)
+                        == self.symbols.types.runtime_class_name(kind) =>
+                {
+                    wanted
+                }
+                _ => kind,
+            };
+            return self.lambda(method, lambda, Some(target), base).map(Some);
+        }
         if let ("__monitorEnter" | "__monitorExit", [lock]) = (name.text, args) {
             let kind = self.expression(method, lock, base)?;
             if !kind.is_reference() || matches!(kind, Kind::Nullable(_) | Kind::Null) {
@@ -2571,7 +2598,7 @@ impl<'a> Emitter<'a> {
             return Ok(Some(kind));
         }
         let Some(signature) = self.symbols.functions.get(name.text) else {
-            if name.text.contains('<') {
+            if name.text.contains('<') || name.text.contains('.') {
                 let kind = resolve_type(&self.type_scope, name)?;
                 return self
                     .java_construct(method, kind, name, args, base)
@@ -3522,6 +3549,7 @@ impl<'a> Emitter<'a> {
                 .is_empty()
             && self.symbols.types.runtime_class_name(kind)
                 == self.symbols.types.runtime_class_name(expected.non_null())
+            && !matches!(args.as_slice(), [Expr::Lambda(_)])
         {
             return self.java_construct(method, expected.non_null(), *name, args, base);
         }
@@ -3578,7 +3606,8 @@ impl<'a> Emitter<'a> {
             || self.fields.contains_key(name.text)
             || self.symbols.java_fields.contains_key(name.text)
             || self.symbols.global(name.text).is_some()
-            || !name.text.starts_with(|ch: char| ch.is_ascii_uppercase())
+            || !(name.text.starts_with(|ch: char| ch.is_ascii_uppercase())
+                || name.text.contains('.'))
         {
             return None;
         }

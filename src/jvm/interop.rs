@@ -1211,7 +1211,8 @@ impl<'a> Emitter<'a> {
             JType::Class(name) => name.as_str(),
             _ => return Ok(()),
         };
-        if matches!(arg, Expr::Lambda(_))
+        // A lambda fits only a function type, not `E` of an `ArrayList<Int>`.
+        if (matches!(arg, Expr::Lambda(_)) && self.lambda_fits(expected))
             || matches!(expected.non_null(), Kind::Any)
             || types
                 .runtime_class_name(expected.non_null())

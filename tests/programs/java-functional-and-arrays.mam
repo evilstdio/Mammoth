@@ -1,0 +1,39 @@
+import java.util.function.Function
+import java.util.function.BiFunction
+import java.util.function.Supplier
+import java.util.function.Predicate
+let r: Runnable = Runnable { print("r") }
+r.run()
+let f: Function<Text, Int> = Function { x -> x.length() }
+print(f.apply("ab"))
+print(f.andThen({ n: Int -> n + 1 }).apply("ab"))
+let p: Predicate<Text> = Predicate { x -> x.isEmpty() }
+print(p.negate().test(""))
+let b: BiFunction<Int, Int, Int> = BiFunction { a, c -> a + c }
+print(b.apply(1, 2))
+let s: Supplier<Text> = Supplier { "a" }
+print(s.get())
+print(java.util.Objects.hash(1, "a") != 0)
+print(java.util.Objects.equals("a", "a"))
+print(java.lang.Integer.MAX_VALUE)
+let l = java.util.ArrayList<Text>()
+l.add("x")
+print(l)
+print(java.lang.Math.abs(-2))
+let a = IntArray(3)
+a[1] = 5
+print(a[1] + a.size)
+let t = Array<Text>(2) { "s" + it.toString() }
+print(t[1])
+let d: DoubleArray = DoubleArray(1)
+print(d[0])
+let e: Array<Int> = Array<Int>(2) { it * 2 }
+print(e[1])
+fun sum(x: IntArray): Int = x.sum()
+print(sum(intArrayOf(1, 2)))
+@Deprecated
+fun old() { }
+@SuppressWarnings("unchecked")
+fun other() { }
+old()
+other()

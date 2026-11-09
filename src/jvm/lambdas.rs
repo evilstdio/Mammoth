@@ -105,6 +105,11 @@ impl<'a> Emitter<'a> {
     /// Whether a Java parameter type can receive a lambda with `arity`
     /// parameters (`None` when the lambda did not list its parameters).
     /// Whether a lambda passed for this parameter returns a value.
+    /// Whether a lambda can be used where a value of `expected` is required.
+    pub(super) fn lambda_fits(&self, expected: Kind) -> bool {
+        self.lambda_target(Some(expected)).is_some()
+    }
+
     pub(super) fn lambda_returns_value(&self, target: &JType) -> bool {
         let JType::Class(name) = target else {
             return false;

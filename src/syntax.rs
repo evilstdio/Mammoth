@@ -1537,8 +1537,18 @@ impl<'a> Parser<'a> {
         };
         let arguments = if self.take("(") {
             self.list(")", |parser| {
-                let name = parser.name()?;
-                parser.expect("=", "Use named annotation arguments, such as value = 1.")?;
+                parser.skip_space();
+                let start = parser.offset;
+                if let Ok(name) = parser.name()
+                    && parser.take_assignment()
+                {
+                    return Ok((name, parser.annotation_argument(depth + 1)?));
+                }
+                parser.offset = start;
+                let name = Name {
+                    text: "value",
+                    offset: start,
+                };
                 Ok((name, parser.annotation_argument(depth + 1)?))
             })?
         } else {
@@ -5320,6 +5330,25 @@ impl<'a> Parser<'a> {
                 self.expect(">", "Expected '>' after the parent interface name.")?;
                 name.text = &self.source[offset..self.offset];
                 return Ok(Expr::Variable(name));
+            }
+            if matches!(name.text, "java" | "javax") && self.rest().starts_with('.') {
+                // A class written in full, such as java.util.Objects.
+                let end = self.offset;
+                while self.rest().starts_with('.')
+                    && let Some(part) = identifier(&self.rest()[1..], self.offset + 1)
+                {
+                    self.offset += 1 + part.text.len();
+                    if part.text.starts_with(|ch: char| ch.is_ascii_uppercase()) {
+                        name = Name {
+                            text: &self.source[name.offset..self.offset],
+                            offset: name.offset,
+                        };
+                        break;
+                    }
+                }
+                if !name.text.contains('.') {
+                    self.offset = end;
+                }
             }
             // `ArrayList<Text>()` creates a Java object with type arguments.
             if self.rest().starts_with('<') {
