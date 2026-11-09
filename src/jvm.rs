@@ -1166,6 +1166,7 @@ fn new_emitter<'a>(
         explicit_java_arguments: Vec::new(),
         in_extension: false,
         inner_ready: false,
+        in_library: false,
         try_expected: None,
         unit_lambdas: HashSet::new(),
         pending_fields: Vec::new(),
@@ -1434,6 +1435,7 @@ fn emit_class<'a>(
         } else {
             program_lines
         };
+        emitter.in_library = function.in_prelude;
         emitter.in_extension = function.extension_of.is_some();
         emitter.bridge_offset = Some(function.name.offset);
         let signature = &symbols.functions_for(owner)[function.name.text];
@@ -1590,6 +1592,7 @@ fn emit_class<'a>(
         }
     }
     emitter.line_starts = program_lines;
+    emitter.in_library = false;
     if let Some(index) = owner {
         emitter.bridge_offset = Some(symbols.class_declarations[index].name.offset);
         for name in symbols.inherited_bridge_names(index) {
@@ -1912,6 +1915,8 @@ struct Emitter<'a> {
     in_extension: bool,
     /// The next inner class created already has its outer object as an argument.
     inner_ready: bool,
+    /// The function being emitted comes from the built-in library.
+    in_library: bool,
     /// The destination type of the next `try` used as a value.
     try_expected: Option<Kind>,
     /// Lambdas with no value passed where a generic result is expected.
@@ -3222,6 +3227,13 @@ impl<'a> Emitter<'a> {
     /// containing `offset`, for the JVM LineNumberTable.
     fn mark_line(&mut self, method: &mut Method<'a>, offset: usize) {
         if self.line_starts.is_empty() {
+            // Library code has no lines here, but tools expect a table.
+            if self.in_library && method.lines.is_empty() {
+                method.line_table_name = *self
+                    .line_table_name
+                    .get_or_insert_with(|| self.pool.ascii("LineNumberTable"));
+                method.lines.push((0, 1));
+            }
             return;
         }
         self.sync_locals(method);

@@ -1048,11 +1048,42 @@ fn infix_names(source: &str) -> Vec<&str> {
     names
 }
 
+/// Whether a library extension could apply here. Some share their names with
+/// methods nearly every program calls, such as `toString`, and only differ
+/// by arguments that can be seen in the source.
+fn library_extension_applies(function: &Function<'_>, name: &str, source: &str) -> bool {
+    let plain_regex = calls_function(source, "Regex") || calls_member(source, "toRegex");
+    if function
+        .parameters
+        .iter()
+        .any(|(_, kind)| kind.text == "Regex")
+    {
+        return plain_regex;
+    }
+    match name {
+        // `Int.toString(radix)`: a plain `.toString()` is the object's own.
+        "toString" => source
+            .match_indices(".toString(")
+            .any(|(at, text)| !source[at + text.len()..].trim_start().starts_with(')')),
+        "equals" | "compareTo" | "contains" if function.parameters.len() == 3 => {
+            source.contains("ignoreCase")
+                || source.contains(", true)")
+                || source.contains(", false)")
+        }
+        _ => true,
+    }
+}
+
 fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
     let parsed = parse_source(PRELUDE).expect("the built-in library parses");
     let extensions: Vec<&str> = parsed
         .functions
         .iter()
+        .filter(|function| {
+            function
+                .extension_of
+                .is_some_and(|name| library_extension_applies(function, name, source))
+        })
         .filter_map(|function| function.extension_of)
         .collect();
     let destructuring = ["let (", "val (", "var (", "for (", ") ->"]
@@ -1108,6 +1139,9 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         .iter()
         .filter(|function| {
             function.extension_of.is_some_and(|name| {
+                if !library_extension_applies(function, name, source) {
+                    return false;
+                }
                 let needs_pair = matches!(name, "zip" | "partition");
                 name == "toMutableList"
                     || (name.starts_with("__sumOf") && calls_member(source, "sumOf"))
