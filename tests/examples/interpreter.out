@@ -1,0 +1,14 @@
+1 + 2 * 3 => 7
+(1 + 2) * 3 => 9
+let x = 4 in x * x => 16
+if 1 < 2 then 10 else 20 => 10
+let add = fn a -> fn b -> a + b in add(2)(5) => 7
+let fact = fn n -> if n <= 1 then 1 else n * fact(n - 1) in fact(10) => 3628800
+let fib = fn n -> if n < 2 then n else fib(n - 1) + fib(n - 2) in fib(15) => 610
+fn x -> x => <fn x>
+1 + => parse error: unexpected end of input
+y + 1 => error: unknown name y
+1(2) => error: not a function: 1
+7 / 2 => 3.5
+let twice = fn f -> fn x -> f(f(x)) in twice(fn y -> y * 3)(2) => 18
+true

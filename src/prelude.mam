@@ -603,11 +603,23 @@ fun buildString(block: (StringBuilder) -> Unit): Text {
     return text.toString()
 }
 fun println(value: Any? = "") { print(value) }
-fun require(condition: Bool, message: Text = "Failed requirement.") {
+fun require(condition: Bool) {
+    if not condition { throw IllegalArgumentException("Failed requirement.") }
+}
+fun require(condition: Bool, message: Text) {
     if not condition { throw IllegalArgumentException(message) }
 }
-fun check(condition: Bool, message: Text = "Check failed.") {
+fun require(condition: Bool, message: () -> Text) {
+    if not condition { throw IllegalArgumentException(message()) }
+}
+fun check(condition: Bool) {
+    if not condition { throw IllegalStateException("Check failed.") }
+}
+fun check(condition: Bool, message: Text) {
     if not condition { throw IllegalStateException(message) }
+}
+fun check(condition: Bool, message: () -> Text) {
+    if not condition { throw IllegalStateException(message()) }
 }
 fun TODO(reason: Text = "An operation is not implemented."): Int = throw UnsupportedOperationException(reason)
 

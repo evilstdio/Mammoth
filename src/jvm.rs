@@ -2916,6 +2916,13 @@ impl<'a> Emitter<'a> {
         if matches!(kind, Kind::Applied(_)) {
             return self.applied_method(method, kind, name, args, base, allow_null);
         }
+        // Every object has the methods of java.lang.Object, even seen as an interface.
+        if self.symbols.types.interface_root(kind).is_some()
+            && matches!(name.text, "toString" | "hashCode" | "equals" | "getClass")
+            && self.symbols.interface_method(kind, name.text).is_none()
+        {
+            return self.java_instance_call(method, Kind::Any, name, args, base, allow_null);
+        }
         if let Kind::AppliedInterface(_) = kind {
             return self.applied_interface_method(method, kind, name, args, base);
         }

@@ -1,0 +1,287 @@
+// A small expression language: tokens, a recursive-descent parser, a sealed
+// syntax tree and an evaluator with closures.
+
+sealed class Token {
+    data class Num(let value: Double) extends Token
+    data class Word(let text: Text) extends Token
+    data class Sym(let text: Text) extends Token
+    object End extends Token
+}
+
+class Lexer(private let source: Text) {
+    private var position = 0
+
+    private fun peek(): Char? = if position < source.length { source[position] } else { null }
+
+    fun tokens(): MutableList<Token> {
+        let out = mutableListOf<Token>()
+        while true {
+            let ch = peek() ?: break
+            when {
+                ch.isWhitespace() -> position += 1
+                ch.isDigit() -> out.add(number())
+                ch.isLetter() -> out.add(word())
+                else -> out.add(symbol())
+            }
+        }
+        out.add(Token.End)
+        return out
+    }
+
+    private fun number(): Token {
+        let start = position
+        while position < source.length and (source[position].isDigit() or source[position] == '.') {
+            position += 1
+        }
+        return Token.Num(source.substring(start, position).toDouble())
+    }
+
+    private fun word(): Token {
+        let start = position
+        while position < source.length and source[position].isLetterOrDigit() {
+            position += 1
+        }
+        return Token.Word(source.substring(start, position))
+    }
+
+    private fun symbol(): Token {
+        let two = if position + 1 < source.length { source.substring(position, position + 2) } else { "" }
+        if two in listOf("==", "!=", "<=", ">=", "->") {
+            position += 2
+            return Token.Sym(two)
+        }
+        let one = source[position].toString()
+        position += 1
+        return Token.Sym(one)
+    }
+}
+
+sealed class Node
+data class Number(let value: Double) extends Node
+data class Name(let text: Text) extends Node
+data class Binary(let op: Text, let left: Node, let right: Node) extends Node
+data class IfNode(let test: Node, let yes: Node, let no: Node) extends Node
+data class Function(let parameter: Text, let body: Node) extends Node
+data class Call(let target: Node, let argument: Node) extends Node
+data class Let(let name: Text, let value: Node, let body: Node) extends Node
+
+class ParseError(message: Text) extends RuntimeException(message)
+
+class Parser(private let tokens: MutableList<Token>) {
+    private var index = 0
+
+    private fun current(): Token = tokens[index]
+    private fun advance(): Token {
+        let token = tokens[index]
+        index += 1
+        return token
+    }
+    private fun isSymbol(text: Text): Bool {
+        let token = current()
+        return token is Token.Sym and token.text == text
+    }
+    private fun isWord(text: Text): Bool {
+        let token = current()
+        return token is Token.Word and token.text == text
+    }
+    private fun expectSymbol(text: Text) {
+        if not isSymbol(text) { throw ParseError("expected " + text + " but found " + current().toString()) }
+        advance()
+    }
+    private fun expectWord(text: Text) {
+        if not isWord(text) { throw ParseError("expected " + text) }
+        advance()
+    }
+    private fun nameToken(): Text {
+        let token = advance()
+        if token is Token.Word { return token.text }
+        throw ParseError("expected a name")
+    }
+
+    fun parse(): Node {
+        let node = expression()
+        if current() != Token.End { throw ParseError("extra input at " + current().toString()) }
+        return node
+    }
+
+    private fun expression(): Node {
+        if isWord("let") {
+            advance()
+            let name = nameToken()
+            expectSymbol("=")
+            let value = expression()
+            expectWord("in")
+            return Let(name, value, expression())
+        }
+        if isWord("if") {
+            advance()
+            let test = expression()
+            expectWord("then")
+            let yes = expression()
+            expectWord("else")
+            return IfNode(test, yes, expression())
+        }
+        if isWord("fn") {
+            advance()
+            let parameter = nameToken()
+            expectSymbol("->")
+            return Function(parameter, expression())
+        }
+        return binary(0)
+    }
+
+    private fun binary(level: Int): Node {
+        if level == LEVELS.size { return application() }
+        var left = binary(level + 1)
+        while true {
+            let token = current()
+            if token !is Token.Sym or token.text !in LEVELS[level] { break }
+            advance()
+            left = Binary(token.text, left, binary(level + 1))
+        }
+        return left
+    }
+
+    private fun application(): Node {
+        var node = atom()
+        while isSymbol("(") {
+            advance()
+            let argument = expression()
+            expectSymbol(")")
+            node = Call(node, argument)
+        }
+        return node
+    }
+
+    private fun atom(): Node {
+        val token = advance()
+        return when (token) {
+            is Token.Num -> Number(token.value)
+            is Token.Word -> Name(token.text)
+            is Token.Sym -> {
+                if token.text != "(" { throw ParseError("unexpected " + token.text) }
+                val inner = expression()
+                expectSymbol(")")
+                inner
+            }
+            Token.End -> throw ParseError("unexpected end of input")
+        }
+    }
+}
+
+let LEVELS: MutableList<MutableList<Text>> = mutableListOf(
+    mutableListOf("==", "!=", "<", ">", "<=", ">="),
+    mutableListOf("+", "-"),
+    mutableListOf("*", "/", "%")
+)
+
+sealed interface Value
+data class NumberValue(let value: Double) implements Value {
+    override fun toString(): Text = if value % 1.0 == 0.0 { value.toLong().toString() } else { value.toString() }
+}
+data class BoolValue(let value: Bool) implements Value {
+    override fun toString(): Text = value.toString()
+}
+class Closure(let parameter: Text, let body: Node, let scope: Scope) implements Value {
+    override fun toString(): Text = "<fn " + parameter + ">"
+}
+
+class Scope(private let parent: Scope?, private let name: Text, private var value: Value?) {
+    constructor() : this(null, "", null)
+
+    fun lookup(wanted: Text): Value {
+        var scope: Scope? = this
+        while scope != null {
+            if scope.name == wanted {
+                return scope.value ?: throw RuntimeException("not ready: " + wanted)
+            }
+            scope = scope.parent
+        }
+        throw RuntimeException("unknown name " + wanted)
+    }
+    fun bind(name: Text, value: Value?): Scope = Scope(this, name, value)
+    fun set(value: Value) { this.value = value }
+}
+
+object Evaluator {
+    var steps = 0
+        private set
+
+    fun evaluate(node: Node, scope: Scope): Value {
+        steps += 1
+        return when (node) {
+            is Number -> NumberValue(node.value)
+            is Name -> scope.lookup(node.text)
+            is Function -> Closure(node.parameter, node.body, scope)
+            is Let -> {
+                val inner = scope.bind(node.name, null)
+                inner.set(evaluate(node.value, inner))
+                evaluate(node.body, inner)
+            }
+            is IfNode -> {
+                val test = evaluate(node.test, scope)
+                if test is BoolValue and test.value { evaluate(node.yes, scope) } else { evaluate(node.no, scope) }
+            }
+            is Call -> {
+                val target = evaluate(node.target, scope)
+                if target !is Closure { throw RuntimeException("not a function: " + target.toString()) }
+                val argument = evaluate(node.argument, scope)
+                evaluate(target.body, target.scope.bind(target.parameter, argument))
+            }
+            is Binary -> arithmetic(node.op, evaluate(node.left, scope), evaluate(node.right, scope))
+        }
+    }
+
+    private fun arithmetic(op: Text, left: Value, right: Value): Value {
+        if left !is NumberValue or right !is NumberValue {
+            throw RuntimeException("numbers needed for " + op)
+        }
+        let a = left.value
+        let b = right.value
+        return when (op) {
+            "+" -> NumberValue(a + b)
+            "-" -> NumberValue(a - b)
+            "*" -> NumberValue(a * b)
+            "/" -> NumberValue(a / b)
+            "%" -> NumberValue(a % b)
+            "==" -> BoolValue(a == b)
+            "!=" -> BoolValue(a != b)
+            "<" -> BoolValue(a < b)
+            ">" -> BoolValue(a > b)
+            "<=" -> BoolValue(a <= b)
+            ">=" -> BoolValue(a >= b)
+            else -> throw RuntimeException("unknown operator " + op)
+        }
+    }
+}
+
+fun run(source: Text): Text {
+    return try {
+        val tree = Parser(Lexer(source).tokens()).parse()
+        Evaluator.evaluate(tree, Scope()).toString()
+    } catch (e: ParseError) {
+        "parse error: " + e.message
+    } catch (e: RuntimeException) {
+        "error: " + e.message
+    }
+}
+
+let programs = listOf(
+    "1 + 2 * 3",
+    "(1 + 2) * 3",
+    "let x = 4 in x * x",
+    "if 1 < 2 then 10 else 20",
+    "let add = fn a -> fn b -> a + b in add(2)(5)",
+    "let fact = fn n -> if n <= 1 then 1 else n * fact(n - 1) in fact(10)",
+    "let fib = fn n -> if n < 2 then n else fib(n - 1) + fib(n - 2) in fib(15)",
+    "fn x -> x",
+    "1 +",
+    "y + 1",
+    "1(2)",
+    "7 / 2",
+    "let twice = fn f -> fn x -> f(f(x)) in twice(fn y -> y * 3)(2)"
+)
+for program in programs {
+    print(program + " => " + run(program))
+}
+print(Evaluator.steps > 0)

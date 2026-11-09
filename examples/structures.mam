@@ -1,0 +1,248 @@
+// Generic data structures written from scratch, used together with Java's.
+import java.util.ArrayDeque
+import java.util.HashMap
+import java.util.LinkedHashMap
+import java.util.PriorityQueue
+import java.util.TreeMap
+
+// A binary search tree with a nested node class and an in-order iterator.
+class Tree<K: Comparable<K>, V> {
+    private class Node<K, V>(let key: K, var value: V) {
+        var left: Node<K, V>? = null
+        var right: Node<K, V>? = null
+    }
+
+    private var root: Node<K, V>? = null
+    var size = 0
+        private set
+
+    fun put(key: K, value: V) {
+        val existing = root
+        if existing == null {
+            root = Node<K, V>(key, value)
+            size += 1
+            return
+        }
+        var current: Node<K, V> = existing
+        while true {
+            val order = key.compareTo(current.key)
+            if order == 0 {
+                current.value = value
+                return
+            }
+            val next = if order < 0 { current.left } else { current.right }
+            if next == null {
+                val made = Node<K, V>(key, value)
+                if order < 0 { current.left = made } else { current.right = made }
+                size += 1
+                return
+            }
+            current = next
+        }
+    }
+
+    fun get(key: K): V? {
+        var current = root
+        while current != null {
+            val order = key.compareTo(current.key)
+            if order == 0 { return current.value }
+            current = if order < 0 { current.left } else { current.right }
+        }
+        return null
+    }
+
+    fun keys(): MutableList<K> {
+        val out = mutableListOf<K>()
+        walk(root, out)
+        return out
+    }
+
+    private fun walk(node: Node<K, V>?, out: MutableList<K>) {
+        if node == null { return }
+        walk(node.left, out)
+        out.add(node.key)
+        walk(node.right, out)
+    }
+
+    fun depth(): Int = depthOf(root)
+    private fun depthOf(node: Node<K, V>?): Int =
+        if node == null { 0 } else { 1 + maxOf(depthOf(node.left), depthOf(node.right)) }
+}
+
+// A cache that forgets the least recently used entry.
+class Cache<K, V>(private let limit: Int) {
+    private let entries = LinkedHashMap<K, V>()
+    var hits = 0
+        private set
+    var misses = 0
+        private set
+
+    fun get(key: K, make: (K) -> V): V {
+        if entries.containsKey(key) {
+            hits += 1
+            val value = entries.remove(key)!!
+            entries.put(key, value)
+            return value
+        }
+        misses += 1
+        val value = make(key)
+        entries.put(key, value)
+        if entries.size() > limit {
+            entries.remove(entries.keySet().iterator().next())
+        }
+        return value
+    }
+
+    fun keys(): MutableList<K> = entries.keySet().toMutableList()
+}
+
+// An immutable pair of matrices operations with operators.
+data class Matrix(let rows: Int, let columns: Int, let cells: List<Int>) {
+    constructor(rows: Int, columns: Int) : this(rows, columns, List<Int>(rows * columns))
+
+    fun at(row: Int, column: Int): Int = cells[row * columns + column]
+
+    fun plus(other: Matrix): Matrix {
+        require(rows == other.rows and columns == other.columns) { "sizes differ" }
+        return Matrix(rows, columns, List<Int>(cells.size) { cells[it] + other.cells[it] })
+    }
+
+    fun times(other: Matrix): Matrix {
+        val made = List<Int>(rows * other.columns)
+        for r in 0 until rows {
+            for c in 0 until other.columns {
+                var total = 0
+                for k in 0 until columns { total += at(r, k) * other.at(k, c) }
+                made[r * other.columns + c] = total
+            }
+        }
+        return Matrix(rows, other.columns, made)
+    }
+
+    fun show(): Text = (0 until rows).map { r ->
+        (0 until columns).map { c -> at(r, c).toString() }.joinToString(" ")
+    }.joinToString(" / ")
+}
+
+// Shortest paths over a graph held in Java collections.
+data class Edge(let to: Text, let weight: Int)
+data class Visit(let node: Text, let cost: Int) implements Comparable<Visit> {
+    override fun compareTo(other: Visit): Int = cost - other.cost
+}
+
+class Graph {
+    private let edges = HashMap<Text, MutableList<Edge>>()
+
+    fun connect(from: Text, to: Text, weight: Int): Graph {
+        edges.computeIfAbsent(from, { mutableListOf<Edge>() }).add(Edge(to, weight))
+        edges.computeIfAbsent(to, { mutableListOf<Edge>() }).add(Edge(from, weight))
+        return this
+    }
+
+    fun distances(start: Text): TreeMap<Text, Int> {
+        val best = TreeMap<Text, Int>()
+        val queue = PriorityQueue<Visit>()
+        queue.add(Visit(start, 0))
+        while not queue.isEmpty() {
+            val visit = queue.poll()
+            if best.containsKey(visit.node) { continue }
+            best.put(visit.node, visit.cost)
+            for edge in edges.getOrDefault(visit.node, mutableListOf<Edge>()) {
+                if not best.containsKey(edge.to) {
+                    queue.add(Visit(edge.to, visit.cost + edge.weight))
+                }
+            }
+        }
+        return best
+    }
+
+    fun reachable(start: Text): MutableList<Text> {
+        val seen = mutableSetOf(start)
+        val order = mutableListOf<Text>()
+        val pending = ArrayDeque<Text>()
+        pending.add(start)
+        while not pending.isEmpty() {
+            val node = pending.removeFirst()
+            order.add(node)
+            for edge in edges[node] ?: mutableListOf<Edge>() {
+                if seen.add(edge.to) { pending.add(edge.to) }
+            }
+        }
+        return order
+    }
+}
+
+// A typed event bus with listeners and delegation.
+interface Listener<in E> { fun on(event: E) }
+
+class Bus<E> {
+    private let listeners = mutableListOf<Listener<E>>()
+    fun subscribe(listener: Listener<E>) { listeners.add(listener) }
+    fun send(event: E) {
+        for listener in listeners { listener.on(event) }
+    }
+    fun subscribers(): Int = listeners.size
+}
+
+sealed class Message
+data class Hello(let who: Text) extends Message
+data class Bye(let who: Text, let code: Int) extends Message
+
+class Recorder implements Listener<Any> {
+    let seen = mutableListOf<Text>()
+    override fun on(event: Any) { seen.add(event.toString()) }
+}
+
+val tree = Tree<Text, Int>()
+for word in "the quick brown fox jumps over the lazy dog".split(" ") {
+    tree.put(word, (tree.get(word) ?: 0) + 1)
+}
+print(tree.keys())
+print(tree.get("the"))
+print(tree.get("cat"))
+print(tree.size)
+print(tree.depth())
+
+val numbers = Tree<Int, Text>()
+for n in listOf(5, 2, 8, 1, 9) { numbers.put(n, "n" + n.toString()) }
+print(numbers.keys())
+print(numbers.get(8)?.length)
+
+val cache = Cache<Int, Text>(2)
+print(cache.get(1) { "one" })
+print(cache.get(2) { "two" })
+print(cache.get(1) { "again" })
+print(cache.get(3) { "three" })
+print(cache.keys())
+print(cache.hits.toString() + "/" + cache.misses.toString())
+
+val a = Matrix(2, 2, intArrayOf(1, 2, 3, 4))
+val b = Matrix(2, 2, intArrayOf(0, 1, 1, 0))
+print((a + b).show())
+print((a * b).show())
+print(Matrix(1, 2).show())
+try {
+    print((a + Matrix(1, 1)).show())
+} catch (e: IllegalArgumentException) {
+    print(e.message)
+}
+
+val graph = Graph().connect("a", "b", 7).connect("a", "c", 2).connect("c", "b", 3).connect("b", "d", 1)
+print(graph.distances("a"))
+print(graph.reachable("a"))
+
+val bus = Bus<Message>()
+val recorder = Recorder()
+bus.subscribe(recorder)
+var byes = 0
+bus.subscribe(object implements Listener<Message> {
+    override fun on(event: Message) {
+        if event is Bye { byes += event.code }
+    }
+})
+bus.send(Hello("ann"))
+bus.send(Bye("ann", 3))
+bus.send(Bye("bob", 4))
+print(recorder.seen)
+print(byes)
+print(bus.subscribers())

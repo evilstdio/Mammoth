@@ -1156,8 +1156,11 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             && !name.contains("$ext$")
             && (name != "__mapOf" || needs_map)
             && (!(name.starts_with("__fill") || name == "__growList") || sized_blocks))
-            || (PRELUDE_FUNCTIONS.contains(&name.split("$default$").next().unwrap_or(name))
-                && calls_function(source, name.split("$default$").next().unwrap_or(name)))
+            || {
+                let plain = name.split("$default$").next().unwrap_or(name);
+                let plain = plain.split("$ov$").next().unwrap_or(plain);
+                PRELUDE_FUNCTIONS.contains(&plain) && calls_function(source, plain)
+            }
             || wanted.iter().any(|wanted| {
                 name == *wanted
                     || name
@@ -1171,8 +1174,9 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
             .parameters
             .iter()
             .any(|(_, kind)| kind.text.starts_with("Pair<"));
+        // A program's own function replaces every library version of that name.
         if keep(function.name.text)
-            && !declared.contains(&function.name.text)
+            && !declared.contains(&function.overload_of.unwrap_or(function.name.text))
             && (!wants_pair || needs_pair)
         {
             function.in_prelude = true;
