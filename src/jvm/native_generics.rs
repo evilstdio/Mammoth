@@ -326,7 +326,11 @@ impl Types<'_> {
                     self.infer_parameters(left, right, map);
                 }
                 if let (Some(left), Some(right)) = (left.result, right.result) {
-                    self.infer_parameters(left, right, map);
+                    if matches!(right, Kind::Nullable(_)) && self.is_library_parameter(left) {
+                        map.entry(left).or_insert(right);
+                    } else {
+                        self.infer_parameters(left, right, map);
+                    }
                 }
             }
             _ => {}

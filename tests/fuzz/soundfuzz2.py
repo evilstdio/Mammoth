@@ -199,7 +199,31 @@ class G:
         if r.random() < .22:
             text, instance = s.class_decl()
             return text, ('class', instance)
-        k = r.choice(['let', 'let', 'let', 'infer', 'var', 'assign', 'effect', 'effect', 'print', 'setf', 'forin'])
+        k = r.choice(['let', 'let', 'let', 'infer', 'var', 'assign', 'effect', 'effect', 'print', 'setf', 'forin', 'flow', 'flow'])
+        if k == 'flow':
+            v = name
+            use = f'print({v}.name())'
+            asg = f'{v} = {r.choice(["null", "A()", "nullableA(false)", s.expr(2)])}'
+            cond = r.choice(['true', 'false', '1 > 0'])
+            pre = f'var {v}: A? = nullableA({r.choice(["true", "false"])})\n'
+            form = r.randrange(9)
+            if form == 0:
+                return f'{pre}if {v} != null {{ {use}\n {asg}\n {use} }}', None
+            if form == 1:
+                return f'{pre}if {v} != null {{ for i{v} in 0..1 {{ {use}\n {asg} }} }}', None
+            if form == 2:
+                return f'{pre}let h{v} = {{ {asg} }}\nif {v} != null {{ h{v}()\n {use} }}', None
+            if form == 3:
+                return f'{pre}if {v} == null {{ print(0) }} else {{ if {cond} {{ {asg} }}\n {use} }}', None
+            if form == 4:
+                return f'{pre}if {v} != null and {cond} {{ {use} }}', None
+            if form == 5:
+                return f'fun f{v}(p: A?): Text {{ var q = p\n if q == null {{ return "n" }}\n q.name()\n q = {r.choice(["null", "A()"])}\n return q.name() }}\nprint(f{v}(A()))', None
+            if form == 6:
+                return f'class K{v}(let a: A?, var b: A?)\nlet o{v} = K{v}(A(), nullableA(false))\nif o{v}.{r.choice(["a", "b"])} != null {{ print(o{v}.{r.choice(["a", "b"])}.name()) }}', None
+            if form == 7:
+                return f'{pre}do {{ if {v} != null {{ {use} }}\n {asg}\n {use} }} while false', None
+            return f'{pre}try {{ if {v} != null {{ {asg}\n throw RuntimeException("x") }} }} catch (e: RuntimeException) {{ {use} }}', None
         if k == 'let':
             t = r.choice(TYPES)
             return f'let {name}: {t} = {s.expr()}', (name, t)

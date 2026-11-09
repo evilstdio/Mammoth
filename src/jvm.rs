@@ -2677,6 +2677,10 @@ impl<'a> Emitter<'a> {
     }
 
     fn guard_non_null(&mut self, method: &mut Method<'a>, kind: Kind, base: u16) {
+        // The built-in library's generic code also carries nullable items.
+        if self.symbols.types.is_library_parameter(kind) {
+            return;
+        }
         let class = self.instance_class(kind.non_null());
         let (guard, message) = self.null_guard_refs();
         method.max_stack = method.max_stack.max(base + 2);

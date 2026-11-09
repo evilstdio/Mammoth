@@ -47,3 +47,8 @@ fun sum(h: Int?): Int {
     return t
 }
 print(sum(1))
+print(mutableListOf(null, 1).reversed())
+print(mutableListOf("a", null).groupBy { it }.size)
+let kept: MutableList<Text?> = mutableListOf("a", null).map { it }
+print(kept)
+print(mutableListOf(1).map { if it > 5 { it } else { null } })
