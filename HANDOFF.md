@@ -17,13 +17,15 @@ Work continues on branch `compiler-correctness`, local only, identity `sss47 <ss
 - **Lambdas with no value** where a generic result is expected are listed in `unit_lambdas` and return null.
 - Library type parameters are named `__*` and are the only ones that may bind a nullable element (`is_library_parameter`). Prelude generics must therefore not rely on `__T` being non-null.
 
-**Fuzz evidence this session.** Soundness fuzz with the new class features and flow-typing statements (`tests/fuzz/soundfuzz2.py`): 150 programs on an intermediate compiler had 0 unexplained failures, and an earlier 150 found the lambda-as-element bug, since fixed. Differential: 100 programs, 0 problems. Mutation fuzz with a debug compiler: about 3975 inputs on a recent compiler, 0 problems. Later commits were not all re-fuzzed; the final numbers are at the end of this section if a run finished.
+**Fuzz evidence this session.** Soundness fuzz with the new class features and flow-typing statements (`tests/fuzz/soundfuzz2.py`): 150 programs on an intermediate compiler had 0 unexplained failures, and an earlier 150 found the lambda-as-element bug, since fixed. Differential: 100 programs, 0 problems. Mutation fuzz with a debug compiler: about 3975 inputs on a recent compiler, 0 problems. On commit `d03ede8`: soundness fuzz 260 programs (seeds 6001 and 7001) with 0 unexplained failures, differential 120 programs with 0 problems, and mutation fuzz with a debug compiler 4075 inputs with 0 problems. The two commits after that, which only change which library code is selected and give library code a line table, were checked by the test suite and Fabric `verifyMod`, not by a fresh fuzz run.
 
-**Fabric.** `build` and `verifyMod` passed and produced JAR `3A62CD15...29CB`, the hash already smoke-tested. If a build seems stale, delete `build/libs`, `build/devlibs` and `build/loom-cache/remapped_working` under `examples/fabric-demo`.
+**Fabric.** `build` and `verifyMod` passed on the final compiler and produced JAR `3A62CD15...29CB`, the hash already smoke-tested in a real client, so the smoke test was not repeated. If a build seems stale, delete `build/libs`, `build/devlibs` and `build/loom-cache/remapped_working` under `examples/fabric-demo`.
 
 **Recursive local functions** that capture are read twice. On the second reading, calls go through a one-item list (`__rec<offset>_name`, `recursive_holders`) that receives the lambda after it is built.
 
 **Known limits.** No coroutines, no `Float`, `Byte`, `Short` or unsigned types in Mammoth source, no reified type parameters, non-local `return` from lambdas is not supported (a plain `return` leaves the lambda). See the object expression limits in the README. Top-level `obj.fail()` methods returning `Nothing` are not treated as jumps.
+
+**Library selection.** `add_prelude` keeps a library extension only when `library_extension_applies` says its arguments could match, because names such as `toString` appear in nearly every program. Library functions get a one-entry line table, line 1.
 
 **Probes.** `tests/fuzz/kotlin_probe.py` and `tests/fuzz/probe2.py` list everyday constructs, `tests/fuzz/advcases5.py` and `advcases6.py` are adversarial batteries for this session.
 
