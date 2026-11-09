@@ -1,0 +1,40 @@
+class Count(let n: Int) {
+    fun iterator(): CountIter = CountIter(n)
+}
+class CountIter(let limit: Int) {
+    var at = 0
+    fun hasNext(): Bool = at < limit
+    fun next(): Int {
+        at += 1
+        return at
+    }
+}
+for x in Count(3) { print(x) }
+for x in Count(5) {
+    if x == 2 { continue }
+    if x == 4 { break }
+    print(x * 10)
+}
+class G<T>(let v: T) { fun iterator(): java.util.Iterator<T> = mutableListOf(v).iterator() }
+for s in G("a") { print(s.length) }
+fun twice(f: (Int) -> Int): (Int) -> Int = { f(f(it)) }
+print(twice { it + 1 }(1))
+value class W(let n: Int)
+print(W(1).n)
+print(W(1) == W(1))
+var a = 1
+++a
+--a
+++a
+print(a)
+fun f(): Int { var i = 0
+ ++i
+ return i }
+print(f())
+fun pair<T>(a: T, b: T): MutableList<T> = listOf(a, b)
+print(pair(1, 2))
+print(pair("a", "bc")[1].length)
+fun single<T>(a: T): java.util.LinkedHashSet<T> = setOf(a)
+print(single(1))
+fun entry<K, V>(k: K, v: V): java.util.Map<K, V> = mapOf(k to v)
+print(entry("a", 1))

@@ -4829,6 +4829,11 @@ impl<'a> Emitter<'a> {
             );
         }
         let mut kind = self.expression(method, values, 0)?;
+        // An object with an `iterator()` method can be looped over.
+        if self.has_iterator_method(kind) {
+            method.code.push(kind.pop_opcode());
+            return self.loop_iterator_method(method, name, values, body);
+        }
         if kind == Kind::Text {
             // Looping over text visits its characters.
             let chars = Name {

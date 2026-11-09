@@ -17,9 +17,11 @@ Work continues on branch `compiler-correctness`, local only, identity `sss47 <ss
 - **Lambdas with no value** where a generic result is expected are listed in `unit_lambdas` and return null.
 - Library type parameters are named `__*` and are the only ones that may bind a nullable element (`is_library_parameter`). Prelude generics must therefore not rely on `__T` being non-null.
 
+**Fuzz evidence this session.** Soundness fuzz with the new class features and flow-typing statements (`tests/fuzz/soundfuzz2.py`): 150 programs on an intermediate compiler had 0 unexplained failures, and an earlier 150 found the lambda-as-element bug, since fixed. Differential: 100 programs, 0 problems. Mutation fuzz with a debug compiler: about 3975 inputs on a recent compiler, 0 problems. Later commits were not all re-fuzzed; the final numbers are at the end of this section if a run finished.
+
 **Fabric.** `build` and `verifyMod` passed and produced JAR `3A62CD15...29CB`, the hash already smoke-tested. If a build seems stale, delete `build/libs`, `build/devlibs` and `build/loom-cache/remapped_working` under `examples/fabric-demo`.
 
-**Known limits.** No coroutines, no `Float`, `Byte`, `Short` or unsigned types in Mammoth source, no reified type parameters, `is` does not narrow fields or `var`s, non-local `return` from lambdas is not supported (a plain `return` leaves the lambda). See the object expression limits in the README. Top-level `obj.fail()` methods returning `Nothing` are not treated as jumps.
+**Known limits.** No coroutines, no `Float`, `Byte`, `Short` or unsigned types in Mammoth source, no reified type parameters, non-local `return` from lambdas is not supported (a plain `return` leaves the lambda). See the object expression limits in the README. Top-level `obj.fail()` methods returning `Nothing` are not treated as jumps.
 
 **Probes.** `tests/fuzz/kotlin_probe.py` and `tests/fuzz/probe2.py` list everyday constructs, `tests/fuzz/advcases5.py` and `advcases6.py` are adversarial batteries for this session.
 

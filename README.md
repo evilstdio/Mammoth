@@ -1012,7 +1012,9 @@ Null checks now reach local `var`s and read-only fields. After `if a != null`, `
 
 The library has lazy sequences: `asSequence()`, `generateSequence`, and on a sequence `map`, `filter`, `take`, `drop`, `takeWhile` and `toList`. Every other operation on an `Iterable` also works on a sequence, by consuming it. Library operations work on lists of nullable items, so `list.map { it ?: 0 }` works when `list` is a `MutableList<Int?>`. Generic functions you write still reject nullable items as type arguments.
 
-Java types can be written in full, as in `java.util.Iterator<Int>`, and `catch (e: java.io.IOException)`.
+Java types can be written in full, as in `java.util.Iterator<Int>`, and `catch (e: java.io.IOException)`. Classes can be used in full too, as in `java.util.Objects.hash(1)`. `Runnable { ... }` makes a Java functional interface from a lambda. `IntArray(3)` and `Array<Text>(2) { "" }` are other spellings of `List<Int>(3)` and `List<Text>(2) { "" }`.
+
+`is` narrows local `var`s and read-only fields by the same rules as null checks. An object with an `iterator()` method, whose result has `hasNext()` and `next()`, can be used in a `for` loop. `listOf`, `setOf` and `mapOf` work in generic code. `++count` and `--count` are statements. `require` and `check` take a message or a block that makes one. `value class` is a data class here, without the unboxed representation.
 
 ### Objects
 

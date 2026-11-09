@@ -35,6 +35,63 @@ impl<'a> Emitter<'a> {
         first
     }
 
+    /// Whether `kind` is a Mammoth class that declares `iterator()` without
+    /// being a Java `Iterable`, which the usual loop already handles.
+    pub(super) fn has_iterator_method(&self, kind: Kind) -> bool {
+        let symbols = self.symbols;
+        symbols
+            .types
+            .native_class(kind.non_null())
+            .is_some_and(|class| {
+                matches!(kind, Kind::Object(_) | Kind::Applied(_))
+                    && symbols
+                        .find_method(class, "iterator")
+                        .is_some_and(|(_, signature)| signature.parameters.is_empty())
+                    && !symbols.java_generic_views(kind).iter().any(|view| {
+                        symbols.types.runtime_class_name(*view).is_some_and(|name| {
+                            symbols.types.is_java_subclass(&name, "java/lang/Iterable")
+                        })
+                    })
+            })
+    }
+
+    /// `for x in value` as `val it = value.iterator(); while it.hasNext() ...`.
+    pub(super) fn loop_iterator_method(
+        &mut self,
+        method: &mut Method<'a>,
+        name: Name<'a>,
+        values: &'a Expr<'a>,
+        body: &'a [Statement<'a>],
+    ) -> Result<(), Error> {
+        let named = |text: &'static str| Name {
+            text,
+            offset: name.offset,
+        };
+        let holder = Name {
+            text: Box::leak(format!("__iter{}", name.offset).into_boxed_str()),
+            offset: name.offset,
+        };
+        let call = |target: Expr<'a>, text: &'static str| {
+            Expr::MethodCall(Box::new(target), named(text), Vec::new())
+        };
+        let mut inner = vec![Statement::Binding(
+            name,
+            call(Expr::Variable(holder), "next"),
+            false,
+            None,
+        )];
+        inner.extend(body.iter().cloned());
+        let statements: &'a [Statement<'a>] = Box::leak(
+            vec![
+                Statement::Binding(holder, call(values.clone(), "iterator"), false, None),
+                Statement::While(name, call(Expr::Variable(holder), "hasNext"), inner),
+            ]
+            .into_boxed_slice(),
+        );
+        self.scoped_block(method, statements, &[])?;
+        Ok(())
+    }
+
     /// Whether values of `kind` have a Mammoth `unaryMinus` method.
     pub(super) fn has_unary_minus(&self, kind: Kind) -> bool {
         self.symbols

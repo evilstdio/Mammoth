@@ -87,7 +87,18 @@ impl<'a> Emitter<'a> {
             text,
             offset: name.offset,
         };
-        let list = || Expr::List(name.offset, args.to_vec());
+        // Generic code has no fixed list of `T`, so it goes through a growable list.
+        let generic = !plain.text.ends_with("rrayOf")
+            && matches!(args.first(), Some(first) if self
+                .probe_kind(method, first)
+                .is_some_and(|kind| self.symbols.types.contains_parameter(kind)));
+        let list = || {
+            if generic {
+                Expr::Call(named("mutableListOf"), args.to_vec())
+            } else {
+                Expr::List(name.offset, args.to_vec())
+            }
+        };
         if plain.text.ends_with("rrayOf") {
             let literal: &'a Expr<'a> = Box::leak(Box::new(list()));
             return self
@@ -155,15 +166,25 @@ impl<'a> Emitter<'a> {
         method: &mut Method<'a>,
         args: &'a [Expr<'a>],
     ) -> Option<super::ListKind> {
+        let first = args.iter().find(|arg| !matches!(arg, Expr::Null(_)))?;
+        let kind = self.probe_kind(method, first)?;
+        // A fixed list of a type parameter cannot exist, so build a growable one.
+        if self.symbols.types.contains_parameter(kind) {
+            return super::ListKind::for_element(kind);
+        }
         if !args.iter().any(|arg| matches!(arg, Expr::Null(_))) {
             return None;
         }
-        let first = args.iter().find(|arg| !matches!(arg, Expr::Null(_)))?;
+        super::ListKind::for_element(kind.nullable()?)
+    }
+
+    /// The type of `value`, learned without keeping any code.
+    fn probe_kind(&mut self, method: &mut Method<'a>, value: &'a Expr<'a>) -> Option<Kind> {
         let saved = method.snapshot();
         let base = method.stack.len() as u16;
-        let kind = self.expression(method, first, base);
+        let kind = self.expression(method, value, base);
         method.restore(saved);
-        super::ListKind::for_element(kind.ok()?.nullable()?)
+        kind.ok()
     }
 
     /// Calls the extension `name` on the receiver already on the stack.

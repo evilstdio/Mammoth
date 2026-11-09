@@ -1422,7 +1422,7 @@ fn parse_with<'a>(
             program.interfaces.push(interface);
         } else if name.text == "open" && parser.take_word("class") {
             program.classes.push(parser.class(false, false, false)?);
-        } else if name.text == "data" && parser.take_word("class") {
+        } else if (name.text == "data" || name.text == "value") && parser.take_word("class") {
             let mut class = parser.class(false, true, false)?;
             add_data_members(&mut class);
             program.classes.push(class);
@@ -3870,6 +3870,21 @@ impl<'a> Parser<'a> {
     /// A statement that starts with a value, such as `"x".toInt()`.
     fn value_statement(&mut self) -> Result<Option<Statement<'a>>, Error> {
         let rest = self.rest_trimmed();
+        if rest.starts_with("++") || rest.starts_with("--") {
+            // `++count` as a statement.
+            let operator = if rest.starts_with("++") {
+                Arithmetic::Add
+            } else {
+                Arithmetic::Sub
+            };
+            self.offset += 2;
+            let name = self.binding()?;
+            let one = Expr::Int(name.offset, 1);
+            return Ok(Some(Statement::Assign(
+                name,
+                Expr::Arithmetic(Box::new(Expr::Variable(name)), vec![(operator, one)]),
+            )));
+        }
         if !rest.starts_with(|ch: char| matches!(ch, '"' | '(' | '[') || ch.is_ascii_digit()) {
             return Ok(None);
         }
@@ -5016,6 +5031,10 @@ impl<'a> Parser<'a> {
             if *token == "-" && self.newline_ahead() {
                 return false;
             }
+            // So does a line starting with `++count`.
+            if *token == "+" && self.newline_ahead() && self.rest_trimmed().starts_with("++") {
+                return false;
+            }
             self.skip_space();
             !(*token == "-" && self.rest().starts_with("->")) && self.take(token)
         }) {
@@ -5034,7 +5053,7 @@ impl<'a> Parser<'a> {
             // the call or index gives. The `(` must follow directly, so a
             // parenthesized expression on the next line stays separate.
             if self.rest().starts_with('(')
-                && self.source[..self.offset].ends_with([')', ']'])
+                && self.source[..self.offset].ends_with([')', ']', '}'])
                 && matches!(
                     receiver,
                     Expr::Call(..) | Expr::MethodCall(..) | Expr::Index(..)

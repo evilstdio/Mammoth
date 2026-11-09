@@ -1,0 +1,3 @@
+// error: read-only
+let a = 1
+++a
