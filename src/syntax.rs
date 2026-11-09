@@ -753,6 +753,8 @@ fn calls_function(source: &str, name: &str) -> bool {
             .next();
         !before.is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '.')
             && matches!(after, Some('(' | '{' | '<'))
+            // `override fun use(...)` declares the name rather than calling it.
+            && !source[..at].trim_end().ends_with("fun")
     })
 }
 
