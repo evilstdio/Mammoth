@@ -1,0 +1,4 @@
+// error: Expected an object
+class A
+class B
+fun f(): A = try { A() } catch (e: Exception) { B() }

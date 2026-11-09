@@ -1525,6 +1525,40 @@ impl<'a> Symbols<'a> {
                 if self.functions.contains_key(base.text) {
                     return self.generic_result(*name, args, scope);
                 }
+                if matches!(base.text, "setOf" | "mutableSetOf") {
+                    let element = match explicit.as_deref() {
+                        Some([element]) => resolve_type(&self.types, *element).ok()?,
+                        _ => self.static_kind(args.first()?, scope)?,
+                    };
+                    return Some(Kind::Java(
+                        self.types
+                            .java_generic("java/util/LinkedHashSet", vec![element]),
+                    ));
+                }
+                if matches!(base.text, "mapOf" | "mutableMapOf") {
+                    let (key, value) = match explicit.as_deref() {
+                        Some([key, value]) => (
+                            resolve_type(&self.types, *key).ok()?,
+                            resolve_type(&self.types, *value).ok()?,
+                        ),
+                        _ => {
+                            let Expr::Call(_, parts) = args.first()? else {
+                                return None;
+                            };
+                            let [key, value] = parts.as_slice() else {
+                                return None;
+                            };
+                            (
+                                self.static_kind(key, scope)?,
+                                self.static_kind(value, scope)?,
+                            )
+                        }
+                    };
+                    return Some(Kind::Java(
+                        self.types
+                            .java_generic("java/util/LinkedHashMap", vec![key, value]),
+                    ));
+                }
                 if matches!(base.text, "listOf" | "mutableListOf") {
                     let element = match explicit.as_deref() {
                         Some([element]) => resolve_type(&self.types, *element).ok()?,

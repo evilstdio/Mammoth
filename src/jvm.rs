@@ -1146,6 +1146,7 @@ fn new_emitter<'a>(
         explicit_java_arguments: Vec::new(),
         in_extension: false,
         inner_ready: false,
+        try_expected: None,
         unit_lambdas: HashSet::new(),
         pending_fields: Vec::new(),
         pending_statics: Vec::new(),
@@ -1891,6 +1892,8 @@ struct Emitter<'a> {
     in_extension: bool,
     /// The next inner class created already has its outer object as an argument.
     inner_ready: bool,
+    /// The destination type of the next `try` used as a value.
+    try_expected: Option<Kind>,
     /// Lambdas with no value passed where a generic result is expected.
     unit_lambdas: HashSet<usize>,
     /// Instance fields whose starting values have not run yet, while a
@@ -3571,6 +3574,9 @@ impl<'a> Emitter<'a> {
         {
             return self.java_construct(method, expected.non_null(), *name, args, base);
         }
+        if matches!(expr, Expr::TryValue(..)) {
+            self.try_expected = expected;
+        }
         if let Expr::Lambda(lambda) = expr {
             return self.lambda(method, lambda, expected, base);
         }
@@ -3929,12 +3935,17 @@ impl<'a> Emitter<'a> {
                 let crate::syntax::Statement::Try(_, body, ..) = statement.as_ref() else {
                     unreachable!("the parser builds a try statement")
                 };
-                // The first value shows the type; its code is thrown away.
+                let forced = self.try_expected.take();
+                // The destination's type wins. Otherwise the first value shows
+                // the type; its code is thrown away.
                 let saved = method.snapshot();
                 let variables = method.variables.len();
-                let kind = self
-                    .block(method, body.split_last().map_or(&[][..], |(_, rest)| rest))
-                    .and_then(|_| self.expression(method, probe, 0));
+                let kind = match forced {
+                    Some(kind) => Ok(kind),
+                    None => self
+                        .block(method, body.split_last().map_or(&[][..], |(_, rest)| rest))
+                        .and_then(|_| self.expression(method, probe, 0)),
+                };
                 method.truncate_variables(variables);
                 method.restore(saved);
                 let kind = kind?;

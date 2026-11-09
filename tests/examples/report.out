@@ -1,0 +1,17 @@
+4
+line 4: unknown region X
+line 5: bad units x
+line 6: bad date
+line 8: expected 5 columns, found 2
+line 9: bad price
+by region: {North=7.00, South=0.30, West=7.00}
+best item: Optional[nut]
+14.30
+12.3%
+JANUARY 3 2
+FEBRUARY 1 0
+bolt|gear|nut
+gear
+54
+true
+true

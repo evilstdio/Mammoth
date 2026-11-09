@@ -721,6 +721,13 @@ impl<'a> Emitter<'a> {
             let saved = method.snapshot();
             let variables = method.variables.len();
             let base = method.stack.len() as u16;
+            // The branch's own condition can narrow what its value uses.
+            if let [WhenCondition::Value(condition)] = branch.conditions.as_slice() {
+                let narrowed = method.non_null_facts(condition, true);
+                method.non_null_slots.extend(narrowed);
+                let types = self.type_facts(method, condition, true);
+                method.type_facts.extend(types);
+            }
             let kind = self
                 .block(method, &branch.body)
                 .and_then(|_| self.expression(method, value, base));
