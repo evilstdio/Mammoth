@@ -1,0 +1,6 @@
+// error: This binding is read-only. Declare it with var to change its value.
+class C(let n: Int) {
+    operator fun inc(): C { return C(n + 1) }
+}
+let c = C(1)
+c++

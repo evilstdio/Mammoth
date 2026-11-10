@@ -293,6 +293,8 @@ impl<'a> Emitter<'a> {
                     false,
                 ),
                 "clear" => (&[], "clear", "()V", None, false),
+                // `items -= value` removes the first equal element.
+                "-=" => (&one_element, "remove", "(Ljava/lang/Object;)Z", None, true),
                 _ => return Err(at(name, "This mutable list has no method with that name.")),
             };
         if parameters.len() != args.len() {

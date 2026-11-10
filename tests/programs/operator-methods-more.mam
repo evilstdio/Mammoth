@@ -1,0 +1,61 @@
+// inc, dec, compound-assignment operators and indexing with several values.
+class Counter(let n: Int) {
+    operator fun inc(): Counter { return Counter(n + 1) }
+    operator fun dec(): Counter { return Counter(n - 1) }
+}
+class Bag {
+    let items = MutableList<Int>()
+    operator fun plusAssign(x: Int) { items.add(x) }
+    operator fun minusAssign(x: Int) { items.removeAt(items.indexOf(x)) }
+    operator fun timesAssign(x: Int) {
+        for i in 0 until items.size { items[i] = items[i] * x }
+    }
+}
+class Grid(let w: Int, let h: Int) {
+    let cells = MutableList<Int>()
+    init {
+        for i in 0 until w * h { cells.add(0) }
+    }
+    operator fun get(x: Int, y: Int): Int { return cells[y * w + x] }
+    operator fun set(x: Int, y: Int, v: Int) { cells[y * w + x] = v }
+}
+var c = Counter(1)
+c++
+c++
+c--
+print(c.n)
+fun local(): Int {
+    var d = Counter(5)
+    d++
+    let bump = { d++ }
+    bump()
+    --d
+    return d.n
+}
+print(local())
+let b = Bag()
+b += 3
+b += 4
+b -= 3
+b *= 5
+print(b.items)
+let g = Grid(3, 2)
+g[1, 1] = 7
+g[2, 0] = g[1, 1] + 1
+print(g[1, 1] + g[2, 0])
+print(g.cells)
+// A read-only list name still takes += and -=.
+let l = mutableListOf(1, 2, 7, 1)
+l += listOf(3, 4)
+l += 9
+l -= 1
+l -= 7
+print(l)
+let s = mutableSetOf("a", "b")
+s -= "a"
+s += "z"
+print(s)
+let t = mutableListOf("q")
+t += mutableListOf("r", "s")
+t -= "q"
+print(t)

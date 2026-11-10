@@ -2298,27 +2298,108 @@ impl<'a> Emitter<'a> {
                         && self.deferred_writes.contains(&name.offset)
                         && self.pending_fields.contains(&name.text);
                     let mutable = mutable || deferred;
-                    // `items += value` adds to a list held by a read-only name.
+                    // `counter++` and `bag += item` on an object with the
+                    // matching operator method.
+                    let mut expr = expr;
+                    if let Expr::Arithmetic(left, rest) = expr
+                        && let (Expr::Variable(variable), [(operator, value)]) =
+                            (left.as_ref(), rest.as_slice())
+                        && variable.text == name.text
+                        && let Some(class) = self.symbols.types.native_class(expected.non_null())
+                    {
+                        let step = matches!(value, Expr::Int(offset, 1) if *offset == name.offset);
+                        let text = match (operator, step) {
+                            (Arithmetic::Add, true) => "inc",
+                            (Arithmetic::Sub, true) => "dec",
+                            (Arithmetic::Add, false) => "plusAssign",
+                            (Arithmetic::Sub, false) => "minusAssign",
+                            (Arithmetic::Mul, false) => "timesAssign",
+                            (Arithmetic::Div, false) => "divAssign",
+                            (Arithmetic::Rem, false) => "remAssign",
+                            _ => "",
+                        };
+                        if !text.is_empty() && self.symbols.find_method(class, text).is_some() {
+                            let call = Name {
+                                text,
+                                offset: name.offset,
+                            };
+                            if step {
+                                expr = Box::leak(Box::new(Expr::MethodCall(
+                                    left.clone(),
+                                    call,
+                                    Vec::new(),
+                                )));
+                            } else {
+                                let receiver: &'a Expr<'a> = left;
+                                let result = self.method_call(
+                                    method,
+                                    receiver,
+                                    call,
+                                    std::slice::from_ref(value),
+                                    0,
+                                )?;
+                                if let Some(kind) = result {
+                                    method.code.push(kind.pop_opcode());
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                    // `items += value` adds to a list held by a read-only
+                    // name, and `items -= value` removes from it.
                     if !mutable
                         && let Expr::Arithmetic(left, rest) = expr
-                        && let (Expr::Variable(variable), [(Arithmetic::Add, value)]) =
-                            (left.as_ref(), rest.as_slice())
+                        && let (
+                            Expr::Variable(variable),
+                            [(operator @ (Arithmetic::Add | Arithmetic::Sub), value)],
+                        ) = (left.as_ref(), rest.as_slice())
                         && variable.text == name.text
                         && (matches!(expected, Kind::MutableList(_))
                             || matches!(expected, Kind::Java(_)))
                     {
-                        let add = Name {
-                            text: "add",
+                        let receiver: &'a Expr<'a> = left;
+                        let argument = std::slice::from_ref(value);
+                        let named = |text| Name {
+                            text,
                             offset: name.offset,
                         };
-                        let receiver: &'a Expr<'a> = left;
-                        let result = self.method_call(
-                            method,
-                            receiver,
-                            add,
-                            std::slice::from_ref(value),
-                            0,
-                        )?;
+                        let result = if matches!(operator, Arithmetic::Add) {
+                            // A whole collection is added element by element.
+                            let attempt = method.snapshot();
+                            match self.method_call(method, receiver, named("add"), argument, 0) {
+                                Ok(result) => result,
+                                Err(error) => {
+                                    method.restore(attempt);
+                                    self.method_call(method, receiver, named("addAll"), argument, 0)
+                                        .map_err(|_| error)?
+                                }
+                            }
+                        } else if let Kind::MutableList(list) = expected {
+                            self.expression(method, receiver, 0)?;
+                            self.mutable_list_method(method, list, named("-="), argument, 0)?
+                        } else if let [element] =
+                            self.symbols.types.type_arguments(expected).as_slice()
+                        {
+                            // `remove(int)` would treat a number as a position.
+                            let attempt = method.snapshot();
+                            let found = self.expression_as(method, value, 0, Some(*element));
+                            let fits = found
+                                .and_then(|found| self.coerce(method, value, found, *element, 0));
+                            method.restore(attempt);
+                            fits?;
+                            let any = Name {
+                                text: "Any",
+                                offset: name.offset,
+                            };
+                            let boxed: &'a [Expr<'a>] = Box::leak(Box::new([Expr::Cast(
+                                Box::new(value.clone()),
+                                any,
+                                false,
+                            )]));
+                            self.method_call(method, receiver, named("remove"), boxed, 0)?
+                        } else {
+                            self.method_call(method, receiver, named("remove"), argument, 0)?
+                        };
                         if let Some(kind) = result {
                             method.code.push(kind.pop_opcode());
                         }

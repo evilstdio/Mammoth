@@ -1,0 +1,25 @@
+// `-=` removes a value. It never treats a number as a position.
+import java.util.LinkedList
+
+let list = ArrayList<Int>()
+list.add(5)
+list.add(6)
+list -= 1
+print(list)
+list -= 6
+print(list)
+
+let linked = LinkedList<Int>()
+linked.add(5)
+linked.add(6)
+linked -= 5
+print(linked)
+
+let names = HashSet<Text>()
+names.add("a")
+names -= "a"
+print(names)
+
+let mutable = mutableListOf(5, 6)
+mutable -= 6
+print(mutable)

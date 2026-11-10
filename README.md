@@ -1033,6 +1033,9 @@ These are written in Mammoth in `src/prelude.mam`, and only the ones a program u
 ### Operators, `in`, ranges and raw text
 
 - `a + b`, `-`, `*`, `/` and `%` call `plus`, `minus`, `times`, `div` and `rem` on objects. `a < b` uses `compareTo`, and `a[i]` and `a[i] = v` call `get` and `set`, including on Java lists.
+- `a[i, j]` and `a[i, j] = v` call `get` and `set` with every index, the assigned value last.
+- On an object with the matching method, `x++` and `x--` call `inc` and `dec` and store the result, and `x += v`, `-=`, `*=`, `/=` and `%=` call `plusAssign`, `minusAssign`, `timesAssign`, `divAssign` and `remAssign`.
+- On a list held by a read-only name, `list += v` adds a value and `list += others` adds each element of a collection. `collection -= v` removes one equal value, and never treats a number as a position.
 - `x in values`, `x not in values` and `x in 1..5` work in any condition.
 - `for i in 10 downTo 0 step 2`, `0..10 step 5` and `repeat(3) { ... }`. A step must be positive.
 - `"""raw text"""` spans lines and has no escapes or `{}` values. `trimIndent()` removes the common indentation.

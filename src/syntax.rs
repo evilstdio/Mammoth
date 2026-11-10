@@ -5564,6 +5564,27 @@ impl<'a> Parser<'a> {
                 }
             } else {
                 let index = self.logical(0, nested + 1)?;
+                if self.take(",") {
+                    // `grid[row, column]` calls `get`, and assigning to it
+                    // calls `set` with the value last.
+                    let mut args = vec![index];
+                    loop {
+                        args.push(self.logical(0, nested + 1)?);
+                        if !self.take(",") {
+                            break;
+                        }
+                    }
+                    self.expect("]", "Expected ']' after the indexes.")?;
+                    let offset = receiver.offset();
+                    let text = if self.take_assignment() {
+                        args.push(self.expression()?);
+                        "set"
+                    } else {
+                        "get"
+                    };
+                    receiver = Expr::MethodCall(Box::new(receiver), Name { text, offset }, args);
+                    continue;
+                }
                 self.expect("]", "Expected ']' after the list index.")?;
                 receiver = Expr::Index(Box::new(receiver), Box::new(index));
             }
