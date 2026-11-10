@@ -16,7 +16,7 @@ for name in ["Maya", "Sam"] {
 
 ## Install
 
-On Windows, run `mammoth-0.1.0-setup.exe`. It installs Mammoth for your user account in `%LOCALAPPDATA%\Programs\Mammoth`, adds it to `PATH` and lists it under **Settings → Apps**, where you can uninstall it. It includes its own Java runtime, so you don't need Java or Rust, and it doesn't need administrator rights. If you'd rather not run a setup program, unzip `mammoth-0.1.0-windows-x64.zip` and run `install.cmd` inside it, or run `bin\mammoth.exe` straight from the folder.
+On Windows, run `mammoth-0.1.0-setup.exe`. A setup window lets you pick the install folder and choose whether to add Mammoth to `PATH`, then shows progress and the commands to try. By default it installs for your user account in `%LOCALAPPDATA%\Programs\Mammoth`, adds it to `PATH` and lists it under **Settings → Apps**, where you can uninstall it. It includes its own Java runtime, so you don't need Java or Rust, and it doesn't need administrator rights. If you'd rather not run a setup program, unzip `mammoth-0.1.0-windows-x64.zip` and double-click `install.cmd` inside it for the same window, or run `bin\mammoth.exe` straight from the folder. `install.cmd -Quiet` installs from the console without questions.
 
 Open a new terminal after installing, then run a program:
 

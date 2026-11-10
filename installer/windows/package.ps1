@@ -123,6 +123,7 @@ if (-not $NoSetup) {
     New-Item -ItemType Directory -Path $work | Out-Null
     Copy-Item $zip (Join-Path $work 'mammoth.zip')
     foreach ($file in 'install.ps1', 'install.cmd') { Copy-Item (Join-Path $here $file) $work }
+    Copy-Item (Join-Path $repo 'LICENSE') $work
     $setup = Join-Path $dist "mammoth-$version-setup.exe"
     if (Test-Path $setup) { Remove-Item -LiteralPath $setup }
     $sed = Join-Path $work 'setup.sed'
@@ -150,24 +151,26 @@ AdminQuietInstCmd=%AdminQuietInstCmd%
 UserQuietInstCmd=%UserQuietInstCmd%
 SourceFiles=SourceFiles
 [Strings]
-InstallPrompt=Install Mammoth $version for your user account? Java is included, and no administrator rights are needed.
-DisplayLicense=$(Join-Path $repo 'LICENSE')
+InstallPrompt=
+DisplayLicense=
 FinishMessage=
 TargetName=$setup
 FriendlyName=Mammoth $version Setup
-AppLaunched=cmd.exe /c install.cmd
+AppLaunched=powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File install.ps1 -Gui
 PostInstallCmd=<None>
 AdminQuietInstCmd=cmd.exe /c install.cmd -Quiet
 UserQuietInstCmd=cmd.exe /c install.cmd -Quiet
 FILE0="mammoth.zip"
 FILE1="install.ps1"
 FILE2="install.cmd"
+FILE3="LICENSE"
 [SourceFiles]
 SourceFiles0=$work\
 [SourceFiles0]
 %FILE0%=
 %FILE1%=
 %FILE2%=
+%FILE3%=
 "@
     $process = Start-Process -FilePath $iexpress -ArgumentList '/N', '/Q', $sed -Wait -PassThru
     if ($process.ExitCode -ne 0 -or -not (Test-Path $setup)) { throw "IExpress failed with exit code $($process.ExitCode)." }

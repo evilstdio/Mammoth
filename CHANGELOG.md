@@ -10,6 +10,7 @@ First tagged version. Everything below this entry is included. It is a preview: 
 - Tested on Windows with Java 17 only.
 - A Windows setup program and zip, made by `installer/windows/package.ps1`. They install for the current user with a bundled Java 17 runtime, add Mammoth to `PATH` and register an uninstaller. Neither Rust nor Java is needed to use Mammoth.
 - The compiler finds Java in `MAMMOTH_JAVA_HOME`, then a `runtime` folder installed beside it, then `JAVA_HOME`, then `PATH`. It runs `java` and `jar` from the same installation it compiles against, where it used to take whichever came first on `PATH`.
+- The setup program opens an installer window: install folder, an Add to PATH choice, a progress bar and a finish page with commands to try. It refuses a folder that holds other files and offers to reinstall over an earlier install. Uninstalling from Settings > Apps asks first and reports in a dialog.
 - `mammoth --version` and `mammoth --help`.
 - The VS Code extension also looks for the compiler in the Windows setup's install folder.
 
