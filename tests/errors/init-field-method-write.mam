@@ -1,0 +1,7 @@
+// error: This binding is read-only. Declare it with var to change its value.
+class P(a: Int) {
+    let s: Text
+    init { s = "x" }
+    fun f() { s = "k" }
+}
+print(P(4).s)

@@ -1075,6 +1075,8 @@ A `fun` can be declared inside another. If it uses nothing from around it, it ca
 
 ### Class members
 
+A field declared with a type and no value, such as `let name: Text`, gets its value from a statement at the top of an `init` block. It must be assigned exactly once there, before anything reads it. Assignment inside `if`, a loop or a method does not count.
+
 `companion object { ... }` holds static members. `lateinit var name: Text` starts unset and throws if read before it is set. `let total: Int by lazy { compute() }` computes on first read and is not synchronized. `let area: Int get() = w * h` is computed on every read.
 
 ### Receivers in lambdas

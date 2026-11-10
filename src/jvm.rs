@@ -1170,6 +1170,8 @@ fn new_emitter<'a>(
         try_expected: None,
         unit_lambdas: HashSet::new(),
         pending_fields: Vec::new(),
+        deferred_writes: Vec::new(),
+        allow_deferred_write: false,
         pending_statics: Vec::new(),
     }
 }
@@ -1330,8 +1332,26 @@ fn emit_class<'a>(
         emitter.pending_fields = class
             .fields
             .iter()
-            .filter(|field| field.value.is_some())
+            .filter(|field| field.value.is_some() || field.deferred)
             .map(|field| field.name.text)
+            .collect();
+        // A field declared without a value gets it from a statement at the
+        // top of an init block, which every construction is sure to run.
+        emitter.deferred_writes = class
+            .initializers
+            .iter()
+            .filter_map(|initializer| match initializer {
+                Initializer::Block(statements) => Some(statements),
+                Initializer::Field(_) => None,
+            })
+            .flatten()
+            .filter_map(|statement| match statement {
+                Statement::Assign(name, _) => Some(name.offset),
+                Statement::SetField(Expr::Variable(this), name, None, _) if this.text == "this" => {
+                    Some(name.offset)
+                }
+                _ => None,
+            })
             .collect();
         for initializer in &class.initializers {
             match initializer {
@@ -1361,7 +1381,18 @@ fn emit_class<'a>(
                 }
             }
         }
+        if let Some(field) = class
+            .fields
+            .iter()
+            .find(|field| field.deferred && emitter.pending_fields.contains(&field.name.text))
+        {
+            return Err(at(
+                field.name,
+                "This field never gets a value. Give it one here, or assign it at the top of an init block.",
+            ));
+        }
         emitter.pending_fields.clear();
+        emitter.deferred_writes.clear();
         constructor.code.push(0xb1);
         let init = emitter.pool.ascii("<init>");
         let (descriptor, access) = if is_enum {
@@ -1924,6 +1955,10 @@ struct Emitter<'a> {
     /// Instance fields whose starting values have not run yet, while a
     /// constructor runs field initializers and init blocks.
     pending_fields: Vec<&'a str>,
+    /// Where the statements at the top of the init blocks assign a field.
+    deferred_writes: Vec<usize>,
+    /// The field write being emitted gives a deferred field its value.
+    allow_deferred_write: bool,
     /// Static fields of a class whose starting values have not run yet,
     /// while its `<clinit>` runs.
     pending_statics: Vec<(usize, &'a str)>,
@@ -2108,7 +2143,17 @@ impl<'a> Emitter<'a> {
                     self.set_index(method, list, index, *operator, value)?;
                 }
                 Statement::SetField(receiver, name, operator, value) => {
-                    self.set_field(method, receiver, *name, *operator, value)?;
+                    let deferred = operator.is_none()
+                        && matches!(receiver, Expr::Variable(this) if this.text == "this")
+                        && self.deferred_writes.contains(&name.offset)
+                        && self.pending_fields.contains(&name.text);
+                    self.allow_deferred_write = deferred;
+                    let result = self.set_field(method, receiver, *name, *operator, value);
+                    self.allow_deferred_write = false;
+                    result?;
+                    if deferred {
+                        self.pending_fields.retain(|pending| *pending != name.text);
+                    }
                 }
                 Statement::Call(name, args) => {
                     if name.text == "print" && !self.symbols.functions.contains_key("print") {
@@ -2247,6 +2292,12 @@ impl<'a> Emitter<'a> {
                     } else {
                         return Err(at(*name, "This variable has not been defined here."));
                     };
+                    // The one assignment that gives a field its first value.
+                    let deferred = local.is_none()
+                        && field.is_some()
+                        && self.deferred_writes.contains(&name.offset)
+                        && self.pending_fields.contains(&name.text);
+                    let mutable = mutable || deferred;
                     // `items += value` adds to a list held by a read-only name.
                     if !mutable
                         && let Expr::Arithmetic(left, rest) = expr
@@ -2311,6 +2362,9 @@ impl<'a> Emitter<'a> {
                         }
                         instruction(&mut method.code, 0xb5, index); // putfield
                         method.stack.pop();
+                        if deferred {
+                            self.pending_fields.retain(|pending| *pending != name.text);
+                        }
                     } else if let Some(binding) = local {
                         method.access(expected.store(), binding.slot);
                     }

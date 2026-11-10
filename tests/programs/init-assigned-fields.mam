@@ -1,0 +1,28 @@
+// A field declared with only a type gets its value in an init block.
+class Point(a: Int) {
+    let doubled: Int
+    let label: Text
+    var note: Text
+    init {
+        doubled = a * 2
+        this.label = "v{doubled}"
+        note = label + "!"
+    }
+    constructor(): this(9) {}
+    fun rename(text: Text) { note = text }
+}
+let p = Point(4)
+print(p.doubled)
+print(p.label)
+print(Point().note)
+p.rename("x")
+print(p.note)
+class Config {
+    companion object {
+        const val MAX = 10
+        const let NAME = "cfg"
+    }
+}
+const val TOP = 3
+print(Config.MAX + TOP)
+print(Config.NAME)

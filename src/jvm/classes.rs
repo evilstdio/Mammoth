@@ -2065,7 +2065,7 @@ impl<'a> Emitter<'a> {
             }
         }
         let (owner, field) = self.class_field(class, name)?;
-        if !field.mutable {
+        if !field.mutable && !std::mem::take(&mut self.allow_deferred_write) {
             return Err(at(
                 name,
                 "This field is read-only. Declare it with var to change its value.",

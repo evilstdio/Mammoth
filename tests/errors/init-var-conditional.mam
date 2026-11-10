@@ -1,0 +1,8 @@
+// error: This field never gets a value. Give it one here, or assign it at the top of an init block.
+class P(a: Int) {
+    var s: Text
+    init {
+        if a > 1 { s = "x" }
+    }
+}
+print(P(4).s)

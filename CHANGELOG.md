@@ -11,7 +11,12 @@
 - Multipart uploads with `Upload.file`, `Upload.bytes` and `Upload.text`, where files stream from disk. Streamed `download` to a temporary file with an atomic-style move, cleanup on failure, explicit `overwrite` and a stall timeout.
 - Compiler: `a[i]` picks the right overload when a class overloads `get`, and `ByteArray` names a Java `byte[]`.
 - Add webhook and API examples, import and project regressions, and local HTTP integration tests that run in single-file, project-JAR and packaged-JAR form under `-Xverify:all`.
+
+## Compiler language work, 2026-11-10
+
+- Fields declared with a type and no value are assigned at the top of an `init` block. The compiler rejects a field that is never assigned, assigned twice, read first, assigned conditionally or assigned from a method.
 - Name common collection types without importing them, and let a declared type complete `HashMap()` and `mutableMapOf()`.
+
 ## Dictionary literals, 2026-11-10
 
 - Add nonempty {key: value} literals with nested entries, expression keys and trailing commas, using mapOf type/order semantics.

@@ -182,6 +182,8 @@ pub struct Field<'a> {
     pub private: bool,
     /// `lateinit var`: non-null, set later, and checked when it is read.
     pub is_lateinit: bool,
+    /// Declared with a type and no value: an init block must assign it.
+    pub deferred: bool,
 }
 
 pub struct Function<'a> {
@@ -587,6 +589,7 @@ fn lazy_field<'a>(
         mutable: true,
         private: true,
         is_lateinit: false,
+        deferred: false,
     };
     body.push(Statement::Assign(hidden, value));
     let unset = Expr::Compare(
@@ -2142,6 +2145,7 @@ impl<'a> Parser<'a> {
                         mutable,
                         private,
                         is_lateinit: false,
+                        deferred: false,
                     });
                 }
             }
@@ -2199,6 +2203,7 @@ impl<'a> Parser<'a> {
                         mutable: false,
                         private: true,
                         is_lateinit: false,
+                        deferred: false,
                     });
                     delegates.push((interface, field));
                 }
@@ -2366,7 +2371,7 @@ impl<'a> Parser<'a> {
                     "lateinit" if !lateinit => lateinit = true,
                     "open" => open_member = true,
                     "inner" if !inner_member => inner_member = true,
-                    "operator" | "infix" | "inline" | "tailrec" => {}
+                    "operator" | "infix" | "inline" | "tailrec" | "const" => {}
                     _ => break,
                 }
                 member = self.name()?;
@@ -2427,6 +2432,7 @@ impl<'a> Parser<'a> {
                             mutable,
                             private,
                             is_lateinit: false,
+                            deferred: false,
                         });
                     }
                     "init" if !private && annotations.is_empty() => {
@@ -2563,6 +2569,7 @@ impl<'a> Parser<'a> {
                                     mutable: false,
                                     private: true,
                                     is_lateinit: false,
+                                    deferred: false,
                                 });
                             }
                         }
@@ -2605,10 +2612,10 @@ impl<'a> Parser<'a> {
                         methods.extend(new_methods);
                         continue;
                     }
-                    if value.is_none()
+                    let deferred = value.is_none()
                         && !lateinit
-                        && !annotation.is_some_and(|name| name.text.ends_with('?'))
-                    {
+                        && annotation.is_some_and(|name| !name.text.ends_with('?'));
+                    if value.is_none() && !lateinit && annotation.is_none() {
                         return Err(self.error("Expected '=' before the field's starting value."));
                     }
                     if lateinit
@@ -2637,6 +2644,7 @@ impl<'a> Parser<'a> {
                         mutable,
                         private,
                         is_lateinit: lateinit,
+                        deferred,
                     });
                 }
                 "constructor"
@@ -2859,6 +2867,7 @@ impl<'a> Parser<'a> {
             mutable,
             private: true,
             is_lateinit: false,
+            deferred: false,
         });
         Ok((field, methods))
     }
@@ -3008,6 +3017,7 @@ impl<'a> Parser<'a> {
                 mutable: false,
                 private: true,
                 is_lateinit: false,
+                deferred: false,
             });
         }
         self.nested_classes.push(class);
@@ -4422,6 +4432,7 @@ impl<'a> Parser<'a> {
             mutable: false,
             private: false,
             is_lateinit: false,
+            deferred: false,
         });
         Ok(class)
     }
@@ -4513,6 +4524,7 @@ impl<'a> Parser<'a> {
                     mutable: false,
                     private: false,
                     is_lateinit: false,
+                    deferred: false,
                 });
             }
             self.nested_found.push((outer.text, class.name.text));

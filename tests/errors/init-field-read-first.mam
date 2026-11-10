@@ -1,0 +1,10 @@
+// error: This field is read before its starting value is set, so it would still be null or zero. Declare it above this line.
+class P(a: Int) {
+    let s: Text
+    let n: Int
+    init {
+        n = s.length
+        s = "x"
+    }
+}
+print(P(4).n)
