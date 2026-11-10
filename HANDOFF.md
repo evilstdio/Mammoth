@@ -6,6 +6,7 @@ Compiler findings while writing the library:
 - Fixed, narrow: `a[i]` ignored overloaded `get`. Test `tests/programs/overloaded-index.mam`.
 - Fixed, narrow: Java `byte[]` had no type spelling, now `ByteArray`.
 - Open: top-level `let`/`const` in a linked library module is never initialized, so it reads as zero or null. Reproduce with a `const val N = 5` at the top of `src/requests.mam` read from a method. The library uses `static let` in a class instead.
+- Open: `reply.body()` of a Java `BodyHandler<byte[]>` throws `ClassCastException` when used as a `byte[]`, even through `Any` and `as ByteArray`. Reproduce with `client.send(request, BodyHandlers.ofByteArray()).body()`. The library reads `ofInputStream` instead, which also lets one daemon timer enforce the body deadline.
 - Open: `mapOf<Text, Any>("a" to 1)` is rejected because `to` makes a `Pair<Text, Int>`, and `Any?` is refused as a type argument of a Java collection. The library's documented route for mixed values is `Json.of` on each value, or a `MutableMap<Text, Any>`.
 
 # Session 5: classes and everyday syntax (2026-11-09, read this first)

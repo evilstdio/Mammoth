@@ -19,6 +19,13 @@ const routes = {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end('{"name":"m\\u0041\u{1F9A3}","big":9007199254740993,"list":[1,2.5,true,null,{"x":"y"}],"empty":{}}');
   },
+  '/stall': (req, res) => { res.writeHead(200, { 'Content-Length': '100' }); res.write('part'); },
+  '/headers': (req, res) => { res.writeHead(200, { 'X-Mixed-Case': 'one', 'Set-Cookie': ['a=1', 'b=2'] }); res.end(''); },
+  '/binary': (req, res) => { res.writeHead(200, { 'Content-Type': 'application/octet-stream' }); res.end(Buffer.from([0, 200, 255, 65])); },
+  '/latin1': (req, res) => { res.writeHead(200, { 'Content-Type': 'text/plain; charset="ISO-8859-1"' }); res.end(Buffer.from([0x63, 0x61, 0x66, 0xe9])); },
+  '/badcharset': (req, res) => { res.writeHead(200, { 'Content-Type': 'text/plain; charset=nonsense-charset' }); res.end('caf\u00e9'); },
+  '/utf8': (req, res) => { res.writeHead(200); res.end('caf\u00e9'); },
+  '/server-error': (req, res) => { res.writeHead(503); res.end('{"retry":true}'); },
   '/badjson': (req, res) => { res.writeHead(200); res.end('{"a": '); },
   '/deepjson': (req, res) => { res.writeHead(200); res.end('['.repeat(200000)); },
 };
@@ -52,7 +59,7 @@ function text(value) {
     .replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"';
 }
 
-const IMPORTS = ['requests', 'Response', 'RequestError', 'InvalidRequestError', 'Json', 'JsonError'].map(name => 'import mammoth.' + name);
+const IMPORTS = ['requests', 'Response', 'Headers', 'RequestError', 'InvalidRequestError', 'TimeoutError', 'TransportError', 'HttpStatusError', 'Json', 'JsonError'].map(name => 'import mammoth.' + name);
 
 let count = 0;
 const modes = {
@@ -124,7 +131,7 @@ async function main(base) {
     catching('c.raiseForStatus()', 'RequestError', 'status error'),
     `let redirect = requests.get(${text(base + '/redirect')})`, 'print(redirect.status)',
     catching(`requests.get(${text(base + '/slow')}, timeout = 1)`, 'RequestError', 'timeout error'),
-    catching(`requests.get(${text(base + '/get')}, timeout = 0)`, 'RequestError', 'invalid timeout'),
+    catching(`requests.get(${text(base + '/get')}, timeout = 0)`, 'InvalidRequestError', 'invalid timeout'),
     `print(requests.get(${text(base + '/get')}, 5).status)`,
   ], ['200', 'hello', 'true', '201', '422', 'false', 'status error', '302', 'timeout error', 'invalid timeout', '200'], seen => {
     assert.equal(seen.length, 6);
@@ -278,6 +285,43 @@ async function main(base) {
       `print(m${i}.contains("secret-token"))`,
     ]),
   ], ['false', 'false', 'false', 'false', 'false'], seen => assert.equal(seen.length, 0));
+
+  await scenario('response headers, bytes and text', [
+    `let r = requests.get(${text(base + '/headers')})`,
+    'print(r.headers["x-mixed-CASE"])', 'print(r.header("X-MIXED-case"))', 'print(r.headers["absent"] == null)', 'print(r.headers.has("SET-COOKIE"))', 'print(r.headers.has("absent"))',
+    'print(r.headers.all("set-cookie"))', 'print(r.headers.all("absent").size())', 'print(r.headers.names().contains("x-mixed-case"))',
+    'print(r.headers.toString().startsWith("Headers("))', 'print(r)',
+    `let b = requests.get(${text(base + '/binary')})`, 'print(b.bytes.size)', 'print(b.bytes[1])', 'print(b.bytes[3])',
+    `print(requests.get(${text(base + '/latin1')}).text)`,
+    `print(requests.get(${text(base + '/badcharset')}).text)`,
+    `print(requests.get(${text(base + '/utf8')}).text)`,
+    `print(requests.get(${text(base + '/get')}, params = {"a": "b"}).url.endsWith("/get?a=b"))`,
+    `print(requests.head(${text(base + '/get')}).bytes.size)`,
+  ], ['one', 'one', 'true', 'true', 'false', '[a=1, b=2]', '0', 'true', 'true', 'Response(200)', '4', '-56', '65', 'caf\u00e9', 'caf\u00e9', 'caf\u00e9', 'true', '0'].map((line, i) => line));
+
+  const closed = await new Promise(resolve => { const s = http.createServer(); s.listen(0, '127.0.0.1', () => { const port = s.address().port; s.close(() => resolve(port)); }); });
+  const secret = `/private?token=hunter2`;
+  await scenario('error kinds', [
+    `let refused = ${text('http://127.0.0.1:' + closed + secret)}`,
+    'try { requests.get(refused) } catch (e: TransportError) {',
+    '    print(e.errorName())', '    print(e.getMessage().contains("hunter2"))', '    print(e.toString().contains("hunter2"))', '    print(e.original != null)', '    print(e.getCause() == null)',
+    '}',
+    catching('requests.get(refused)', 'RequestError', 'transport is a RequestError'),
+    catching(`requests.get(${text(base + '/slow' + '?token=hunter2')}, timeout = 1)`, 'TimeoutError', 'slow headers'),
+    'try { requests.get(' + text(base + '/stall') + ', timeout = 1) } catch (e: TimeoutError) { print(e.getMessage()) }',
+    catching(`requests.get(${text(base + '/stall')}, timeout = 1)`, 'RequestError', 'timeout is a RequestError'),
+    catching(`requests.get(${text(base + '/badjson')}).json()`, 'JsonError', 'malformed json'),
+    `let failed = requests.get(${text(base + '/server-error' + '?token=hunter2')})`,
+    'print(failed.status)', 'print(failed.ok)', 'print(failed.json()["retry"].asBool())',
+    'try { failed.raiseForStatus() } catch (e: HttpStatusError) {',
+    '    print(e.status)', '    print(e.response.text)', '    print(e.getMessage())', '    print(e)',
+    '}',
+    catching('failed.raiseForStatus()', 'RequestError', 'status is a RequestError'),
+    `requests.get(${text(base + '/get')}).raiseForStatus()`, 'print("no error for 200")',
+    'Thread.currentThread().interrupt()',
+    catching(`requests.get(${text(base + '/get')})`, 'RequestError', 'interrupted'),
+    'print(Thread.interrupted())',
+  ], ['TransportError', 'false', 'false', 'true', 'true', 'transport is a RequestError', 'slow headers', 'HTTP request timed out after 1 seconds.', 'timeout is a RequestError', 'malformed json', '503', 'false', 'true', '503', '{"retry":true}', 'HTTP status 503', 'HttpStatusError: HTTP status 503', 'status is a RequestError', 'no error for 200', 'interrupted', 'true']);
 
   await rejected('mixed dictionary stays a compile error', [`requests.post(${text(base + '/post')}, json = {"a": 1, "b": "x"})`], 'Expected');
 

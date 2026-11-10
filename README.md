@@ -1708,8 +1708,28 @@ requests.post(url, json = {"name": Json.of("Maya"), "age": Json.of(31), "nick": 
 
 Numbers keep the text they were written with, so a 64-bit id does not lose precision. A repeated key keeps its last value. Import `mammoth.JsonText`, `JsonNumber`, `JsonBool`, `JsonNull`, `JsonArray` and `JsonObject` to match on the kind in a `when`.
 
+### Responses
+
+A `Response` has `status`, `ok` (2xx), `text`, `bytes` (a `ByteArray`), `url` (the final URL, query included), `headers`, `header(name)`, `json()` and `raiseForStatus()`. `text` uses the charset the server named and falls back to UTF-8.
+
+`response.headers["content-type"]` and `response.header("Content-Type")` give the first value or `null`, in any letter case. `response.headers.all(name)` gives every value, and `has(name)` and `names()` inspect them.
+
+### Errors
+
+Every error extends `RequestError`, a `RuntimeException`. Import the ones you catch from `mammoth`.
+
+| Error | When |
+| --- | --- |
+| `InvalidRequestError` | The library refused to send: conflicting bodies, a bad URL or header, a timeout that is not positive |
+| `TimeoutError` | Connecting took too long, or the whole request, body included, went past `timeout` |
+| `TransportError` | The connection was refused or broken, or TLS failed |
+| `JsonError` | Malformed JSON, a value with no JSON form, or a read of the wrong kind |
+| `HttpStatusError` | Only from `raiseForStatus()`. It has `status` and `response` |
+
+HTTP error statuses are normal responses, so `requests.get` on a 404 returns one with `ok` false. Default messages name the failure and never hold a URL, header or body. `error.original` is the Java exception for debugging. It is not the JVM cause, so a printed stack trace does not include it, and it can contain the URL, so treat it as sensitive. An interrupted request throws `RequestError` and leaves the thread's interrupt flag set.
+
 ### Current limits
 
-Response headers are Java `HttpHeaders`. The request timeout is a positive `Int` in seconds and connection timeout is 10 seconds. Redirects are not followed and requests are not retried.
+Connection timeout is 10 seconds. Redirects are not followed and requests are not retried.
 
 Run `node tests/requests.cjs` for the local-only integration tests (requires Node).

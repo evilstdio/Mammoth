@@ -7,8 +7,18 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpRequest.BodyPublishers
 import java.net.http.HttpResponse.BodyHandlers
-import java.net.http.HttpHeaders
+import java.net.http.HttpTimeoutException
+import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.io.IOException
+import java.io.InputStream
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.List as JavaList
 import java.time.Duration
 import java.util.Collection as JavaCollection
 import java.util.IdentityHashMap
@@ -16,13 +26,38 @@ import java.util.LinkedHashMap
 import java.util.Map as JavaMap
 import java.util.TreeMap
 
-class RequestError(message: Text) extends RuntimeException(message)
+/// Every failure from this library. Messages never hold a URL, header or body.
+/// `original` is the Java exception, kept off the cause chain so that a printed
+/// stack trace cannot reveal what it says. Treat it as sensitive.
+class RequestError(message: Text, let original: Throwable? = null) extends RuntimeException(message) {
+    open fun errorName(): Text { return "RequestError" }
+    override fun toString(): Text { return errorName() + ": " + getMessage() }
+}
 
 /// A request the library refuses to send, such as one with two kinds of body.
-class InvalidRequestError(message: Text) extends RequestError(message)
+class InvalidRequestError(message: Text) extends RequestError(message) {
+    override fun errorName(): Text { return "InvalidRequestError" }
+}
+
+/// The connection or the whole request took longer than allowed.
+class TimeoutError(message: Text, original: Throwable? = null) extends RequestError(message, original) {
+    override fun errorName(): Text { return "TimeoutError" }
+}
+
+/// The request could not be completed: refused, reset, or broken TLS.
+class TransportError(message: Text, original: Throwable? = null) extends RequestError(message, original) {
+    override fun errorName(): Text { return "TransportError" }
+}
+
+/// Thrown only by `raiseForStatus`. Other calls return error responses normally.
+class HttpStatusError(let status: Int, let response: Response) extends RequestError("HTTP status {status}") {
+    override fun errorName(): Text { return "HttpStatusError" }
+}
 
 /// Malformed JSON text, a value with no JSON form, or a read of the wrong type.
-class JsonError(message: Text, let position: Int = -1) extends RequestError(message)
+class JsonError(message: Text, let position: Int = -1) extends RequestError(message) {
+    override fun errorName(): Text { return "JsonError" }
+}
 
 /// A JSON document. Objects keep their key order; a repeated key keeps its last value.
 sealed class Json {
@@ -432,17 +467,74 @@ class JsonReader(let source: Text) {
     }
 }
 
-class Response(let status: Int, let text: Text, let headers: HttpHeaders) {
-    let ok: Bool = status >= 200 and status < 300
-    fun raiseForStatus() {
-        if not ok { throw RequestError("HTTP {status}") }
+/// Response headers. Names match in any case.
+class Headers(source: JavaMap<Text, JavaList<Text>>) {
+    private let values = TreeMap<Text, JavaList<Text>>(java.lang.String.CASE_INSENSITIVE_ORDER)
+    init {
+        values.putAll(source)
     }
+    /// The first value of a header, or null if it is absent.
+    operator fun get(name: Text): Text? {
+        let found: JavaList<Text>? = values.get(name)
+        if found == null or found.isEmpty() { return null }
+        return found.get(0)
+    }
+    /// Every value of a header, in the order received.
+    fun all(name: Text): MutableList<Text> {
+        let result = MutableList<Text>()
+        let found: JavaList<Text>? = values.get(name)
+        if found != null { result.addAll(found) }
+        return result
+    }
+    fun has(name: Text): Bool { return values.containsKey(name) }
+    fun names(): MutableList<Text> {
+        let result = MutableList<Text>()
+        result.addAll(values.keySet())
+        return result
+    }
+    override fun toString(): Text { return "Headers({values.size()} names)" }
+}
+
+/// A finished HTTP exchange. Status 4xx and 5xx are ordinary responses.
+class Response(let status: Int, let bytes: ByteArray, let headers: Headers, let url: Text) {
+    let ok: Bool = status >= 200 and status < 300
+    /// The body as text, using the charset the server named, or UTF-8.
+    let text: Text get() = java.lang.String(bytes, charset())
+    private fun charset(): Charset {
+        let type = headers["Content-Type"]
+        if type != null {
+            for part in type.split(";") {
+                let item = part.trim()
+                if item.regionMatches(true, 0, "charset=", 0, 8) {
+                    try {
+                        return Charset.forName(item.substring(8).replace("\"", "").trim())
+                    } catch (error: IllegalArgumentException) {
+                        return StandardCharsets.UTF_8
+                    }
+                }
+            }
+        }
+        return StandardCharsets.UTF_8
+    }
+    /// The first value of a header, or null. Names match in any case.
+    fun header(name: Text): Text? { return headers[name] }
     /// Reads the body as JSON. Throws JsonError if it is not valid JSON.
     fun json(): Json { return Json.parse(text) }
+    /// Throws HttpStatusError unless the status is 2xx.
+    fun raiseForStatus() {
+        if not ok { throw HttpStatusError(status, this) }
+    }
+    override fun toString(): Text { return "Response({status})" }
 }
 
 class Http {
     private static let client: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10L)).build()
+    // One daemon thread enforces body deadlines for every request.
+    private static let timer: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { task ->
+        let thread = Thread(task, "mammoth-requests-timer")
+        thread.setDaemon(true)
+        thread
+    }
 
     /// Checks a URL without ever quoting it, since URLs can hold secrets.
     static fun checkUrl(url: Text): URI {
@@ -571,18 +663,71 @@ class Http {
         }
         // Adding the query can't make a checked URL invalid, but parse the result.
         let target = checkUrl(withQuery(url, params))
+        let finalUrl = target.toString()
         try {
             let builder = HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(timeout.toLong()))
             for entry in names.entrySet() { builder.setHeader(entry.getKey(), entry.getValue()) }
             builder.method(verb, publisher)
-            let reply = client.send(builder.build(), BodyHandlers.ofString())
-            return Response(reply.statusCode(), reply.body(), reply.headers())
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw RequestError("HTTP request interrupted.")
-        } catch (error: Exception) {
-            throw RequestError("HTTP request failed (" + error.getClass().getSimpleName() + ").")
+            let started = System.nanoTime()
+            let limit = TimeUnit.SECONDS.toNanos(timeout.toLong())
+            let sent = client.sendAsync(builder.build(), BodyHandlers.ofInputStream())
+            try {
+                let reply = sent.get(limit, TimeUnit.NANOSECONDS)
+                // Java's own timeout stops at the headers. The body gets what is left.
+                let body = readAll(reply.body(), limit - (System.nanoTime() - started), timeout)
+                return Response(reply.statusCode(), body, Headers(reply.headers().map()), finalUrl)
+            } catch (error: TimeoutException) {
+                sent.cancel(true)
+                throw TimeoutError("HTTP request timed out after {timeout} seconds.", error)
+            } catch (error: ExecutionException) {
+                throw translate(error.getCause())
+            } catch (error: InterruptedException) {
+                sent.cancel(true)
+                Thread.currentThread().interrupt()
+                throw RequestError("HTTP request interrupted.")
+            }
+        } catch (error: RequestError) {
+            throw error
+        } catch (error: RuntimeException) {
+            throw RequestError("The HTTP request could not be built (" + error.getClass().getSimpleName() + ").")
         }
+    }
+
+    private static fun closeQuietly(stream: InputStream) {
+        try {
+            stream.close()
+        } catch (error: IOException) {
+        }
+    }
+
+    /// Reads to the end. At the deadline the stream is closed, which ends a blocked read.
+    private static fun readAll(stream: InputStream, nanos: Long, timeout: Int): ByteArray {
+        let expired = AtomicBoolean(false)
+        let alarm = timer.schedule(Runnable {
+            expired.set(true)
+            closeQuietly(stream)
+        }, if nanos > 0L { nanos } else { 0L }, TimeUnit.NANOSECONDS)
+        try {
+            let data = stream.readAllBytes()
+            if expired.get() { throw TimeoutError("HTTP request timed out after {timeout} seconds.") }
+            return data
+        } catch (error: IOException) {
+            if expired.get() { throw TimeoutError("HTTP request timed out after {timeout} seconds.", error) }
+            throw translate(error)
+        } finally {
+            alarm.cancel(false)
+            closeQuietly(stream)
+        }
+    }
+
+    private static fun translate(error: Throwable?): RequestError {
+        if error is HttpTimeoutException {
+            return TimeoutError("HTTP request timed out (" + error.getClass().getSimpleName() + ").", error)
+        }
+        if error is IOException {
+            return TransportError("HTTP request failed (" + error.getClass().getSimpleName() + ").", error)
+        }
+        return RequestError("HTTP request failed.")
     }
 }
 
