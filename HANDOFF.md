@@ -18,6 +18,13 @@ Compiler findings while writing the library:
 - Open: passing an `Int` to an `Int?` parameter fails when the method name is overloaded anywhere in the file ("No version of this function accepts these arguments"). Overloading is decided per name, so `Json.get` makes `Session.get` go through it. Session methods take `timeout: Int = 0`, with 0 meaning the session's timeout, instead of `Int?`.
 - Open: `mapOf<Text, Any>("a" to 1)` is rejected because `to` makes a `Pair<Text, Int>`, and `Any?` is refused as a type argument of a Java collection. The library's documented route for mixed values is `Json.of` on each value, or a `MutableMap<Text, Any>`.
 
+# Dictionary literals, 2026-11-10 (latest)
+
+- Added nonempty {key: value, ...} expression literals, lowered to existing Pair/mapOf construction. Nested dictionaries, expression keys, duplicate keys and trailing commas preserve existing mapOf semantics. No new HTTP library or JSON serializer was added.
+- Parser lookahead respects explicit lambda parameter lists, comments, quoted text, nested delimiters, :: and ?:; statement-leading and multiline lambda bodies remain lambdas. Empty {} deliberately stays an empty lambda; use typed mapOf for an empty dictionary. Keys and colon must share an expression line unless the key expression is parenthesized.
+- Program tracks dictionary usage so prelude dependency selection includes the existing map helper and Pair even when the source contains no mapOf name. Type behavior remains existing mapOf behavior; mixed JSON-style values are not automatically unified.
+- Added a runnable regression and malformed-entry rejections covering nested/computed keys, duplicate keys, callback values, typed/empty-value lambdas, commented declarations and Elvis expressions. Full release suite, formatting and Clippy required before delivery.
+
 # Session 5: classes and everyday syntax (2026-11-09, read this first)
 
 Work continues on branch `compiler-correctness`, local only, identity `sss47 <sss47@users.invalid>`, no remote, no AI attribution. Commit only after `cargo test --release --offline`, `cargo fmt --check` and `cargo clippy --offline --all-targets -- -D warnings` pass. Use a separate `CARGO_TARGET_DIR` while a fuzzer or test holds the binary.

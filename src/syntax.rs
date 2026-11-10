@@ -44,6 +44,7 @@ pub struct Program<'a> {
     /// The file name written to class files' SourceFile attribute, such as
     /// `main.mam`. Set by the caller that read the file.
     pub source_name: String,
+    dictionary_literals: bool,
     /// The byte offset where each source line starts, for JVM line numbers.
     pub line_starts: Vec<usize>,
     pub module: Option<String>,
@@ -1089,7 +1090,8 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
     let destructuring = ["let (", "val (", "var (", "for (", ") ->"]
         .iter()
         .any(|text| source.contains(text));
-    if !destructuring
+    if !program.dictionary_literals
+        && !destructuring
         && !calls_function(source, "Pair")
         && !calls_function(source, "Regex")
         && !in_code(source, "..")
@@ -1160,9 +1162,12 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
         })
         .map(|function| function.name.text)
         .collect();
-    let needs_map = calls_function(source, "mapOf") || calls_function(source, "mutableMapOf");
+    let needs_map = program.dictionary_literals
+        || calls_function(source, "mapOf")
+        || calls_function(source, "mutableMapOf");
     let needs_pair = !user_pair
-        && (calls_member(source, "zip")
+        && (program.dictionary_literals
+            || calls_member(source, "zip")
             || calls_member(source, "partition")
             || calls_function(source, "Pair")
             || in_code(source, " to ")
@@ -1316,6 +1321,7 @@ fn parse_with<'a>(
         nested_found: Vec::new(),
         discovering,
         saw_dotted_type: false,
+        dictionary_literals: false,
         saw_vararg: false,
         local_aliases: Vec::new(),
         hoisted_functions: Vec::new(),
@@ -1343,6 +1349,7 @@ fn parse_with<'a>(
     };
     let mut program = Program {
         source_name: String::new(),
+        dictionary_literals: false,
         line_starts: std::iter::once(0)
             .chain(source.match_indices('\n').map(|(index, _)| index + 1))
             .collect(),
@@ -1504,6 +1511,7 @@ fn parse_with<'a>(
     program.functions.append(&mut parser.hoisted_functions);
     program.classes.append(&mut parser.nested_classes);
     program.interfaces.append(&mut parser.nested_interfaces);
+    program.dictionary_literals = parser.dictionary_literals;
     add_delegated_methods(&mut program)?;
     Ok((
         program,
@@ -1537,6 +1545,7 @@ struct Parser<'a> {
     /// knowing which nested types exist.
     discovering: bool,
     saw_dotted_type: bool,
+    dictionary_literals: bool,
     saw_vararg: bool,
     /// Local functions in scope: written name, then hidden name.
     local_aliases: Vec<(&'a str, &'a str)>,
@@ -4990,6 +4999,151 @@ impl<'a> Parser<'a> {
         Ok(Some(self.lambda(offset, depth)?))
     }
 
+    // A top-level colon distinguishes entries from lambda expressions. An
+    // explicit lambda parameter list wins, including { x: Text -> ... }.
+    fn dictionary_ahead(&mut self) -> bool {
+        let start = self.offset;
+        let prefix = self.lambda_prefix.clone();
+        let explicit = self.lambda_parameters().is_some();
+        self.offset = start;
+        self.lambda_prefix = prefix;
+        if explicit {
+            return false;
+        }
+        self.skip_space();
+        let first = self
+            .rest()
+            .trim_start()
+            .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+            .next()
+            .unwrap_or("");
+        self.offset = start;
+        if matches!(
+            first,
+            "let" | "val" | "var" | "return" | "throw" | "if" | "while" | "for" | "try"
+        ) {
+            return false;
+        }
+        let bytes = self.rest().as_bytes();
+        let mut started = false;
+        let (mut i, mut depth) = (0, 0usize);
+        while i < bytes.len() {
+            let ch = bytes[i];
+            if depth == 0 && ch == b'\n' && started {
+                return false;
+            }
+            if ch == b'"' || ch == b'\'' {
+                started = true;
+                let quote = ch;
+                let triple = quote == b'"' && bytes.get(i..i + 3) == Some(b"\"\"\"");
+                i += if triple { 3 } else { 1 };
+                while i < bytes.len() {
+                    if triple && bytes.get(i..i + 3) == Some(b"\"\"\"") {
+                        i += 3;
+                        break;
+                    }
+                    if !triple && bytes[i] == b'\\' {
+                        i += 2;
+                        continue;
+                    }
+                    if !triple && bytes[i] == quote {
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+                continue;
+            }
+            if bytes.get(i..i + 2) == Some(b"//") {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            if bytes.get(i..i + 2) == Some(b"/*") {
+                i += 2;
+                let mut comments = 1;
+                while i < bytes.len() && comments > 0 {
+                    if bytes.get(i..i + 2) == Some(b"/*") {
+                        comments += 1;
+                        i += 2;
+                    } else if bytes.get(i..i + 2) == Some(b"*/") {
+                        comments -= 1;
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+                continue;
+            }
+            if !ch.is_ascii_whitespace() {
+                started = true;
+            }
+            if depth == 0 {
+                if bytes.get(i..i + 2) == Some(b"->") || matches!(ch, b'}' | b';') {
+                    return false;
+                }
+                if matches!(bytes.get(i..i + 2), Some(b"::" | b"?:")) {
+                    i += 2;
+                    continue;
+                }
+                if ch == b':' {
+                    return true;
+                }
+            }
+            match ch {
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => {
+                    if depth == 0 {
+                        return false;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        false
+    }
+
+    fn dictionary(&mut self, offset: usize, depth: usize) -> Result<Expr<'a>, Error> {
+        if depth >= 63 {
+            return Err(self.error("Expressions can be nested up to 64 levels."));
+        }
+        self.dictionary_literals = true;
+        let mut pairs = Vec::new();
+        loop {
+            let key = self.logical(0, depth)?;
+            if !self.take(":") {
+                return Err(self.error("Expected ':' between a dictionary key and value."));
+            }
+            let value = self.logical(0, depth)?;
+            pairs.push(Expr::Call(
+                Name {
+                    text: "Pair",
+                    offset: key.offset(),
+                },
+                vec![key, value],
+            ));
+            if self.take("}") {
+                break;
+            }
+            if !self.take(",") {
+                return Err(self.error("Expected ',' or '}' after a dictionary entry."));
+            }
+            if self.take("}") {
+                break;
+            }
+        }
+        Ok(Expr::Call(
+            Name {
+                text: "mapOf",
+                offset,
+            },
+            pairs,
+        ))
+    }
+
     fn lambda(&mut self, offset: usize, depth: usize) -> Result<Expr<'a>, Error> {
         if depth >= 63 {
             return Err(self.error("Expressions can be nested up to 64 levels."));
@@ -5395,6 +5549,9 @@ impl<'a> Parser<'a> {
             return Ok(Expr::Text(offset, self.read_text()?));
         }
         if self.take("{") {
+            if self.dictionary_ahead() {
+                return self.dictionary(offset, depth + 1);
+            }
             return self.lambda(offset, depth + 1);
         }
         if self.take("'") {
@@ -5810,6 +5967,7 @@ impl<'a> Parser<'a> {
             nested_found: Vec::new(),
             discovering: self.discovering,
             saw_dotted_type: false,
+            dictionary_literals: false,
             saw_vararg: false,
             local_aliases: self.local_aliases.clone(),
             hoisted_functions: Vec::new(),

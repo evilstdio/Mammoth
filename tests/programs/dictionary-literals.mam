@@ -1,0 +1,29 @@
+let message = {"content": "Hello from Mammoth!", "username": "Mammoth"}
+print(message["content"])
+let nested = {"outer": {"count": 3}}
+print(nested["outer"]["count"])
+let values = {
+    1: "one",
+    2: "two",
+}
+print(values[2])
+let key = "dynamic"
+let computed = {(key + "!"): 7}
+print(computed["dynamic!"])
+let duplicate = {"x": 1, "x": 2}
+print(duplicate["x"])
+let fn: (Text) -> Text = { x: Text -> x + "!" }
+print(fn("lambda"))
+let zero: () -> Int = { 9 }
+print(zero())
+let body: () -> Int = { let local: Int = 5
+    local }
+print(body())
+let callbacks = {"fn": { x: Text -> x.length() }}
+print(callbacks["fn"]("abc"))
+
+let elvis: (Text?) -> Text = { it ?: "fallback" }
+print(elvis(null))
+let commented: () -> Int = { /* colon: in comment */ let local: Int = 4
+    local }
+print(commented())

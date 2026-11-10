@@ -1,0 +1,2 @@
+// error: Expected
+let x = {"a": }

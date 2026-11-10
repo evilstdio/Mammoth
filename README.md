@@ -1651,6 +1651,18 @@ A Java method result or field whose type has wildcards, such as `List<? extends 
 
 Captures belong to the source position of the call or field read. As a result, a `var` holding one cannot be reassigned from another call, and a lambda without a declared result type cannot return one. Both are conservative rejections; Java would accept them with a declared wildcard type, which Mammoth cannot write yet. Generic Java fields read from Java objects and static fields now keep their type arguments; before, they were raw.
 
+## Dictionary literals
+
+Nonempty dictionaries can use key/value literals instead of mapOf:
+
+```text
+let message = {"content": "Hello from Mammoth!", "username": "Mammoth"}
+print(message["content"])
+let nested = {"outer": {"count": 3}}
+```
+
+Entries are separated by commas; trailing commas are allowed. Keys may be expressions. Literals use the same inferred types, insertion order and duplicate-key behavior as mapOf (the last value wins). They do not provide automatic heterogeneous JSON typing. Existing mapOf remains available. Empty braces remain an empty lambda; use a typed mapOf<Text, Int>() for an empty dictionary. Typed lambda parameters, blocks and the ?: operator retain their existing meaning. Keep each key and its colon on the same expression line, or parenthesize a multiline key.
+
 ## mammoth.requests
 
 ```text
@@ -1787,3 +1799,4 @@ let saved = requests.download(url, "export.csv", overwrite = true)
 These are not implemented: async requests, proxies, automatic retries, a streaming response API other than `download`, compressed response decoding, cookies that persist across runs, client certificates and custom trust settings. `mammoth --check-java` does not link this library.
 
 See `examples/requests-api.mam` and `examples/requests-webhook.mam`. Run `node tests/requests.cjs` for the local-only integration tests (requires Node).
+
