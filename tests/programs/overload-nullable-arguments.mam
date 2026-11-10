@@ -1,0 +1,52 @@
+// A value goes to its own nullable type ahead of any widening or parent type.
+fun pick(a: Int?): Text = "int? {a}"
+fun pick(a: Text): Text = "text {a}"
+print(pick(1))
+print(pick("x"))
+print(pick(null))
+
+fun near(a: Int?): Text = "int? {a}"
+fun near(a: Long): Text = "long {a}"
+print(near(1))
+print(near(1L))
+
+fun parent(a: Int?): Text = "int? {a}"
+fun parent(a: Any): Text = "any {a}"
+print(parent(1))
+print(parent("x"))
+
+fun exact(a: Int): Text = "int {a}"
+fun exact(a: Int?): Text = "int? {a}"
+print(exact(1))
+let none: Int? = null
+print(exact(none))
+
+fun wide(a: Long?): Text = "long? {a}"
+fun wide(a: Text): Text = "text {a}"
+print(wide(1L))
+print(wide(1))
+
+fun text(a: Text?): Text = "text? {a}"
+fun text(a: Any): Text = "any {a}"
+print(text("x"))
+
+class Box {
+    fun get(key: Text): Text = key
+    fun get(index: Int): Text = "{index}"
+    fun read(key: Text, limit: Int? = null): Text = "{key} {limit}"
+    fun read(key: Int, limit: Int? = null): Text = "number {key} {limit}"
+    static fun make(size: Double?): Text = "{size}"
+    static fun make(name: Text): Text = name
+}
+print(Box().read("a", 5))
+print(Box().read("a"))
+print(Box().read(1, limit = 7))
+print(Box.make(1.5))
+
+class Sized {
+    var label: Text = ""
+    constructor(size: Int?) { label = "size {size}" }
+    constructor(name: Text) { label = name }
+}
+print(Sized(3).label)
+print(Sized("named").label)

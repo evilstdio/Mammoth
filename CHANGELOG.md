@@ -1,5 +1,9 @@
 # Changelog
 
+## Overloads and Java byte arrays, 2026-11-10
+
+- A value now reaches a parameter of its own nullable type on an overloaded name, and that beats widening or a parent type.
+
 ## Module initialization, 2026-11-10
 
 - Top-level `let` and `var` values in project modules, bundled libraries and declaration-only files with a `module` line start when the module is first used: in declaration order, once, safely across threads, including when Java enters through an exported method. Previously those in a linked library stayed zero or null.

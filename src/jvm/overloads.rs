@@ -58,17 +58,22 @@ impl<'a> Emitter<'a> {
     }
 
     /// The conversion cost of passing `actual` to `parameter`, or `None`.
+    /// Costs are even, leaving 1 for a value going to its own nullable type,
+    /// which is closer than any widening.
     fn argument_cost(&self, actual: Kind, parameter: Kind) -> Option<u32> {
         let types = &self.symbols.types;
         if types.same_kind(actual, parameter) {
             return Some(0);
         }
         if actual == Kind::Null {
-            return matches!(parameter, Kind::Nullable(_)).then_some(1);
+            return matches!(parameter, Kind::Nullable(_)).then_some(2);
+        }
+        if matches!(parameter, Kind::Nullable(_)) && types.same_kind(actual, parameter.non_null()) {
+            return Some(1);
         }
         if types.contains_parameter(parameter) {
             if matches!(parameter.non_null(), Kind::TypeParameter(_)) {
-                return Some(6);
+                return Some(12);
             }
             // A generic shape like `Iterable<T>` must really match.
             let mut map = std::collections::HashMap::new();
@@ -76,14 +81,16 @@ impl<'a> Emitter<'a> {
             let target = types.replace_parameters(parameter, &map);
             return (!types.contains_parameter(target)
                 && (types.same_kind(actual, target) || self.symbols.fits(actual, target)))
-            .then_some(3);
+            .then_some(6);
         }
-        match (actual, parameter) {
-            (Kind::Int, Kind::Long) | (Kind::Long, Kind::Double) => return Some(1),
-            (Kind::Int, Kind::Double) => return Some(2),
+        // A widened number can then go into a nullable parameter.
+        let extra = u32::from(matches!(parameter, Kind::Nullable(_)));
+        match (actual, parameter.non_null()) {
+            (Kind::Int, Kind::Long) | (Kind::Long, Kind::Double) => return Some(2 + extra),
+            (Kind::Int, Kind::Double) => return Some(4 + extra),
             _ => {}
         }
-        self.symbols.fits(actual, parameter).then_some(2)
+        self.symbols.fits(actual, parameter).then_some(4)
     }
 
     fn overload_score(
@@ -111,7 +118,7 @@ impl<'a> Emitter<'a> {
                         IMPLICIT_ONE if wanted.parameters.len() != 1 => return None,
                         IMPLICIT_ZERO if wanted.parameters.len() > 1 => return None,
                         // A `{ ... }` ignoring its input can still take one.
-                        IMPLICIT_ZERO => total += wanted.parameters.len() as u32,
+                        IMPLICIT_ZERO => total += wanted.parameters.len() as u32 * 2,
                         IMPLICIT_ONE => {}
                         written if written != wanted.parameters.len() => return None,
                         _ => {}
@@ -127,7 +134,7 @@ impl<'a> Emitter<'a> {
         }
         // Each parameter left out needs a default, and costs a little so an
         // exact match wins.
-        Some(total + (parameters.len() - arguments.len()) as u32 * 8)
+        Some(total + (parameters.len() - arguments.len()) as u32 * 16)
     }
 
     fn choose_overload(

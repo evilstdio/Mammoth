@@ -1054,7 +1054,7 @@ These are written in Mammoth in `src/prelude.mam`, and only the ones a program u
 
 ### Overloading
 
-Functions and methods can share a name when their parameter types differ. The call picks the closest match: an exact type first, then widening such as `Int` to `Long`, then a parent type. A lambda is matched by its parameter count. A call that fits two versions equally is an error. On the JVM each version has a hidden name, such as `show$ov$Int`, so Java callers and Java interfaces cannot use these names directly.
+Functions and methods can share a name when their parameter types differ. The call picks the closest match: an exact type first, then the same type made nullable, then widening such as `Int` to `Long`, then a parent type. A lambda is matched by its parameter count. A call that fits two versions equally is an error. On the JVM each version has a hidden name, such as `show$ov$Int`, so Java callers and Java interfaces cannot use these names directly.
 
 ### Nested types
 

@@ -1,0 +1,18 @@
+int? 1
+text x
+int? null
+int? 1
+long 1
+int? 1
+any x
+int 1
+int? null
+long? 1
+long? 1
+text? x
+a 5
+a null
+number 1 7
+1.5
+size 3
+named

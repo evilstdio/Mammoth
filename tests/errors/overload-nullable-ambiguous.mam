@@ -1,0 +1,4 @@
+// error: matches more than one version
+fun same(a: Int?, b: Int): Text = "first"
+fun same(a: Int, b: Int?): Text = "second"
+print(same(1, 2))
