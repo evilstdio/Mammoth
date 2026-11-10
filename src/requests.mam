@@ -1,18 +1,25 @@
 module mammoth.Requests
 import java.math.BigDecimal
 import java.net.URI
+import java.net.URISyntaxException
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpRequest.BodyPublishers
 import java.net.http.HttpResponse.BodyHandlers
 import java.net.http.HttpHeaders
+import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.Collection as JavaCollection
 import java.util.IdentityHashMap
 import java.util.LinkedHashMap
 import java.util.Map as JavaMap
+import java.util.TreeMap
 
 class RequestError(message: Text) extends RuntimeException(message)
+
+/// A request the library refuses to send, such as one with two kinds of body.
+class InvalidRequestError(message: Text) extends RequestError(message)
 
 /// Malformed JSON text, a value with no JSON form, or a read of the wrong type.
 class JsonError(message: Text, let position: Int = -1) extends RequestError(message)
@@ -434,22 +441,140 @@ class Response(let status: Int, let text: Text, let headers: HttpHeaders) {
     fun json(): Json { return Json.parse(text) }
 }
 
-class requests {
+class Http {
     private static let client: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10L)).build()
-    static fun get(url: Text, timeout: Int = 30): Response {
-        return send(url, null, timeout)
-    }
-    static fun post(url: Text, json: Any? = null, timeout: Int = 30): Response {
-        return send(url, if json == null { null } else { Json.stringify(json) }, timeout)
-    }
-    private static fun send(url: Text, body: Text?, timeout: Int): Response {
-        if timeout <= 0 { throw RequestError("Timeout must be positive (seconds).") }
+
+    /// Checks a URL without ever quoting it, since URLs can hold secrets.
+    static fun checkUrl(url: Text): URI {
+        var parsed: URI? = null
         try {
-            let builder = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(timeout.toLong()))
-            if body != null {
-                builder.header("Content-Type", "application/json; charset=utf-8")
-                builder.POST(BodyPublishers.ofString(body))
-            } else { builder.GET() }
+            parsed = URI(url)
+        } catch (error: URISyntaxException) {
+            throw InvalidRequestError("This URL is not valid. Encode any spaces or special characters.")
+        }
+        let uri = parsed!!
+        let scheme = uri.getScheme()
+        if scheme == null or (not scheme.equalsIgnoreCase("http") and not scheme.equalsIgnoreCase("https")) {
+            throw InvalidRequestError("Only http and https URLs are supported.")
+        }
+        if uri.getHost() == null { throw InvalidRequestError("This URL has no host.") }
+        if uri.getRawUserInfo() != null { throw InvalidRequestError("Do not put credentials in a URL. Send them in a header.") }
+        return uri
+    }
+
+    private static fun encode(text: Text, plus: Bool): Text {
+        let encoded = URLEncoder.encode(text, StandardCharsets.UTF_8)
+        return if plus { encoded } else { encoded.replace("+", "%20") }
+    }
+
+    private static fun plainValue(value: Any?): Text {
+        if value is Text { return value }
+        if value != null and (value is Bool or value is Number or value is Char) { return value.toString() }
+        throw InvalidRequestError("Query and form values must be text, numbers, booleans or lists of those.")
+    }
+
+    /// `a=1&b=2`, with a list value repeating its key.
+    static fun encodePairs(values: JavaMap<Text, *>, plus: Bool): Text {
+        let out = StringBuilder()
+        for entry in values.entrySet() {
+            let key = encode(entry.getKey(), plus)
+            let value = entry.getValue()
+            var items = MutableList<Any?>()
+            if value is JavaCollection<*> {
+                for item in value { items.add(item) }
+            } else if value != null and value.getClass().isArray() {
+                let length = java.lang.reflect.Array.getLength(value)
+                for index in 0 until length { items.add(java.lang.reflect.Array.get(value, index)) }
+            } else {
+                items.add(value)
+            }
+            for item in items {
+                if out.length() > 0 { out.append("&") }
+                out.append(key)
+                out.append("=")
+                out.append(encode(plainValue(item), plus))
+            }
+        }
+        return out.toString()
+    }
+
+    /// The URL with `params` added to any query it has, before any fragment.
+    static fun withQuery(url: Text, params: JavaMap<Text, *>?): Text {
+        if params == null { return url }
+        let query = encodePairs(params, false)
+        if query.isEmpty() { return url }
+        let mark = url.indexOf("#")
+        let start = if mark < 0 { url } else { url.substring(0, mark) }
+        let fragment = if mark < 0 { "" } else { url.substring(mark) }
+        let joiner = if start.indexOf("?") < 0 { "?" } else if start.endsWith("?") or start.endsWith("&") { "" } else { "&" }
+        return start + joiner + query + fragment
+    }
+
+    private static fun isToken(text: Text): Bool {
+        if text.isEmpty() { return false }
+        let allowed = "!#$%&'*+-.^_`|~"
+        for ch in text.toCharArray() {
+            let code = ch.toInt()
+            let alphanumeric = (code >= 48 and code <= 57) or (code >= 65 and code <= 90) or (code >= 97 and code <= 122)
+            if not alphanumeric and allowed.indexOf(ch.toString()) < 0 { return false }
+        }
+        return true
+    }
+
+    private static fun checkHeader(name: Text, value: Text) {
+        if not isToken(name) { throw InvalidRequestError("A header name contains a character that is not allowed.") }
+        for ch in value.toCharArray() {
+            let code = ch.toInt()
+            if code == 13 or code == 10 or code == 0 { throw InvalidRequestError("A header value contains a line break or NUL.") }
+        }
+        let lower = name.toLowerCase()
+        if lower == "connection" or lower == "content-length" or lower == "expect" or lower == "host" or lower == "upgrade" {
+            throw InvalidRequestError("The {name} header is managed by the HTTP client and cannot be set.")
+        }
+    }
+
+    static fun request(
+        method: Text, url: Text, timeout: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
+        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?
+    ): Response {
+        if timeout <= 0 { throw InvalidRequestError("Timeout must be positive (seconds).") }
+        let verb = method.toUpperCase()
+        if not isToken(verb) { throw InvalidRequestError("This is not a valid HTTP method.") }
+        checkUrl(url)
+        var kinds = 0
+        if json != null { kinds += 1 }
+        if text != null { kinds += 1 }
+        if bytes != null { kinds += 1 }
+        if form != null { kinds += 1 }
+        if kinds > 1 { throw InvalidRequestError("Give only one of json, text, bytes or form.") }
+
+        let names = TreeMap<Text, Text>(java.lang.String.CASE_INSENSITIVE_ORDER)
+        var publisher = BodyPublishers.noBody()
+        if json != null {
+            names.put("Content-Type", "application/json; charset=utf-8")
+            publisher = BodyPublishers.ofString(Json.stringify(json), StandardCharsets.UTF_8)
+        } else if text != null {
+            names.put("Content-Type", "text/plain; charset=utf-8")
+            publisher = BodyPublishers.ofString(text, StandardCharsets.UTF_8)
+        } else if bytes != null {
+            names.put("Content-Type", "application/octet-stream")
+            publisher = BodyPublishers.ofByteArray(bytes)
+        } else if form != null {
+            names.put("Content-Type", "application/x-www-form-urlencoded")
+            publisher = BodyPublishers.ofString(encodePairs(form, true), StandardCharsets.UTF_8)
+        }
+        if headers != null {
+            for entry in headers.entrySet() {
+                checkHeader(entry.getKey(), entry.getValue())
+                names.put(entry.getKey(), entry.getValue())
+            }
+        }
+        // Adding the query can't make a checked URL invalid, but parse the result.
+        let target = checkUrl(withQuery(url, params))
+        try {
+            let builder = HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(timeout.toLong()))
+            for entry in names.entrySet() { builder.setHeader(entry.getKey(), entry.getValue()) }
+            builder.method(verb, publisher)
             let reply = client.send(builder.build(), BodyHandlers.ofString())
             return Response(reply.statusCode(), reply.body(), reply.headers())
         } catch (error: InterruptedException) {
@@ -458,5 +583,34 @@ class requests {
         } catch (error: Exception) {
             throw RequestError("HTTP request failed (" + error.getClass().getSimpleName() + ").")
         }
+    }
+}
+
+/// Simple calls: `requests.get(url)`, `requests.post(url, json = value)`.
+/// Everything after the URL can be given by name. A method takes any body.
+class requests {
+    static fun request(method: Text, url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
+        return Http.request(method, url, timeout, params, headers, json, text, bytes, form)
+    }
+    static fun get(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
+        return Http.request("GET", url, timeout, params, headers, json, text, bytes, form)
+    }
+    static fun head(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
+        return Http.request("HEAD", url, timeout, params, headers, json, text, bytes, form)
+    }
+    static fun options(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
+        return Http.request("OPTIONS", url, timeout, params, headers, json, text, bytes, form)
+    }
+    static fun delete(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
+        return Http.request("DELETE", url, timeout, params, headers, json, text, bytes, form)
+    }
+    static fun post(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
+        return Http.request("POST", url, timeout, params, headers, json, text, bytes, form)
+    }
+    static fun put(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
+        return Http.request("PUT", url, timeout, params, headers, json, text, bytes, form)
+    }
+    static fun patch(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
+        return Http.request("PATCH", url, timeout, params, headers, json, text, bytes, form)
     }
 }

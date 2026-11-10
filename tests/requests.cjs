@@ -52,7 +52,7 @@ function text(value) {
     .replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"';
 }
 
-const IMPORTS = ['requests', 'Response', 'RequestError', 'Json', 'JsonError'].map(name => 'import mammoth.' + name);
+const IMPORTS = ['requests', 'Response', 'RequestError', 'InvalidRequestError', 'Json', 'JsonError'].map(name => 'import mammoth.' + name);
 
 let count = 0;
 const modes = {
@@ -201,6 +201,83 @@ async function main(base) {
     '0', '-0', '1.5e3', '1E-2', '"/"', '[]', '{}', 'null', 'true', 'false', '"\\b\\f\\n\\r\\t\\"\\\\"', '{"a":2}', '"\u{1F9A3}"', '"\\ud83e"',
     '-300', '1', '1e400', 'fraction', 'too large', 'huge exponent', '"tab\\tnl\\ncr\\r\\"\\\\"', '"c"', 'null', '[]', '{}', '[]', '"\\ud83e"'],
     undefined, { modes: ['single'] });
+
+  await scenario('http methods', [
+    ...['get', 'post', 'put', 'patch', 'delete', 'head', 'options'].map(verb => `print(requests.${verb}(${text(base + '/get')}).status)`),
+    `print(requests.head(${text(base + '/get')}).text.length())`,
+    `print(requests.request("purge", ${text(base + '/get')}).status)`,
+    `requests.put(${text(base + '/get')}, json = {"a": 1})`,
+    `requests.patch(${text(base + '/get')}, text = "t")`,
+    `requests.delete(${text(base + '/get')}, json = {"id": 2})`,
+    catching(`requests.request("BAD METHOD", ${text(base + '/get')})`, 'InvalidRequestError', 'bad verb'),
+  ], ['200', '200', '200', '200', '200', '200', '200', '0', '200', 'bad verb'], seen => {
+    assert.deepEqual(seen.map(s => s.method), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'HEAD', 'PURGE', 'PUT', 'PATCH', 'DELETE']);
+    assert.equal(seen[9].body, '{"a":1}');
+    assert.equal(seen[10].body, 't');
+    assert.equal(seen[11].body, '{"id":2}');
+  });
+
+  await scenario('headers', [
+    `requests.get(${text(base + '/get')}, headers = {"X-One": "1", "x-two": "two words"})`,
+    `requests.post(${text(base + '/get')}, json = {"a": 1}, headers = {"content-type": "application/vnd.test+json"})`,
+    catching(`requests.get(${text(base + '/get')}, headers = {"X-Bad": "a\\r\\nX-Evil: 1"})`, 'InvalidRequestError', 'line break'),
+    catching(`requests.get(${text(base + '/get')}, headers = {"Bad Name": "a"})`, 'InvalidRequestError', 'bad name'),
+    ...['Host', 'content-length', 'Connection', 'Expect', 'UPGRADE'].map(name => catching(`requests.get(${text(base + '/get')}, headers = {${text(name)}: "x"})`, 'InvalidRequestError', 'managed ' + name)),
+  ], ['line break', 'bad name', 'managed Host', 'managed content-length', 'managed Connection', 'managed Expect', 'managed UPGRADE'], seen => {
+    assert.equal(seen.length, 2);
+    assert.equal(seen[0].headers['x-one'], '1');
+    assert.equal(seen[0].headers['x-two'], 'two words');
+    assert.equal(seen[1].type, 'application/vnd.test+json');
+  });
+
+  await scenario('query parameters', [
+    `requests.get(${text(base + '/q')}, params = {"a b": "c d", "amp": "1&2=3", "uni": "\u00e9\u{1F9A3}", "plus": "a+b"})`,
+    `requests.get(${text(base + '/q?x=1')}, params = {"y": 2})`,
+    `requests.get(${text(base + '/q?x=1#frag')}, params = {"b": true})`,
+    `requests.get(${text(base + '/q')}, params = {"id": listOf(1, 2, 3)})`,
+    `requests.get(${text(base + '/q')}, params = {"id": ["a", "b"]})`,
+    `requests.get(${text(base + '/q')}, params = mapOf<Text, Int>())`,
+    'let bad: MutableMap<Text, Any> = mutableMapOf()', 'bad["t"] = Thread.currentThread()',
+    catching(`requests.get(${text(base + '/q')}, params = bad)`, 'InvalidRequestError', 'unsupported value'),
+  ], ['unsupported value'], seen => {
+    const queries = seen.map(s => s.query);
+    assert.equal(queries[0], '?a%20b=c%20d&amp=1%262%3D3&uni=%C3%A9%F0%9F%A6%A3&plus=a%2Bb');
+    assert.deepEqual(queries.slice(1), ['?x=1&y=2', '?x=1&b=true', '?id=1&id=2&id=3', '?id=a&id=b', '']);
+  });
+
+  await scenario('text, bytes and form bodies', [
+    `requests.post(${text(base + '/get')}, text = ${text('h\u00e9llo')})`,
+    'let data = java.util.Base64.getDecoder().decode("AAH/gH8=")',
+    `requests.post(${text(base + '/get')}, bytes = data)`,
+    `requests.post(${text(base + '/get')}, bytes = data, headers = {"Content-Type": "image/png"})`,
+    `requests.post(${text(base + '/get')}, form = {"a b": "c&d", "u": "\u00e9"})`,
+    `requests.post(${text(base + '/get')}, form = {"n": listOf(1, 2)})`,
+    'print("ok")',
+  ], ['ok'], seen => {
+    assert.match(seen[0].type, /^text\/plain/);
+    assert.equal(seen[0].body, 'h\u00e9llo');
+    assert.equal(seen[1].type, 'application/octet-stream');
+    assert.deepEqual([...seen[1].raw], [0, 1, 255, 128, 127]);
+    assert.equal(seen[2].type, 'image/png');
+    assert.equal(seen[3].type, 'application/x-www-form-urlencoded');
+    assert.equal(seen[3].body, 'a+b=c%26d&u=%C3%A9');
+    assert.equal(seen[4].body, 'n=1&n=2');
+  });
+
+  await scenario('conflicting bodies', [
+    `let u = ${text(base + '/get')}`,
+    catching('requests.post(u, json = {"a": 1}, text = "b")', 'InvalidRequestError', 'json text'),
+    catching('requests.post(u, text = "b", form = {"a": 1})', 'InvalidRequestError', 'text form'),
+    catching('requests.post(u, bytes = "b".getBytes(), json = "c")', 'InvalidRequestError', 'bytes json'),
+    'let message = try { requests.post(u, json = "a", text = "b").text } catch (e: RequestError) { e.getMessage() }', 'print(message)',
+  ], ['json text', 'text form', 'bytes json', 'Give only one of json, text, bytes or form.'], seen => assert.equal(seen.length, 0));
+
+  await scenario('invalid urls', [
+    ...['ftp://secret-token/x', 'no scheme secret-token', 'http://', 'http://user:secret-token@127.0.0.1/', 'http://exa mple/secret-token'].flatMap((url, i) => [
+      `let m${i} = try { requests.get(${text(url)}).text } catch (e: InvalidRequestError) { e.getMessage() }`,
+      `print(m${i}.contains("secret-token"))`,
+    ]),
+  ], ['false', 'false', 'false', 'false', 'false'], seen => assert.equal(seen.length, 0));
 
   await rejected('mixed dictionary stays a compile error', [`requests.post(${text(base + '/post')}, json = {"a": 1, "b": "x"})`], 'Expected');
 

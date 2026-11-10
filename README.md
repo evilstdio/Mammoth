@@ -1662,6 +1662,28 @@ response.raiseForStatus()
 
 Works in single-file runs, project builds and packaged application JARs with Java 17+. The compiler embeds the library source and links it only when imported, so there is nothing to install. It is one bundled library, not a package manager.
 
+### Making requests
+
+`requests.get`, `post`, `put`, `patch`, `delete`, `head` and `options` take the URL and then any of these by name. `requests.request(method, url, ...)` sends any other method.
+
+| Option | Meaning |
+| --- | --- |
+| `timeout` | Seconds, a positive `Int`. Default 30 |
+| `params` | Map of query values added to the URL's query, before any fragment. Values are text, numbers, booleans, or a list that repeats the key |
+| `headers` | Map of header names and values. A value here replaces a default such as `Content-Type` |
+| `json` | A JSON body, see below |
+| `text` | A UTF-8 text body, `text/plain` by default |
+| `bytes` | A `ByteArray` body, `application/octet-stream` by default |
+| `form` | A map sent as `application/x-www-form-urlencoded` |
+
+```text
+requests.get(url, params = {"q": "two words", "page": "2"}, headers = {"Accept": "application/json"})
+requests.put(url, text = "plain body")
+requests.post(url, form = {"name": "Maya"})
+```
+
+Give at most one of `json`, `text`, `bytes` and `form`. A second one throws `InvalidRequestError` before anything is sent. So do a URL that is not valid, a scheme other than http or https, credentials written in the URL, and a header with a line break. `Connection`, `Content-Length`, `Expect`, `Host` and `Upgrade` belong to the HTTP client and cannot be set. `post`, `put` and `patch` take `json` as their second positional argument, and the others take `timeout`.
+
 ### JSON
 
 `json =` accepts text, booleans, finite numbers, maps with text keys, lists, arrays and `Json` values, nested to 512 levels. Anything else throws `JsonError` before a request is sent, including NaN, infinity, a map key that is not text, and a value that contains itself. Because `json = null` means "no JSON body", send a JSON null with `json = Json.NULL`.
@@ -1688,6 +1710,6 @@ Numbers keep the text they were written with, so a 64-bit id does not lose preci
 
 ### Current limits
 
-Requests are `get` and `post` only, with no custom headers. Response headers are Java `HttpHeaders`. The request timeout is a positive `Int` in seconds and connection timeout is 10 seconds. Redirects are not followed and requests are not retried.
+Response headers are Java `HttpHeaders`. The request timeout is a positive `Int` in seconds and connection timeout is 10 seconds. Redirects are not followed and requests are not retried.
 
 Run `node tests/requests.cjs` for the local-only integration tests (requires Node).

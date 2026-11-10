@@ -12,6 +12,7 @@ pub fn emit<'a>(
                     "requests"
                         | "Response"
                         | "RequestError"
+                        | "InvalidRequestError"
                         | "JsonError"
                         | "Json"
                         | "JsonNull"
