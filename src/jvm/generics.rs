@@ -434,6 +434,9 @@ impl Types<'_> {
                 Some(self.wildcard_capture(bound, true, site, ordinal))
             }
             GType::Array(inner) => {
+                if let GType::Base(element) = inner.as_ref() {
+                    return self.kind_of(&JType::Array(Box::new(element.clone())));
+                }
                 let element = self.capture_kind(inner, map, site, ordinal)?;
                 Some(Kind::List(ListKind::for_element(element)?))
             }
@@ -558,6 +561,10 @@ impl Types<'_> {
                 .and_then(|bound| self.generic_kind(bound, map)),
             GType::Super(bound) => self.generic_kind(bound, map),
             GType::Array(inner) => {
+                // `byte[]` is its own list type, though a byte reads as `Int`.
+                if let GType::Base(element) = inner.as_ref() {
+                    return self.kind_of(&JType::Array(Box::new(element.clone())));
+                }
                 let element = self.generic_kind(inner, map)?;
                 Some(Kind::List(ListKind::for_element(element)?))
             }

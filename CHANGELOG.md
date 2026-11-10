@@ -3,6 +3,7 @@
 ## Overloads and Java byte arrays, 2026-11-10
 
 - A value now reaches a parameter of its own nullable type on an overloaded name, and that beats widening or a parent type.
+- `byte[]` as a Java type argument, as in `BodyHandler<byte[]>`, is a byte array rather than an `Int` list, which threw `ClassCastException` when used.
 
 ## Module initialization, 2026-11-10
 

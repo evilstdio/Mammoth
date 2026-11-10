@@ -1,0 +1,14 @@
+// A `byte[]` as a Java type argument stays a byte array.
+import java.net.http.HttpResponse.BodySubscribers
+import java.nio.ByteBuffer
+
+let subscriber = BodySubscribers.ofByteArray()
+let parts = java.util.ArrayList<ByteBuffer>()
+parts.add(ByteBuffer.wrap("hi".getBytes()))
+subscriber.onNext(parts)
+subscriber.onComplete()
+let body = subscriber.getBody().toCompletableFuture().get()
+print(body.size)
+print(body[1])
+let kept: ByteArray = body
+print(kept[0])
