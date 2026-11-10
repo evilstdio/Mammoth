@@ -17,6 +17,7 @@
 - Fields declared with a type and no value are assigned at the top of an `init` block. The compiler rejects a field that is never assigned, assigned twice, read first, assigned conditionally or assigned from a method.
 - Operator methods: `inc`, `dec`, compound assignment methods and multi-index `a[i, j]`. `list += values` adds each element, and `collection -= v` removes a value, never a position.
 - Name common collection types without importing them, and let a declared type complete `HashMap()` and `mutableMapOf()`.
+- Add `max`, `min`, `minus`, `runningFold`, `scan`, a two-key `compareBy`, `appendLine` and array copies to the built-in library.
 
 ## Dictionary literals, 2026-11-10
 

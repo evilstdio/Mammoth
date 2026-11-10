@@ -1570,3 +1570,123 @@ fun Iterable<__T>.filterIndexed<__T>(predicate: (Int, __T) -> Bool): MutableList
     }
     return out
 }
+
+fun Iterable<__T>.max<__T: Comparable<__T>>(): __T {
+    var best: __T? = null
+    for item in this {
+        if best == null or item.compareTo(requireValue(best)) > 0 { best = item }
+    }
+    if best == null { throw __NoSuchElement("The collection is empty.") }
+    return requireValue(best)
+}
+fun Iterable<__T>.min<__T: Comparable<__T>>(): __T {
+    var best: __T? = null
+    for item in this {
+        if best == null or item.compareTo(requireValue(best)) < 0 { best = item }
+    }
+    if best == null { throw __NoSuchElement("The collection is empty.") }
+    return requireValue(best)
+}
+fun Iterable<__T>.runningFold<__T, __R>(initial: __R, operation: (__R, __T) -> __R): MutableList<__R> {
+    let out = MutableList<__R>()
+    var result = initial
+    out.add(result)
+    for item in this {
+        result = operation(result, item)
+        out.add(result)
+    }
+    return out
+}
+fun Iterable<__T>.scan<__T, __R>(initial: __R, operation: (__R, __T) -> __R): MutableList<__R> {
+    let out = MutableList<__R>()
+    var result = initial
+    out.add(result)
+    for item in this {
+        result = operation(result, item)
+        out.add(result)
+    }
+    return out
+}
+fun Iterable<__T>.minus<__T>(element: __T): MutableList<__T> {
+    let out = MutableList<__T>()
+    var removed = false
+    for item in this {
+        if not removed and item == element { removed = true } else { out.add(item) }
+    }
+    return out
+}
+fun StringBuilder.appendLine(value: Any? = ""): StringBuilder {
+    this.append(value)
+    this.append("\n")
+    return this
+}
+fun compareBy<__T, __K: Comparable<__K>, __L: Comparable<__L>>(first: (__T) -> __K, second: (__T) -> __L): __Comparator<__T> {
+    return { a: __T, b: __T ->
+        let order = first(a).compareTo(first(b))
+        if order != 0 { order } else { second(a).compareTo(second(b)) }
+    }
+}
+
+fun Iterable<Long>.toLongArray(): List<Long> {
+    let items = MutableList<Long>()
+    for item in this {
+        items.add(item)
+    }
+    let out = List<Long>(items.size)
+    var index = 0
+    while index < items.size {
+        out[index] = items[index]
+        index += 1
+    }
+    return out
+}
+
+fun Iterable<Double>.toDoubleArray(): List<Double> {
+    let items = MutableList<Double>()
+    for item in this {
+        items.add(item)
+    }
+    let out = List<Double>(items.size)
+    var index = 0
+    while index < items.size {
+        out[index] = items[index]
+        index += 1
+    }
+    return out
+}
+
+fun Iterable<Bool>.toBooleanArray(): List<Bool> {
+    let items = MutableList<Bool>()
+    for item in this {
+        items.add(item)
+    }
+    let out = List<Bool>(items.size)
+    var index = 0
+    while index < items.size {
+        out[index] = items[index]
+        index += 1
+    }
+    return out
+}
+
+fun Iterable<Char>.toCharArray(): List<Char> {
+    let items = MutableList<Char>()
+    for item in this {
+        items.add(item)
+    }
+    let out = List<Char>(items.size)
+    var index = 0
+    while index < items.size {
+        out[index] = items[index]
+        index += 1
+    }
+    return out
+}
+
+fun Iterable<Text>.toTypedArray(): List<Text> {
+    let items = MutableList<Text>()
+    for item in this {
+        items.add(item)
+    }
+    return List<Text>(items.size) { items[it] }
+}
