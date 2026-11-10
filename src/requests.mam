@@ -1,0 +1,462 @@
+module mammoth.Requests
+import java.math.BigDecimal
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpRequest.BodyPublishers
+import java.net.http.HttpResponse.BodyHandlers
+import java.net.http.HttpHeaders
+import java.time.Duration
+import java.util.Collection as JavaCollection
+import java.util.IdentityHashMap
+import java.util.LinkedHashMap
+import java.util.Map as JavaMap
+
+class RequestError(message: Text) extends RuntimeException(message)
+
+/// Malformed JSON text, a value with no JSON form, or a read of the wrong type.
+class JsonError(message: Text, let position: Int = -1) extends RequestError(message)
+
+/// A JSON document. Objects keep their key order; a repeated key keeps its last value.
+sealed class Json {
+    open fun kind(): Text { return "value" }
+    open fun isNull(): Bool { return false }
+    open fun asBool(): Bool { throw wrong("a boolean") }
+    open fun asText(): Text { throw wrong("text") }
+    open fun asInt(): Int { throw wrong("a number") }
+    open fun asLong(): Long { throw wrong("a number") }
+    open fun asDouble(): Double { throw wrong("a number") }
+    open fun asList(): MutableList<Json> { throw wrong("an array") }
+    open fun asMap(): LinkedHashMap<Text, Json> { throw wrong("an object") }
+    open fun size(): Int { throw wrong("an array or object") }
+    open fun has(key: Text): Bool { throw wrong("an object") }
+    open fun find(key: Text): Json? { throw wrong("an object") }
+    operator fun get(key: Text): Json {
+        let found = find(key)
+        if found == null { throw JsonError("This JSON object has no such key.") }
+        return found
+    }
+    operator fun get(index: Int): Json {
+        let items = asList()
+        if index < 0 or index >= items.size() { throw JsonError("This JSON array has no such index.") }
+        return items[index]
+    }
+    fun wrong(wanted: Text): JsonError {
+        return JsonError("Expected {wanted} in this JSON value, but it is {kind()}.")
+    }
+    open fun write(out: StringBuilder) {}
+    override fun toString(): Text {
+        let out = StringBuilder()
+        write(out)
+        return out.toString()
+    }
+
+    static let NULL: Json = JsonNull()
+    /// Reads one JSON document. Throws JsonError if the text is not valid JSON.
+    static fun parse(text: Text): Json { return JsonReader(text).document() }
+    /// Converts text, booleans, finite numbers, null, maps with text keys,
+    /// lists and arrays. Throws JsonError for anything else.
+    static fun of(value: Any?): Json {
+        return JsonBuilder().convert(value, 0)
+    }
+    /// The compact JSON text of a value accepted by `of`.
+    static fun stringify(value: Any?): Text { return of(value).toString() }
+    static fun emptyObject(): Json { return JsonObject(LinkedHashMap<Text, Json>()) }
+    static fun emptyArray(): Json { return JsonArray(MutableList<Json>()) }
+}
+
+class JsonNull extends Json {
+    override fun kind(): Text { return "null" }
+    override fun isNull(): Bool { return true }
+    override fun write(out: StringBuilder) { out.append("null") }
+}
+
+class JsonBool(let value: Bool) extends Json {
+    override fun kind(): Text { return "a boolean" }
+    override fun asBool(): Bool { return value }
+    override fun write(out: StringBuilder) { out.append(if value { "true" } else { "false" }) }
+}
+
+/// Keeps the number exactly as written, so large values lose no precision.
+class JsonNumber(let literal: Text) extends Json {
+    override fun kind(): Text { return "a number" }
+    override fun asInt(): Int {
+        try {
+            return exact().intValueExact()
+        } catch (error: ArithmeticException) {
+            throw JsonError("This JSON number is not an Int.")
+        }
+    }
+    override fun asLong(): Long {
+        try {
+            return exact().longValueExact()
+        } catch (error: ArithmeticException) {
+            throw JsonError("This JSON number is not a Long.")
+        }
+    }
+    override fun asDouble(): Double {
+        let value = java.lang.Double.parseDouble(literal)
+        if java.lang.Double.isInfinite(value) { throw JsonError("This JSON number is too large for a Double.") }
+        return value
+    }
+    fun exact(): BigDecimal {
+        if literal.length() > 400 { throw ArithmeticException() }
+        try {
+            return BigDecimal(literal)
+        } catch (error: NumberFormatException) {
+            throw ArithmeticException()
+        }
+    }
+    override fun write(out: StringBuilder) { out.append(literal) }
+}
+
+class JsonText(let value: Text) extends Json {
+    override fun kind(): Text { return "text" }
+    override fun asText(): Text { return value }
+    override fun write(out: StringBuilder) { writeJsonText(out, value) }
+}
+
+class JsonArray(let items: MutableList<Json>) extends Json {
+    override fun kind(): Text { return "an array" }
+    override fun asList(): MutableList<Json> { return MutableList<Json>(items) }
+    override fun size(): Int { return items.size() }
+    override fun write(out: StringBuilder) {
+        out.append("[")
+        var first = true
+        for item in items {
+            if not first { out.append(",") }
+            first = false
+            item.write(out)
+        }
+        out.append("]")
+    }
+}
+
+class JsonObject(let fields: LinkedHashMap<Text, Json>) extends Json {
+    override fun kind(): Text { return "an object" }
+    override fun asMap(): LinkedHashMap<Text, Json> { return LinkedHashMap<Text, Json>(fields) }
+    override fun size(): Int { return fields.size() }
+    override fun has(key: Text): Bool { return fields.containsKey(key) }
+    override fun find(key: Text): Json? { return fields.get(key) }
+    override fun write(out: StringBuilder) {
+        out.append("\{")
+        var first = true
+        for entry in fields.entrySet() {
+            if not first { out.append(",") }
+            first = false
+            writeJsonText(out, entry.getKey())
+            out.append(":")
+            entry.getValue().write(out)
+        }
+        out.append("}")
+    }
+}
+
+fun writeJsonText(out: StringBuilder, text: Text) {
+    let hex = "0123456789abcdef"
+    out.append("\"")
+    var index = 0
+    let length = text.length()
+    while index < length {
+        let ch = text.charAt(index)
+        let code = ch.toInt()
+        // A surrogate with no partner has no UTF-8 form, so it is escaped.
+        let lonely = (code >= 55296 and code <= 56319
+                and (index + 1 >= length or text.charAt(index + 1).toInt() < 56320 or text.charAt(index + 1).toInt() > 57343))
+            or (code >= 56320 and code <= 57343
+                and (index == 0 or text.charAt(index - 1).toInt() < 55296 or text.charAt(index - 1).toInt() > 56319))
+        if code == 34 { out.append("\\\"") }
+        else if code == 92 { out.append("\\\\") }
+        else if code == 8 { out.append("\\b") }
+        else if code == 9 { out.append("\\t") }
+        else if code == 10 { out.append("\\n") }
+        else if code == 12 { out.append("\\f") }
+        else if code == 13 { out.append("\\r") }
+        else if code < 32 or lonely {
+            out.append("\\u")
+            out.append(hex.charAt(code / 4096))
+            out.append(hex.charAt(code / 256 % 16))
+            out.append(hex.charAt(code / 16 % 16))
+            out.append(hex.charAt(code % 16))
+        } else { out.append(ch) }
+        index += 1
+    }
+    out.append("\"")
+}
+
+class JsonLimits {
+    static let MAX_DEPTH: Int = 512
+}
+
+class JsonBuilder {
+    // The containers being converted, to find one that contains itself.
+    let open = IdentityHashMap<Any, Bool>()
+
+    fun convert(value: Any?, depth: Int): Json {
+        if value == null { return Json.NULL }
+        if value is Json { return value }
+        if value is Text { return JsonText(value) }
+        if value is Bool { return JsonBool(value) }
+        if value is Char { return JsonText(value.toString()) }
+        if value is Number {
+            let literal = value.toString()
+            if not JsonReader(literal).isNumber() { throw JsonError("This number has no JSON form (NaN and infinity are not JSON).") }
+            return JsonNumber(literal)
+        }
+        let isMap = value is JavaMap<*, *>
+        let isList = value is JavaCollection<*> or value.getClass().isArray()
+        if not isMap and not isList {
+            throw JsonError("A value of type {value.getClass().getSimpleName()} has no JSON form.")
+        }
+        if depth >= JsonLimits.MAX_DEPTH { throw JsonError("This value is nested too deeply for JSON.") }
+        if open.containsKey(value) { throw JsonError("This value contains itself, so it has no JSON form.") }
+        open.put(value, true)
+        let result = if value is JavaMap<*, *> { fromMap(value, depth) } else { fromList(value, depth) }
+        open.remove(value)
+        return result
+    }
+
+    fun fromMap(values: JavaMap<*, *>, depth: Int): Json {
+        let fields = LinkedHashMap<Text, Json>()
+        for entry in values.entrySet() {
+            let key = entry.getKey()
+            if key is Text {
+                fields.put(key, convert(entry.getValue(), depth + 1))
+            } else {
+                throw JsonError("JSON object keys must be text.")
+            }
+        }
+        return JsonObject(fields)
+    }
+
+    fun fromList(values: Any, depth: Int): Json {
+        let items = MutableList<Json>()
+        if values is JavaCollection<*> {
+            for item in values { items.add(convert(item, depth + 1)) }
+        } else {
+            let length = java.lang.reflect.Array.getLength(values)
+            for index in 0 until length {
+                items.add(convert(java.lang.reflect.Array.get(values, index), depth + 1))
+            }
+        }
+        return JsonArray(items)
+    }
+}
+
+class JsonReader(let source: Text) {
+    var position = 0
+
+    fun fail(message: Text): JsonError {
+        return JsonError("Invalid JSON at character {position}: {message}.", position)
+    }
+
+    /// The character code here, or -1 at the end of the text.
+    fun here(): Int {
+        if position >= source.length() { return -1 }
+        return source.charAt(position).toInt()
+    }
+
+    fun document(): Json {
+        let value = read(0)
+        skipSpace()
+        if position != source.length() { throw fail("unexpected text after the value") }
+        return value
+    }
+
+    fun isNumber(): Bool {
+        try {
+            number()
+        } catch (error: JsonError) {
+            return false
+        }
+        return position == source.length()
+    }
+
+    fun skipSpace() {
+        while true {
+            let code = here()
+            if code != 32 and code != 10 and code != 13 and code != 9 { return }
+            position += 1
+        }
+    }
+
+    fun read(depth: Int): Json {
+        if depth > JsonLimits.MAX_DEPTH { throw fail("nested too deeply") }
+        skipSpace()
+        let code = here()
+        if code == 123 { return objectValue(depth) }
+        if code == 91 { return arrayValue(depth) }
+        if code == 34 { return JsonText(text()) }
+        if code == 116 { return word("true", JsonBool(true)) }
+        if code == 102 { return word("false", JsonBool(false)) }
+        if code == 110 { return word("null", Json.NULL) }
+        if code == -1 { throw fail("the text ended early") }
+        return number()
+    }
+
+    fun word(expected: Text, value: Json): Json {
+        if not source.startsWith(expected, position) { throw fail("expected {expected}") }
+        position += expected.length()
+        return value
+    }
+
+    fun objectValue(depth: Int): Json {
+        position += 1
+        let fields = LinkedHashMap<Text, Json>()
+        skipSpace()
+        if here() == 125 {
+            position += 1
+            return JsonObject(fields)
+        }
+        while true {
+            skipSpace()
+            if here() != 34 { throw fail("expected a key in double quotes") }
+            let key = text()
+            skipSpace()
+            if here() != 58 { throw fail("expected ':' after the key") }
+            position += 1
+            fields.put(key, read(depth + 1))
+            skipSpace()
+            let code = here()
+            position += 1
+            if code == 125 { return JsonObject(fields) }
+            if code != 44 {
+                position -= 1
+                throw fail("expected ',' or the end of the object")
+            }
+        }
+    }
+
+    fun arrayValue(depth: Int): Json {
+        position += 1
+        let items = MutableList<Json>()
+        skipSpace()
+        if here() == 93 {
+            position += 1
+            return JsonArray(items)
+        }
+        while true {
+            items.add(read(depth + 1))
+            skipSpace()
+            let code = here()
+            position += 1
+            if code == 93 { return JsonArray(items) }
+            if code != 44 {
+                position -= 1
+                throw fail("expected ',' or the end of the array")
+            }
+        }
+    }
+
+    fun text(): Text {
+        position += 1
+        let out = StringBuilder()
+        while true {
+            let code = here()
+            if code == -1 { throw fail("the text ended inside a string") }
+            if code < 32 { throw fail("a control character must be escaped") }
+            position += 1
+            if code == 34 { return out.toString() }
+            if code == 92 {
+                escape(out)
+            } else {
+                out.append(source.charAt(position - 1))
+            }
+        }
+    }
+
+    fun escape(out: StringBuilder) {
+        let code = here()
+        position += 1
+        if code == 34 { out.append('"') }
+        else if code == 92 { out.append('\\') }
+        else if code == 47 { out.append('/') }
+        else if code == 98 { out.append(8.toChar()) }
+        else if code == 102 { out.append(12.toChar()) }
+        else if code == 110 { out.append(10.toChar()) }
+        else if code == 114 { out.append(13.toChar()) }
+        else if code == 116 { out.append(9.toChar()) }
+        else if code == 117 {
+            var value = 0
+            for i in 0 until 4 { value = value * 16 + hexDigit() }
+            out.append(value.toChar())
+        } else {
+            position -= 1
+            throw fail("this escape does not exist")
+        }
+    }
+
+    fun hexDigit(): Int {
+        let code = here()
+        var digit = -1
+        if code >= 48 and code <= 57 { digit = code - 48 }
+        else if code >= 97 and code <= 102 { digit = code - 87 }
+        else if code >= 65 and code <= 70 { digit = code - 55 }
+        if digit < 0 { throw fail("expected four hexadecimal digits") }
+        position += 1
+        return digit
+    }
+
+    fun digits(): Bool {
+        let start = position
+        while here() >= 48 and here() <= 57 { position += 1 }
+        return position > start
+    }
+
+    fun number(): Json {
+        let start = position
+        if here() == 45 { position += 1 }
+        if here() == 48 {
+            position += 1
+            if here() >= 48 and here() <= 57 { throw fail("a number cannot start with zero") }
+        } else if not digits() {
+            throw fail("expected a value")
+        }
+        if here() == 46 {
+            position += 1
+            if not digits() { throw fail("expected digits after the decimal point") }
+        }
+        if here() == 101 or here() == 69 {
+            position += 1
+            if here() == 43 or here() == 45 { position += 1 }
+            if not digits() { throw fail("expected digits in the exponent") }
+        }
+        return JsonNumber(source.substring(start, position))
+    }
+}
+
+class Response(let status: Int, let text: Text, let headers: HttpHeaders) {
+    let ok: Bool = status >= 200 and status < 300
+    fun raiseForStatus() {
+        if not ok { throw RequestError("HTTP {status}") }
+    }
+    /// Reads the body as JSON. Throws JsonError if it is not valid JSON.
+    fun json(): Json { return Json.parse(text) }
+}
+
+class requests {
+    private static let client: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10L)).build()
+    static fun get(url: Text, timeout: Int = 30): Response {
+        return send(url, null, timeout)
+    }
+    static fun post(url: Text, json: Any? = null, timeout: Int = 30): Response {
+        return send(url, if json == null { null } else { Json.stringify(json) }, timeout)
+    }
+    private static fun send(url: Text, body: Text?, timeout: Int): Response {
+        if timeout <= 0 { throw RequestError("Timeout must be positive (seconds).") }
+        try {
+            let builder = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(timeout.toLong()))
+            if body != null {
+                builder.header("Content-Type", "application/json; charset=utf-8")
+                builder.POST(BodyPublishers.ofString(body))
+            } else { builder.GET() }
+            let reply = client.send(builder.build(), BodyHandlers.ofString())
+            return Response(reply.statusCode(), reply.body(), reply.headers())
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw RequestError("HTTP request interrupted.")
+        } catch (error: Exception) {
+            throw RequestError("HTTP request failed (" + error.getClass().getSimpleName() + ").")
+        }
+    }
+}

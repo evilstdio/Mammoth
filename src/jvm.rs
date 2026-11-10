@@ -58,9 +58,8 @@ pub fn emit<'a>(program: &'a Program<'a>) -> Result<Vec<ClassFile>, Error> {
 
 /// Resolves declarations once for the entire project, then emits each file in
 /// its own scope. The index on an error identifies its source file.
-pub fn emit_project<'a>(programs: &'a [Program<'a>]) -> Result<Vec<ClassFile>, (usize, Error)> {
-    let programs: Vec<_> = programs.iter().collect();
-    let symbols = project::resolve(&programs)?;
+pub fn emit_programs<'a>(programs: &[&'a Program<'a>]) -> Result<Vec<ClassFile>, (usize, Error)> {
+    let symbols = project::resolve(programs)?;
     let mut classes = Vec::new();
     for (index, (program, symbols)) in programs.iter().zip(&symbols).enumerate() {
         classes.extend(emit_classes(program, symbols).map_err(|error| (index, error))?);
@@ -618,6 +617,7 @@ fn resolve_type(types: &Types<'_>, name: Name<'_>) -> Result<Kind, Error> {
         "DoubleArray" => Ok(Kind::List(ListKind::Double)),
         "BooleanArray" => Ok(Kind::List(ListKind::Bool)),
         "CharArray" => Ok(Kind::List(ListKind::Char)),
+        "ByteArray" => Ok(Kind::List(ListKind::Byte)),
         "Text" => Ok(Kind::Text),
         "Int" => Ok(Kind::Int),
         "Double" => Ok(Kind::Double),
@@ -3882,6 +3882,15 @@ impl<'a> Emitter<'a> {
                             text: "get",
                             offset: receiver.offset(),
                         };
+                        // A class may overload `get`, by key type for example.
+                        let get = self
+                            .overloaded_method(
+                                method,
+                                receiver,
+                                get,
+                                std::slice::from_ref(index.as_ref()),
+                            )?
+                            .unwrap_or(get);
                         self.allow_null = allow_null;
                         return self
                             .call_method_on(

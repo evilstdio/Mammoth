@@ -1650,3 +1650,44 @@ A Java method result or field whose type has wildcards, such as `List<? extends 
 - To keep or change the values, copy them: `ArrayList<Number>(numbers)`.
 
 Captures belong to the source position of the call or field read. As a result, a `var` holding one cannot be reassigned from another call, and a lambda without a declared result type cannot return one. Both are conservative rejections; Java would accept them with a declared wildcard type, which Mammoth cannot write yet. Generic Java fields read from Java objects and static fields now keep their type arguments; before, they were raw.
+
+## mammoth.requests
+
+```text
+import mammoth.requests
+let response = requests.post(url, json = {"content": "Hello from MAMMOTH!"})
+print(response.status)
+response.raiseForStatus()
+```
+
+Works in single-file runs, project builds and packaged application JARs with Java 17+. The compiler embeds the library source and links it only when imported, so there is nothing to install. It is one bundled library, not a package manager.
+
+### JSON
+
+`json =` accepts text, booleans, finite numbers, maps with text keys, lists, arrays and `Json` values, nested to 512 levels. Anything else throws `JsonError` before a request is sent, including NaN, infinity, a map key that is not text, and a value that contains itself. Because `json = null` means "no JSON body", send a JSON null with `json = Json.NULL`.
+
+Mammoth does not mix value types in a dictionary, and this library does not change that. Wrap each value with `Json.of` when the types differ, or build a `MutableMap<Text, Any>`:
+
+```text
+import mammoth.Json
+requests.post(url, json = {"name": Json.of("Maya"), "age": Json.of(31), "nick": Json.NULL})
+```
+
+`response.json()` and `Json.parse(text)` give a `Json` value and follow RFC 8259 strictly. Malformed text throws `JsonError`, whose `position` is the character offset. Messages never quote the document.
+
+| Read | Result |
+| --- | --- |
+| `v["key"]`, `v[0]` | A child. Throws `JsonError` if it is missing or `v` is the wrong kind |
+| `v.find("key")` | A child or `null` |
+| `v.has("key")`, `v.size()`, `v.isNull()`, `v.kind()` | Inspection |
+| `v.asText()`, `v.asBool()`, `v.asInt()`, `v.asLong()`, `v.asDouble()` | The value. Throws `JsonError` on the wrong kind, or a number that does not fit exactly |
+| `v.asList()`, `v.asMap()` | A copy as `MutableList<Json>` or a key-ordered `LinkedHashMap<Text, Json>` |
+| `v.toString()`, `Json.stringify(value)` | Compact JSON text |
+
+Numbers keep the text they were written with, so a 64-bit id does not lose precision. A repeated key keeps its last value. Import `mammoth.JsonText`, `JsonNumber`, `JsonBool`, `JsonNull`, `JsonArray` and `JsonObject` to match on the kind in a `when`.
+
+### Current limits
+
+Requests are `get` and `post` only, with no custom headers. Response headers are Java `HttpHeaders`. The request timeout is a positive `Int` in seconds and connection timeout is 10 seconds. Redirects are not followed and requests are not retried.
+
+Run `node tests/requests.cjs` for the local-only integration tests (requires Node).

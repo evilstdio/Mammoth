@@ -1,0 +1,17 @@
+// A class can overload `get`, and `a[i]` picks by the index's type.
+class Table {
+    operator fun get(key: Text): Text { return "key " + key }
+    operator fun get(index: Int): Text { return "index {index}" }
+}
+let table = Table()
+print(table["a"])
+print(table[3])
+print(table["b"].length())
+
+// ByteArray names a Java byte[].
+fun total(data: ByteArray): Int {
+    var sum = 0
+    for b in data { sum += b }
+    return sum
+}
+print(total("AB".getBytes()))

@@ -3,6 +3,7 @@ mod classpath;
 mod inflate;
 mod java_check;
 mod jvm;
+mod libraries;
 mod project;
 mod syntax;
 
@@ -72,8 +73,13 @@ fn run() -> Result<ExitCode, String> {
         println!("Java bindings verified.");
         return Ok(ExitCode::SUCCESS);
     }
-    let classes =
-        jvm::emit(&program).map_err(|error| error.display(&input.to_string_lossy(), &source))?;
+    let classes = libraries::emit(&[&program]).map_err(|(index, error)| {
+        if index == 0 {
+            error.display(&input.to_string_lossy(), &source)
+        } else {
+            error.display("<mammoth.requests>", libraries::REQUESTS)
+        }
+    })?;
     let entry = program
         .module
         .as_deref()

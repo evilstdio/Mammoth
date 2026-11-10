@@ -1,5 +1,12 @@
 # Changelog
 
+## mammoth.requests library, 2026-11-10
+
+- Bundle and link an official Mammoth HTTP facade on import in single-file, project and application JAR builds, with GET, POST, status/text/headers/ok, raiseForStatus, positive request timeouts and sanitized RequestError handling. The Java HTTP client is reused; redirects and retries stay off.
+- General JSON: `Json` values, strict RFC 8259 `Json.parse`, `Json.of`/`Json.stringify`, `response.json()`, and `json =` for text, booleans, finite numbers, maps with text keys, lists, arrays and `Json`. Numbers keep their exact text. Malformed text, nesting past 512 levels, non-finite numbers, non-text keys, self-containing values and unsupported types throw `JsonError`.
+- Compiler: `a[i]` picks the right overload when a class overloads `get`, and `ByteArray` names a Java `byte[]`.
+- Add a small webhook example, import and project regressions, and local HTTP integration tests.
+
 ## Classes and everyday syntax, 2026-11-09
 
 - Secondary constructors as real JVM constructors, private primary constructors, and classes with only secondary constructors.

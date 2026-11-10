@@ -1,3 +1,13 @@
+# mammoth.requests library, 2026-11-10 (latest)
+
+Source: `src/requests.mam` (Mammoth), linked by `src/libraries.rs` on an import of a public name, which is listed there. A new public class must be added to that list. Tests: `node tests/requests.cjs`, with `ONLY=<part of a scenario name>` to narrow and `MAMMOTH=<exe>` to choose the compiler.
+
+Compiler findings while writing the library:
+- Fixed, narrow: `a[i]` ignored overloaded `get`. Test `tests/programs/overloaded-index.mam`.
+- Fixed, narrow: Java `byte[]` had no type spelling, now `ByteArray`.
+- Open: top-level `let`/`const` in a linked library module is never initialized, so it reads as zero or null. Reproduce with a `const val N = 5` at the top of `src/requests.mam` read from a method. The library uses `static let` in a class instead.
+- Open: `mapOf<Text, Any>("a" to 1)` is rejected because `to` makes a `Pair<Text, Int>`, and `Any?` is refused as a type argument of a Java collection. The library's documented route for mixed values is `Json.of` on each value, or a `MutableMap<Text, Any>`.
+
 # Session 5: classes and everyday syntax (2026-11-09, read this first)
 
 Work continues on branch `compiler-correctness`, local only, identity `sss47 <sss47@users.invalid>`, no remote, no AI attribution. Commit only after `cargo test --release --offline`, `cargo fmt --check` and `cargo clippy --offline --all-targets -- -D warnings` pass. Use a separate `CARGO_TARGET_DIR` while a fuzzer or test holds the binary.

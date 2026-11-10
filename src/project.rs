@@ -5,7 +5,7 @@ use std::{
     process::ExitCode,
 };
 
-use crate::{jvm, package_jar, run_classes, syntax};
+use crate::{package_jar, run_classes, syntax};
 
 pub fn run(directory: &Path, output: Option<&Path>) -> Result<ExitCode, String> {
     let mut paths = vec![directory.join("main.mam")];
@@ -60,9 +60,14 @@ pub fn run(directory: &Path, output: Option<&Path>) -> Result<ExitCode, String> 
             None => {}
         }
     }
-    let classes = jvm::emit_project(&programs).map_err(|(index, error)| {
-        error.display(&paths[index].to_string_lossy(), &sources[index])
-    })?;
+    let classes = crate::libraries::emit(&programs.iter().collect::<Vec<_>>()).map_err(
+        |(index, error)| {
+            if index >= programs.len() {
+                return error.display("<mammoth.requests>", crate::libraries::REQUESTS);
+            }
+            error.display(&paths[index].to_string_lossy(), &sources[index])
+        },
+    )?;
 
     let entry = programs[0]
         .module

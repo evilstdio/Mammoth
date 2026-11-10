@@ -1,0 +1,3 @@
+import mammoth.requests
+import mammoth.RequestError
+print("bundled requests available")

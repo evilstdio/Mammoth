@@ -1,0 +1,10 @@
+import mammoth.requests
+
+let url = "PASTE_YOUR_WEBHOOK_URL_HERE"
+if url == "PASTE_YOUR_WEBHOOK_URL_HERE" {
+    print("Set your webhook URL in this file.")
+} else {
+    let response = requests.post(url, json = {"content": "Hello from MAMMOTH!"})
+    print("HTTP {response.status}")
+    response.raiseForStatus()
+}
