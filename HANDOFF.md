@@ -2,6 +2,12 @@
 
 Source: `src/requests.mam` (Mammoth), linked by `src/libraries.rs` on an import of a public name, which is listed there. A new public class must be added to that list. Tests: `node tests/requests.cjs`, with `ONLY=<part of a scenario name>` to narrow and `MAMMOTH=<exe>` to choose the compiler.
 
+Status: the five planned areas are done and documented in the README section `mammoth.requests`: general JSON; request configuration; response and error API; sessions; redirects, uploads and downloads. Engine: `Http.open` sends and follows redirects and returns an `Exchange` with an unread stream, then `Http.request` or `Http.download` consumes it. `requests` and `Session` hold generated-looking forwarding methods, so a new option has to be added to all of them.
+
+Not verified by a test: an actual connection timeout, because a local server cannot make connecting hang reliably, so only `connectTimeout` validation and wiring are exercised; any https request, including an https-to-http redirect, because the suite has no trusted local certificate. Origin comparison includes the scheme in the code. The integration tests use `{...}` dictionary literals, so they need the working tree: dictionary literals live in the still-uncommitted `src/syntax.rs` work, which also holds operator, init-field, implicit-collection and tailrec changes. Commits on this branch contain only library files and three narrow hunks of `src/jvm.rs`, and they build on their own.
+
+Next task: decide whether to commit the separate uncommitted compiler work, then fix the open compiler items below, starting with top-level values in linked modules.
+
 Compiler findings while writing the library:
 - Fixed, narrow: `a[i]` ignored overloaded `get`. Test `tests/programs/overloaded-index.mam`.
 - Fixed, narrow: Java `byte[]` had no type spelling, now `ByteArray`.

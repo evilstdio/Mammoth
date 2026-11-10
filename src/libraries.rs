@@ -19,6 +19,8 @@ pub fn emit<'a>(
                         | "Headers"
                         | "Session"
                         | "Auth"
+                        | "Upload"
+                        | "RedirectError"
                         | "JsonError"
                         | "Json"
                         | "JsonNull"

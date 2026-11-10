@@ -1675,7 +1675,9 @@ Works in single-file runs, project builds and packaged application JARs with Jav
 | `text` | A UTF-8 text body, `text/plain` by default |
 | `bytes` | A `ByteArray` body, `application/octet-stream` by default |
 | `form` | A map sent as `application/x-www-form-urlencoded` |
+| `files` | A map of field names to `Upload` values, sent as `multipart/form-data` |
 | `auth` | `Auth.bearer(token)` or `Auth.basic(user, password)`. Printing an `Auth` hides it |
+| `maxRedirects` | How many redirects to follow. Default 0, which returns the redirect response |
 
 ```text
 requests.get(url, params = {"q": "two words", "page": "2"}, headers = {"Accept": "application/json"})
@@ -1683,7 +1685,7 @@ requests.put(url, text = "plain body")
 requests.post(url, form = {"name": "Maya"})
 ```
 
-Give at most one of `json`, `text`, `bytes` and `form`. A second one throws `InvalidRequestError` before anything is sent. So do a URL that is not valid, a scheme other than http or https, credentials written in the URL, and a header with a line break. `Connection`, `Content-Length`, `Expect`, `Host` and `Upgrade` belong to the HTTP client and cannot be set. `post`, `put` and `patch` take `json` as their second positional argument, and the others take `timeout`.
+Give at most one of `json`, `text`, `bytes` and `form`, except that `form` and `files` combine into one multipart body. A second one throws `InvalidRequestError` before anything is sent. So do a URL that is not valid, a scheme other than http or https, credentials written in the URL, and a header with a line break. `Connection`, `Content-Length`, `Expect`, `Host` and `Upgrade` belong to the HTTP client and cannot be set. `post`, `put` and `patch` take `json` as their second positional argument, and the others take `timeout`.
 
 ### JSON
 
@@ -1723,6 +1725,7 @@ Every error extends `RequestError`, a `RuntimeException`. Import the ones you ca
 | --- | --- |
 | `InvalidRequestError` | The library refused to send: conflicting bodies, a bad URL or header, a timeout that is not positive |
 | `TimeoutError` | Connecting took too long, or the whole request, body included, went past `timeout` |
+| `RedirectError` | Too many redirects, a malformed or disallowed location, or a body that would go to another origin |
 | `TransportError` | The connection was refused or broken, or TLS failed |
 | `JsonError` | Malformed JSON, a value with no JSON form, or a read of the wrong kind |
 | `HttpStatusError` | Only from `raiseForStatus()`. It has `status` and `response` |
@@ -1747,8 +1750,40 @@ Calls on `requests` keep no cookies. A session stores cookies from responses and
 
 A session's settings are fixed when it is made, and the HTTP client and cookie store are thread-safe, so one session can be used from many threads. `close()` empties the cookie store and makes later requests throw `InvalidRequestError`. A `Session` is `Closeable`, so `session.use { ... }` works. Java 17's HTTP client has no close of its own, so its idle connections and selector thread end when the JVM collects the session. Sessions are worth reusing, and short-lived ones in a tight loop are wasteful.
 
-### Current limits
+### Redirects
 
-Connection timeout for calls on `requests` is 10 seconds. Redirects are not followed and requests are not retried.
+Redirects are off by default. With `maxRedirects = n`, up to `n` are followed and one more throws `RedirectError`. A redirect with no `Location` is returned as it is. A session's `maxRedirects` applies to its calls unless a call gives its own, and `timeout` covers all the hops together.
 
-Run `node tests/requests.cjs` for the local-only integration tests (requires Node).
+| Status | Method and body |
+| --- | --- |
+| 303 | Becomes GET and drops the body. HEAD stays HEAD |
+| 301, 302 | POST becomes GET and drops the body. Other methods keep theirs |
+| 307, 308 | Method and body are kept |
+
+An origin is the scheme, host and port. When a redirect changes origin, any header whose name contains `auth`, `cookie`, `token`, `secret`, `password`, `api-key` or `apikey` is removed and stays removed for the rest of the chain, including session credentials. Other custom headers are kept. A request body that would go to another origin throws `RedirectError` instead. Session cookies follow cookie rules, which scope them by host and not by port.
+
+Nothing is retried automatically, on any status or failure, so a POST is not silently sent twice.
+
+### Uploads
+
+```text
+requests.post(url, form = {"title": "report"}, files = {"file": Upload.file("report.pdf", contentType = "application/pdf")})
+```
+
+`Upload.file(path, filename, contentType)` streams from disk while sending and needs no cleanup. `Upload.bytes(data, filename, contentType)` and `Upload.text(content, filename, contentType)` send memory. A file that cannot be read throws `InvalidRequestError` before anything is sent.
+
+### Downloads
+
+```text
+let saved = requests.download(url, "export.csv", overwrite = true)
+```
+
+`download` is also on `Session`, and takes `timeout`, `params`, `headers`, `auth`, `maxRedirects` and `overwrite`. A 2xx body streams to a temporary file beside the target and is moved into place when complete, so a failed or interrupted download removes the temporary file and leaves any existing file untouched. `response.savedTo` is the final path and `bytes` is empty. Any other status returns normally with up to 1 MiB of its body, and no file is written. An existing file throws `InvalidRequestError` unless `overwrite = true`. Here `timeout` limits the wait for the headers and any gap without data, not the whole transfer. On Linux and macOS, Java creates the temporary file readable only by its owner, and the saved file keeps those permissions.
+
+### Limits of this release
+
+`requests.*` calls use a 10 second connection timeout. Elsewhere, `timeout` covers the whole request, body included, and is a whole number of seconds. Other than `download`, response bodies are held in memory, with no size limit.
+
+These are not implemented: async requests, proxies, automatic retries, a streaming response API other than `download`, compressed response decoding, cookies that persist across runs, client certificates and custom trust settings. `mammoth --check-java` does not link this library.
+
+See `examples/requests-api.mam` and `examples/requests-webhook.mam`. Run `node tests/requests.cjs` for the local-only integration tests (requires Node).

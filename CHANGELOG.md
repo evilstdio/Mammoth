@@ -7,8 +7,10 @@
 - Request configuration: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS and `requests.request`; custom headers; correctly encoded query parameters; `text`, `bytes` and `form` bodies. Conflicting body options, invalid URLs, credentials in URLs and unsafe headers throw `InvalidRequestError` before sending.
 - Responses: case-insensitive `Headers`, `bytes`, charset-aware `text`, final `url`. Errors: `TimeoutError`, `TransportError`, `HttpStatusError` (with the response) and `JsonError` under `RequestError`, and `error.original` for debugging outside the cause chain. `timeout` now covers the response body as well as the headers.
 - Sessions: `Session` with shared headers, `Auth.basic`/`Auth.bearer`, configurable request and connection timeouts, an in-memory cookie store with `cookie`, `cookies`, `setCookie`, `clearCookies`, thread-safe fixed settings, and `close`.
+- Redirects: off by default, bounded by `maxRedirects`, with explicit method and body rules. A change of origin removes sensitive headers and refuses to resend a body. `RedirectError` reports the failures. Nothing is retried automatically.
+- Multipart uploads with `Upload.file`, `Upload.bytes` and `Upload.text`, where files stream from disk. Streamed `download` to a temporary file with an atomic-style move, cleanup on failure, explicit `overwrite` and a stall timeout.
 - Compiler: `a[i]` picks the right overload when a class overloads `get`, and `ByteArray` names a Java `byte[]`.
-- Add a small webhook example, import and project regressions, and local HTTP integration tests.
+- Add webhook and API examples, import and project regressions, and local HTTP integration tests that run in single-file, project-JAR and packaged-JAR form under `-Xverify:all`.
 
 ## Classes and everyday syntax, 2026-11-09
 

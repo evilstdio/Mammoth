@@ -1,0 +1,49 @@
+// A tour of mammoth.requests. JSON runs offline. The network calls only run
+// once you set the URL, so this example contacts nothing as written.
+import mammoth.requests
+import mammoth.Session
+import mammoth.Auth
+import mammoth.Json
+import mammoth.JsonError
+import mammoth.Upload
+import mammoth.RequestError
+import mammoth.TimeoutError
+import mammoth.HttpStatusError
+
+let order = {"id": Json.of(42), "item": Json.of("tea"), "tags": Json.of(listOf("hot", "green")), "note": Json.NULL}
+print(Json.stringify(order))
+
+let parsed = Json.parse("\{\"name\": \"Maya\", \"scores\": [90, 85.5]}")
+print(parsed["name"].asText())
+print(parsed["scores"][1].asDouble())
+print(parsed.find("email") == null)
+
+try {
+    Json.parse("\{\"broken\": ")
+} catch (error: JsonError) {
+    print(error.getMessage())
+}
+
+let url = "PASTE_YOUR_API_URL_HERE"
+if url == "PASTE_YOUR_API_URL_HERE" {
+    print("Set a URL in this file to make real requests.")
+} else {
+    let api = Session(headers = {"Accept": "application/json"}, auth = Auth.bearer("token"), timeout = 20, maxRedirects = 3)
+    try {
+        let created = api.post(url, json = order, params = {"notify": "true"})
+        created.raiseForStatus()
+        print(created.json()["id"].asInt())
+        print(created.headers["content-type"])
+        api.post(url + "/files", form = {"title": "report"}, files = {"file": Upload.file("report.pdf", contentType = "application/pdf")})
+        let saved = api.download(url + "/export", "export.csv", overwrite = true)
+        print(saved.savedTo)
+    } catch (error: HttpStatusError) {
+        print("The server answered {error.status}")
+    } catch (error: TimeoutError) {
+        print("Too slow")
+    } catch (error: RequestError) {
+        print(error)
+    } finally {
+        api.close()
+    }
+}

@@ -10,6 +10,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpRequest.BodyPublishers
 import java.net.http.HttpResponse.BodyHandlers
+import java.net.http.HttpResponse
 import java.net.http.HttpTimeoutException
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
@@ -22,6 +23,15 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.Base64
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.Files
+import java.nio.file.InvalidPathException
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
+import java.io.FileNotFoundException
 import java.util.List as JavaList
 import java.time.Duration
 import java.util.Collection as JavaCollection
@@ -51,6 +61,11 @@ class TimeoutError(message: Text, original: Throwable? = null) extends RequestEr
 /// The request could not be completed: refused, reset, or broken TLS.
 class TransportError(message: Text, original: Throwable? = null) extends RequestError(message, original) {
     override fun errorName(): Text { return "TransportError" }
+}
+
+/// A redirect that was not followed: too many, malformed, or unsafe to send on.
+class RedirectError(message: Text) extends RequestError(message) {
+    override fun errorName(): Text { return "RedirectError" }
 }
 
 /// Thrown only by `raiseForStatus`. Other calls return error responses normally.
@@ -500,7 +515,7 @@ class Headers(source: JavaMap<Text, JavaList<Text>>) {
 }
 
 /// A finished HTTP exchange. Status 4xx and 5xx are ordinary responses.
-class Response(let status: Int, let bytes: ByteArray, let headers: Headers, let url: Text) {
+class Response(let status: Int, let bytes: ByteArray, let headers: Headers, let url: Text, let savedTo: Text? = null) {
     let ok: Bool = status >= 200 and status < 300
     /// The body as text, using the charset the server named, or UTF-8.
     let text: Text get() = java.lang.String(bytes, charset())
@@ -543,8 +558,32 @@ class Auth(let header: Text) {
     }
 }
 
+/// One part of a multipart upload. A file is streamed from disk when it is sent.
+class Upload(let path: Path?, let data: ByteArray?, let filename: Text, let contentType: Text) {
+    static fun file(path: Text, filename: Text? = null, contentType: Text = "application/octet-stream"): Upload {
+        var location: Path? = null
+        try {
+            location = Paths.get(path)
+        } catch (error: InvalidPathException) {
+            throw InvalidRequestError("This upload path is not valid.")
+        }
+        let found = location!!
+        if not Files.isRegularFile(found) or not Files.isReadable(found) { throw InvalidRequestError("This upload file cannot be read.") }
+        return Upload(found, null, filename ?: found.getFileName().toString(), contentType)
+    }
+    static fun bytes(data: ByteArray, filename: Text, contentType: Text = "application/octet-stream"): Upload {
+        return Upload(null, data, filename, contentType)
+    }
+    static fun text(content: Text, filename: Text, contentType: Text = "text/plain; charset=utf-8"): Upload {
+        return Upload(null, content.getBytes(StandardCharsets.UTF_8), filename, contentType)
+    }
+}
+
 /// What a request inherits from the place it was made.
 class Defaults(let client: HttpClient, let headers: TreeMap<Text, Text>, let auth: Auth?)
+
+/// A response whose headers have arrived and whose body has not been read.
+class Exchange(let status: Int, let headers: Headers, let url: Text, let stream: InputStream, let remaining: Long)
 
 class Http {
     private static let client: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10L)).build()
@@ -585,11 +624,10 @@ class Http {
         throw InvalidRequestError("Query and form values must be text, numbers, booleans or lists of those.")
     }
 
-    /// `a=1&b=2`, with a list value repeating its key.
-    static fun encodePairs(values: JavaMap<Text, *>, plus: Bool): Text {
-        let out = StringBuilder()
+    /// Alternating names and values. A list value repeats its name.
+    private static fun flatten(values: JavaMap<Text, *>): MutableList<Text> {
+        let out = MutableList<Text>()
         for entry in values.entrySet() {
-            let key = encode(entry.getKey(), plus)
             let value = entry.getValue()
             var items = MutableList<Any?>()
             if value is JavaCollection<*> {
@@ -601,13 +639,69 @@ class Http {
                 items.add(value)
             }
             for item in items {
-                if out.length() > 0 { out.append("&") }
-                out.append(key)
-                out.append("=")
-                out.append(encode(plainValue(item), plus))
+                out.add(entry.getKey())
+                out.add(plainValue(item))
             }
         }
+        return out
+    }
+
+    /// `a=1&b=2`, with a list value repeating its key.
+    static fun encodePairs(values: JavaMap<Text, *>, plus: Bool): Text {
+        let out = StringBuilder()
+        let pairs = flatten(values)
+        var index = 0
+        while index < pairs.size() {
+            if out.length() > 0 { out.append("&") }
+            out.append(encode(pairs[index], plus))
+            out.append("=")
+            out.append(encode(pairs[index + 1], plus))
+            index += 2
+        }
         return out.toString()
+    }
+
+    private static fun quoted(text: Text): Text {
+        return text.replace("\"", "%22").replace("\r", "%0D").replace("\n", "%0A")
+    }
+
+    private static fun utf8(text: Text): java.net.http.HttpRequest.BodyPublisher {
+        return BodyPublishers.ofString(text, StandardCharsets.UTF_8)
+    }
+
+    /// A multipart body. Files stay on disk and are read as the body is sent,
+    /// and sending it again re-reads them, so it can follow a redirect.
+    private static fun multipart(boundary: Text, form: JavaMap<Text, *>?, files: JavaMap<Text, Upload>): java.net.http.HttpRequest.BodyPublisher {
+        let parts = MutableList<java.net.http.HttpRequest.BodyPublisher>()
+        if form != null {
+            let pairs = flatten(form)
+            var index = 0
+            while index < pairs.size() {
+                parts.add(utf8("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + quoted(pairs[index]) + "\"\r\n\r\n" + pairs[index + 1] + "\r\n"))
+                index += 2
+            }
+        }
+        for entry in files.entrySet() {
+            let upload = entry.getValue()
+            checkHeader("Content-Type", upload.contentType)
+            parts.add(utf8("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + quoted(entry.getKey()) + "\"; filename=\"" + quoted(upload.filename) + "\"\r\nContent-Type: " + upload.contentType + "\r\n\r\n"))
+            let location = upload.path
+            let data = upload.data
+            if location != null {
+                try {
+                    parts.add(BodyPublishers.ofFile(location))
+                } catch (error: FileNotFoundException) {
+                    throw InvalidRequestError("This upload file cannot be read.")
+                }
+            } else if data != null {
+                parts.add(BodyPublishers.ofByteArray(data))
+            }
+            parts.add(utf8("\r\n"))
+        }
+        parts.add(utf8("--" + boundary + "--\r\n"))
+        var joined = parts[0]
+        for index in 1 until parts.size() { joined = BodyPublishers.concat(joined, parts[index]) }
+        return joined
     }
 
     /// The URL with `params` added to any query it has, before any fragment.
@@ -645,23 +739,53 @@ class Http {
         }
     }
 
-    static fun request(
+    private static fun origin(uri: URI): Text {
+        let scheme = uri.getScheme().toLowerCase()
+        var port = uri.getPort()
+        if port < 0 { port = if scheme == "https" { 443 } else { 80 } }
+        return scheme + "://" + uri.getHost().toLowerCase() + ":" + port
+    }
+
+    /// Headers that must never follow a request to another origin.
+    private static fun isSensitive(name: Text): Bool {
+        let lower = name.toLowerCase()
+        for word in ["auth", "cookie", "token", "secret", "password", "api-key", "apikey"] {
+            if lower.contains(word) { return true }
+        }
+        return false
+    }
+
+    private static fun redirectTarget(from: URI, location: Text): URI {
+        try {
+            return checkUrl(from.resolve(URI(location)).toString())
+        } catch (error: URISyntaxException) {
+            throw RedirectError("The server redirected to an invalid location.")
+        } catch (error: InvalidRequestError) {
+            throw RedirectError("The server redirected to a location that is not allowed.")
+        }
+    }
+
+    /// Sends the request and follows redirects, returning once the final
+    /// response's headers have arrived. The caller must consume its stream.
+    static fun open(
         defaults: Defaults, method: Text, url: Text, timeout: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
-        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?, auth: Auth?
-    ): Response {
+        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?, files: JavaMap<Text, Upload>?, auth: Auth?, maxRedirects: Int
+    ): Exchange {
         if timeout <= 0 { throw InvalidRequestError("Timeout must be positive (seconds).") }
-        let verb = method.toUpperCase()
+        if maxRedirects < 0 { throw InvalidRequestError("maxRedirects cannot be negative.") }
+        var verb = method.toUpperCase()
         if not isToken(verb) { throw InvalidRequestError("This is not a valid HTTP method.") }
         checkUrl(url)
         var kinds = 0
         if json != null { kinds += 1 }
         if text != null { kinds += 1 }
         if bytes != null { kinds += 1 }
-        if form != null { kinds += 1 }
-        if kinds > 1 { throw InvalidRequestError("Give only one of json, text, bytes or form.") }
+        if form != null or files != null { kinds += 1 }
+        if kinds > 1 { throw InvalidRequestError("Give only one of json, text, bytes or form. Only form can be combined with files.") }
 
         let names = TreeMap<Text, Text>(java.lang.String.CASE_INSENSITIVE_ORDER)
         var publisher = BodyPublishers.noBody()
+        var hasBody = kinds > 0
         if json != null {
             names.put("Content-Type", "application/json; charset=utf-8")
             publisher = BodyPublishers.ofString(Json.stringify(json), StandardCharsets.UTF_8)
@@ -671,6 +795,10 @@ class Http {
         } else if bytes != null {
             names.put("Content-Type", "application/octet-stream")
             publisher = BodyPublishers.ofByteArray(bytes)
+        } else if files != null {
+            let boundary = "mammoth-" + UUID.randomUUID().toString()
+            names.put("Content-Type", "multipart/form-data; boundary=" + boundary)
+            publisher = multipart(boundary, form, files)
         } else if form != null {
             names.put("Content-Type", "application/x-www-form-urlencoded")
             publisher = BodyPublishers.ofString(encodePairs(form, true), StandardCharsets.UTF_8)
@@ -683,21 +811,51 @@ class Http {
         if headers != null { names.putAll(headers) }
         if auth != null { names.put("Authorization", auth.header) }
         for entry in names.entrySet() { checkHeader(entry.getKey(), entry.getValue()) }
-        // Adding the query can't make a checked URL invalid, but parse the result.
-        let target = checkUrl(withQuery(url, params))
-        let finalUrl = target.toString()
+
+        var target = checkUrl(withQuery(url, params))
+        let started = System.nanoTime()
+        let limit = TimeUnit.SECONDS.toNanos(timeout.toLong())
+        var followed = 0
+        while true {
+            let reply = exchange(defaults.client, target, verb, names, publisher, limit - (System.nanoTime() - started), timeout)
+            let status = reply.statusCode()
+            let location = reply.headers().firstValue("location")
+            let redirect = status == 301 or status == 302 or status == 303 or status == 307 or status == 308
+            if not redirect or maxRedirects == 0 or not location.isPresent() {
+                return Exchange(status, Headers(reply.headers().map()), target.toString(), reply.body(), limit - (System.nanoTime() - started))
+            }
+            closeQuietly(reply.body())
+            if followed >= maxRedirects { throw RedirectError("Stopped after following {maxRedirects} redirects.") }
+            followed += 1
+            let next = redirectTarget(target, location.get())
+            // 303 always becomes a read. 301 and 302 turn only POST into GET,
+            // as browsers do. 307 and 308 keep the method and body.
+            if (status == 303 and verb != "HEAD") or ((status == 301 or status == 302) and verb == "POST") {
+                verb = "GET"
+                publisher = BodyPublishers.noBody()
+                hasBody = false
+                names.remove("Content-Type")
+            }
+            if origin(next) != origin(target) {
+                if hasBody { throw RedirectError("Refusing to send this request's body to a different origin.") }
+                names.keySet().removeIf { isSensitive(it) }
+            }
+            target = next
+        }
+    }
+
+    private static fun exchange(
+        client: HttpClient, target: URI, verb: Text, names: TreeMap<Text, Text>,
+        publisher: java.net.http.HttpRequest.BodyPublisher, nanos: Long, timeout: Int
+    ): HttpResponse<InputStream> {
+        if nanos <= 0L { throw TimeoutError("HTTP request timed out after {timeout} seconds.") }
         try {
-            let builder = HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(timeout.toLong()))
+            let builder = HttpRequest.newBuilder(target).timeout(Duration.ofNanos(nanos))
             for entry in names.entrySet() { builder.setHeader(entry.getKey(), entry.getValue()) }
             builder.method(verb, publisher)
-            let started = System.nanoTime()
-            let limit = TimeUnit.SECONDS.toNanos(timeout.toLong())
-            let sent = defaults.client.sendAsync(builder.build(), BodyHandlers.ofInputStream())
+            let sent = client.sendAsync(builder.build(), BodyHandlers.ofInputStream())
             try {
-                let reply = sent.get(limit, TimeUnit.NANOSECONDS)
-                // Java's own timeout stops at the headers. The body gets what is left.
-                let body = readAll(reply.body(), limit - (System.nanoTime() - started), timeout)
-                return Response(reply.statusCode(), body, Headers(reply.headers().map()), finalUrl)
+                return sent.get(nanos, TimeUnit.NANOSECONDS)
             } catch (error: TimeoutException) {
                 sent.cancel(true)
                 throw TimeoutError("HTTP request timed out after {timeout} seconds.", error)
@@ -712,6 +870,134 @@ class Http {
             throw error
         } catch (error: RuntimeException) {
             throw RequestError("The HTTP request could not be built (" + error.getClass().getSimpleName() + ").")
+        }
+    }
+
+    static fun request(
+        defaults: Defaults, method: Text, url: Text, timeout: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
+        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?, files: JavaMap<Text, Upload>?, auth: Auth?, maxRedirects: Int
+    ): Response {
+        let reply = open(defaults, method, url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
+        // Java's own timeout stops at the headers. The body gets what is left.
+        let body = readAll(reply.stream, reply.remaining, timeout)
+        return Response(reply.status, body, reply.headers, reply.url)
+    }
+
+    /// Streams a 2xx body to a temporary file beside `path`, then moves it into
+    /// place, so a failed download leaves nothing behind and `path` untouched.
+    /// Any other status returns normally, with up to 1 MiB of its body.
+    static fun download(
+        defaults: Defaults, url: Text, path: Text, timeout: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
+        auth: Auth?, maxRedirects: Int, overwrite: Bool
+    ): Response {
+        var location: Path? = null
+        try {
+            location = Paths.get(path).toAbsolutePath()
+        } catch (error: InvalidPathException) {
+            throw InvalidRequestError("This download path is not valid.")
+        }
+        let destination = location!!
+        let folder = destination.getParent()
+        if folder == null or not Files.isDirectory(folder) { throw InvalidRequestError("The folder for this download does not exist.") }
+        if Files.isDirectory(destination) { throw InvalidRequestError("The download path is a folder.") }
+        if not overwrite and Files.exists(destination) { throw InvalidRequestError("This file already exists. Pass overwrite = true to replace it.") }
+
+        let reply = open(defaults, "GET", url, timeout, params, headers, null, null, null, null, null, auth, maxRedirects)
+        if reply.status < 200 or reply.status >= 300 {
+            let body = readSome(reply.stream, reply.remaining, timeout)
+            return Response(reply.status, body, reply.headers, reply.url)
+        }
+        let temporary = temporaryFile(folder, reply.stream)
+        var moved = false
+        try {
+            saveStream(reply.stream, temporary, timeout)
+            try {
+                if overwrite {
+                    Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING)
+                } else {
+                    Files.move(temporary, destination)
+                }
+                moved = true
+            } catch (error: FileAlreadyExistsException) {
+                throw InvalidRequestError("This file already exists. Pass overwrite = true to replace it.")
+            } catch (error: IOException) {
+                throw RequestError("The downloaded file could not be moved into place.", error)
+            }
+        } finally {
+            closeQuietly(reply.stream)
+            if not moved { deleteQuietly(temporary) }
+        }
+        return Response(reply.status, emptyBody(), reply.headers, reply.url, destination.toString())
+    }
+
+    private static fun emptyBody(): ByteArray { return "".getBytes(StandardCharsets.UTF_8) }
+
+    private static fun temporaryFile(folder: Path, stream: InputStream): Path {
+        try {
+            return Files.createTempFile(folder, ".mammoth-download-", ".part")
+        } catch (error: IOException) {
+            closeQuietly(stream)
+            throw RequestError("A temporary file for this download could not be created.", error)
+        }
+    }
+
+    private static fun deleteQuietly(file: Path) {
+        try {
+            Files.deleteIfExists(file)
+        } catch (error: IOException) {
+        }
+    }
+
+    /// Fails if `timeout` seconds pass with no bytes, however long the whole file takes.
+    private static fun saveStream(stream: InputStream, file: Path, timeout: Int) {
+        let limit = TimeUnit.SECONDS.toNanos(timeout.toLong())
+        let last = AtomicLong(System.nanoTime())
+        let expired = AtomicBoolean(false)
+        let alarm = timer.scheduleWithFixedDelay(Runnable {
+            if System.nanoTime() - last.get() > limit and expired.compareAndSet(false, true) { closeQuietly(stream) }
+        }, 100L, 100L, TimeUnit.MILLISECONDS)
+        var writing = false
+        try {
+            let out = Files.newOutputStream(file)
+            try {
+                let chunk = "x".repeat(65536).getBytes(StandardCharsets.UTF_8)
+                while true {
+                    writing = false
+                    let count = stream.read(chunk)
+                    if expired.get() { throw TimeoutError("This download stalled for {timeout} seconds.") }
+                    if count < 0 { break }
+                    last.set(System.nanoTime())
+                    writing = true
+                    out.write(chunk, 0, count)
+                }
+            } finally {
+                out.close()
+            }
+        } catch (error: IOException) {
+            if writing { throw RequestError("The downloaded file could not be written.", error) }
+            if expired.get() { throw TimeoutError("This download stalled for {timeout} seconds.", error) }
+            throw translate(error)
+        } finally {
+            alarm.cancel(false)
+        }
+    }
+
+    private static fun readSome(stream: InputStream, nanos: Long, timeout: Int): ByteArray {
+        let expired = AtomicBoolean(false)
+        let alarm = timer.schedule(Runnable {
+            expired.set(true)
+            closeQuietly(stream)
+        }, if nanos > 0L { nanos } else { 0L }, TimeUnit.NANOSECONDS)
+        try {
+            let data = stream.readNBytes(1048576)
+            if expired.get() { throw TimeoutError("HTTP request timed out after {timeout} seconds.") }
+            return data
+        } catch (error: IOException) {
+            if expired.get() { throw TimeoutError("HTTP request timed out after {timeout} seconds.", error) }
+            throw translate(error)
+        } finally {
+            alarm.cancel(false)
+            closeQuietly(stream)
         }
     }
 
@@ -756,30 +1042,34 @@ class Http {
 /// Simple calls: `requests.get(url)`, `requests.post(url, json = value)`.
 /// Everything after the URL can be given by name. A method takes any body.
 /// Each call stands alone: nothing is shared between them, and no cookies are kept.
+/// Redirects are followed only with `maxRedirects`. Nothing is ever retried.
 class requests {
-    static fun request(method: Text, url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return Http.request(Http.plain, method, url, timeout, params, headers, json, text, bytes, form, auth)
+    static fun request(method: Text, url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = 0): Response {
+        return Http.request(Http.plain, method, url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    static fun get(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return Http.request(Http.plain, "GET", url, timeout, params, headers, json, text, bytes, form, auth)
+    static fun get(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = 0): Response {
+        return Http.request(Http.plain, "GET", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    static fun head(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return Http.request(Http.plain, "HEAD", url, timeout, params, headers, json, text, bytes, form, auth)
+    static fun head(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = 0): Response {
+        return Http.request(Http.plain, "HEAD", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    static fun options(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return Http.request(Http.plain, "OPTIONS", url, timeout, params, headers, json, text, bytes, form, auth)
+    static fun options(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = 0): Response {
+        return Http.request(Http.plain, "OPTIONS", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    static fun delete(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return Http.request(Http.plain, "DELETE", url, timeout, params, headers, json, text, bytes, form, auth)
+    static fun delete(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = 0): Response {
+        return Http.request(Http.plain, "DELETE", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    static fun post(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return Http.request(Http.plain, "POST", url, timeout, params, headers, json, text, bytes, form, auth)
+    static fun post(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = 0): Response {
+        return Http.request(Http.plain, "POST", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    static fun put(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return Http.request(Http.plain, "PUT", url, timeout, params, headers, json, text, bytes, form, auth)
+    static fun put(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = 0): Response {
+        return Http.request(Http.plain, "PUT", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    static fun patch(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return Http.request(Http.plain, "PATCH", url, timeout, params, headers, json, text, bytes, form, auth)
+    static fun patch(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = 0): Response {
+        return Http.request(Http.plain, "PATCH", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
+    }
+    static fun download(url: Text, path: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, auth: Auth? = null, maxRedirects: Int = 0, overwrite: Bool = false): Response {
+        return Http.download(Http.plain, url, path, timeout, params, headers, auth, maxRedirects, overwrite)
     }
 }
 
@@ -787,7 +1077,7 @@ class requests {
 /// Its settings are fixed when it is made, so one session can be used from many
 /// threads at once. Cookies follow the usual domain and path rules.
 class Session(
-    headers: JavaMap<Text, Text>? = null, auth: Auth? = null, let timeout: Int = 30, connectTimeout: Int = 10
+    headers: JavaMap<Text, Text>? = null, auth: Auth? = null, let timeout: Int = 30, connectTimeout: Int = 10, let maxRedirects: Int = 0
 ) implements java.io.Closeable {
     private let cookieManager = CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER)
     private let closed = AtomicBoolean(false)
@@ -795,6 +1085,7 @@ class Session(
 
     init {
         if timeout <= 0 or connectTimeout <= 0 { throw InvalidRequestError("Timeouts must be positive (seconds).") }
+        if maxRedirects < 0 { throw InvalidRequestError("maxRedirects cannot be negative.") }
         let shared = TreeMap<Text, Text>(java.lang.String.CASE_INSENSITIVE_ORDER)
         if headers != null { shared.putAll(headers) }
         for entry in shared.entrySet() { Http.checkHeader(entry.getKey(), entry.getValue()) }
@@ -805,37 +1096,45 @@ class Session(
         defaults = Defaults(client, shared, auth)
     }
 
-    private fun run(
-        method: Text, url: Text, chosen: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
-        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?, auth: Auth?
-    ): Response {
+    private fun live() {
         if closed.get() { throw InvalidRequestError("This session is closed.") }
-        return Http.request(defaults, method, url, if chosen == 0 { timeout } else { chosen }, params, headers, json, text, bytes, form, auth)
     }
 
-    fun request(method: Text, url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return run(method, url, timeout, params, headers, json, text, bytes, form, auth)
+    private fun run(
+        method: Text, url: Text, chosen: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
+        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?, files: JavaMap<Text, Upload>?, auth: Auth?, redirects: Int
+    ): Response {
+        live()
+        return Http.request(defaults, method, url, if chosen == 0 { timeout } else { chosen }, params, headers, json, text, bytes, form, files, auth, if redirects == -1 { maxRedirects } else { redirects })
     }
-    fun get(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return run("GET", url, timeout, params, headers, json, text, bytes, form, auth)
+
+    fun request(method: Text, url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+        return run(method, url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun head(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return run("HEAD", url, timeout, params, headers, json, text, bytes, form, auth)
+    fun get(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+        return run("GET", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun options(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return run("OPTIONS", url, timeout, params, headers, json, text, bytes, form, auth)
+    fun head(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+        return run("HEAD", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun delete(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return run("DELETE", url, timeout, params, headers, json, text, bytes, form, auth)
+    fun options(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+        return run("OPTIONS", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun post(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return run("POST", url, timeout, params, headers, json, text, bytes, form, auth)
+    fun delete(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+        return run("DELETE", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun put(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return run("PUT", url, timeout, params, headers, json, text, bytes, form, auth)
+    fun post(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+        return run("POST", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun patch(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
-        return run("PATCH", url, timeout, params, headers, json, text, bytes, form, auth)
+    fun put(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+        return run("PUT", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
+    }
+    fun patch(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+        return run("PATCH", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
+    }
+    fun download(url: Text, path: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, auth: Auth? = null, maxRedirects: Int = -1, overwrite: Bool = false): Response {
+        live()
+        return Http.download(defaults, url, path, if timeout == 0 { this.timeout } else { timeout }, params, headers, auth, if maxRedirects == -1 { this.maxRedirects } else { maxRedirects }, overwrite)
     }
 
     /// The value of the first stored cookie with this name, or null.

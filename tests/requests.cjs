@@ -28,20 +28,32 @@ const routes = {
   '/server-error': (req, res) => { res.writeHead(503); res.end('{"retry":true}'); },
   '/set-cookie': (req, res) => { res.writeHead(200, { 'Set-Cookie': ['sid=abc; Path=/', 'theme=dark; Path=/get'] }); res.end(''); },
   '/foreign-cookie': (req, res) => { res.writeHead(200, { 'Set-Cookie': 'evil=1; Domain=other.example; Path=/' }); res.end(''); },
+  '/r': (req, res, url) => { const to = url.searchParams.get('to'); res.writeHead(Number(url.searchParams.get('code')), to === null ? {} : { Location: to }); res.end('moved'); },
+  '/chain': (req, res, url) => { const n = Number(url.searchParams.get('n')); if (n > 0) { res.writeHead(302, { Location: '/chain?n=' + (n - 1) }); res.end(); } else { res.writeHead(200); res.end('end'); } },
+  '/loop': (req, res) => { res.writeHead(302, { Location: '/loop' }); res.end(); },
+  '/slow-redirect': (req, res) => { setTimeout(() => { res.writeHead(302, { Location: '/slow' }); res.end(); }, 700); },
+  '/truncated': (req, res) => { res.writeHead(200, { 'Content-Length': '100' }); res.write('part', () => req.socket.destroy()); },
+  '/reset': (req, res) => { req.socket.destroy(); },
+  '/file': (req, res) => { res.writeHead(200, { 'Content-Length': String(fileBody.length) }); res.end(fileBody); },
   '/badjson': (req, res) => { res.writeHead(200); res.end('{"a": '); },
   '/deepjson': (req, res) => { res.writeHead(200); res.end('['.repeat(200000)); },
 };
 
-const server = http.createServer((req, res) => {
+const fileBody = Buffer.alloc(3 * 1024 * 1024);
+for (let i = 0; i < fileBody.length; i++) fileBody[i] = (i * 31 + (i >> 8)) & 255;
+
+const handler = name => (req, res) => {
   const chunks = [];
   req.on('data', x => chunks.push(x));
   req.on('end', () => {
     const raw = Buffer.concat(chunks);
     const url = new URL(req.url, 'http://x');
-    seen.push({ url: req.url, path: url.pathname, query: url.search, method: req.method, headers: req.headers, raw, body: raw.toString('utf8'), type: req.headers['content-type'] });
+    seen.push({ server: name, url: req.url, path: url.pathname, query: url.search, method: req.method, headers: req.headers, raw, body: raw.toString('utf8'), type: req.headers['content-type'] });
     (routes[url.pathname] || routes['/get'])(req, res, url, raw);
   });
-});
+};
+const server = http.createServer(handler('main'));
+const otherServer = http.createServer(handler('other'));
 
 function run(exe, args) {
   return new Promise((resolve, reject) => {
@@ -61,7 +73,7 @@ function text(value) {
     .replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"';
 }
 
-const IMPORTS = ['requests', 'Session', 'Auth', 'Response', 'Headers', 'RequestError', 'InvalidRequestError', 'TimeoutError', 'TransportError', 'HttpStatusError', 'Json', 'JsonError'].map(name => 'import mammoth.' + name);
+const IMPORTS = ['requests', 'Session', 'Auth', 'Upload', 'RedirectError', 'Response', 'Headers', 'RequestError', 'InvalidRequestError', 'TimeoutError', 'TransportError', 'HttpStatusError', 'Json', 'JsonError'].map(name => 'import mammoth.' + name);
 
 let count = 0;
 const modes = {
@@ -123,7 +135,18 @@ async function rejected(name, lines, message) {
 
 const catching = (expression, error, label) => `try { ${expression} } catch (error: ${error}) { print(${text(label)}) }`;
 
-async function main(base) {
+/** Splits a multipart request into its parts, keeping bytes intact. */
+function multipart(request) {
+  const boundary = /boundary=(.+)$/.exec(request.type)[1];
+  const pieces = request.raw.toString('latin1').split('--' + boundary);
+  assert.equal(pieces[pieces.length - 1], '--\r\n');
+  return pieces.slice(1, -1).map(piece => {
+    const split = piece.indexOf('\r\n\r\n');
+    return { head: Buffer.from(piece.slice(2, split), 'latin1').toString('utf8'), body: Buffer.from(piece.slice(split + 4, -2), 'latin1') };
+  });
+}
+
+async function main(base, other, otherHost) {
   const message = 'hello "Mammoth"!\\\n\u{1F9A3}{brace}';
 
   await scenario('basic calls', [
@@ -279,7 +302,7 @@ async function main(base) {
     catching('requests.post(u, text = "b", form = {"a": 1})', 'InvalidRequestError', 'text form'),
     catching('requests.post(u, bytes = "b".getBytes(), json = "c")', 'InvalidRequestError', 'bytes json'),
     'let message = try { requests.post(u, json = "a", text = "b").text } catch (e: RequestError) { e.getMessage() }', 'print(message)',
-  ], ['json text', 'text form', 'bytes json', 'Give only one of json, text, bytes or form.'], seen => assert.equal(seen.length, 0));
+  ], ['json text', 'text form', 'bytes json', 'Give only one of json, text, bytes or form. Only form can be combined with files.'], seen => assert.equal(seen.length, 0));
 
   await scenario('invalid urls', [
     ...['ftp://secret-token/x', 'no scheme secret-token', 'http://', 'http://user:secret-token@127.0.0.1/', 'http://exa mple/secret-token'].flatMap((url, i) => [
@@ -426,6 +449,160 @@ async function main(base) {
     assert.ok(seen.every(r => r.headers['x-t'] === '1' && r.headers.cookie === 'c=1'));
   });
 
+  const moved = (code, to) => text(`${base}/r?code=${code}&to=${encodeURIComponent(to)}`);
+  await scenario('redirect method and body rules', [
+    `let off = requests.get(${moved(302, '/get')})`, 'print(off.status)', 'print(off.url.contains("/r?"))',
+    `let on = requests.get(${moved(302, '/get')}, maxRedirects = 5)`, 'print(on.status)', 'print(on.text)', 'print(on.url.endsWith("/get"))',
+    `print(requests.post(${moved(301, '/t')}, json = {"a": 1}, maxRedirects = 1).status)`,
+    `requests.post(${moved(302, '/t')}, text = "x", maxRedirects = 1)`,
+    `requests.post(${moved(303, '/t')}, text = "x", maxRedirects = 1)`,
+    `requests.put(${moved(303, '/t')}, text = "x", maxRedirects = 1)`,
+    `requests.head(${moved(303, '/t')}, maxRedirects = 1)`,
+    `requests.post(${moved(307, '/t')}, text = "kept", maxRedirects = 1)`,
+    `requests.post(${moved(308, '/t')}, json = {"k": 1}, maxRedirects = 1)`,
+    `requests.put(${moved(301, '/t')}, text = "put", maxRedirects = 1)`,
+    `print(requests.get(${text(base + '/r?code=302')}, maxRedirects = 2).status)`,
+    `print(requests.get(${moved(302, '../get?x=1')}, maxRedirects = 2).url.endsWith("/get?x=1"))`,
+    `print(requests.get(${text(base + '/r?code=304')}, maxRedirects = 2).status)`,
+  ], ['302', 'true', '200', 'hello', 'true', '200', '302', 'true', '304'], seen => {
+    const after = seen.filter(r => r.path !== '/r');
+    const summary = after.slice(1).filter(r => r.path === '/t').map(r => [r.method, r.body]);
+    assert.deepEqual(summary, [['GET', ''], ['GET', ''], ['GET', ''], ['GET', ''], ['HEAD', ''], ['POST', 'kept'], ['POST', '{"k":1}'], ['PUT', 'put']]);
+    const lost = after.filter(r => r.path === '/t' && r.method === 'GET');
+    assert.ok(lost.every(r => r.type === undefined));
+    assert.match(after.filter(r => r.body === '{"k":1}')[0].type, /json/);
+  });
+
+  await scenario('redirect limits and bad locations', [
+    `print(requests.get(${text(base + '/chain?n=3')}, maxRedirects = 3).text)`,
+    catching(`requests.get(${text(base + '/chain?n=3')}, maxRedirects = 2)`, 'RedirectError', 'too many'),
+    catching(`requests.get(${text(base + '/loop')}, maxRedirects = 4)`, 'RedirectError', 'loop'),
+    catching(`requests.get(${text(base + '/loop')}, maxRedirects = 4)`, 'RequestError', 'is a RequestError'),
+    catching(`requests.get(${text(base + '/get')}, maxRedirects = -1)`, 'InvalidRequestError', 'negative'),
+    catching(`requests.get(${moved(302, 'ftp://secret-host/x')}, maxRedirects = 2)`, 'RedirectError', 'bad scheme'),
+    catching(`requests.get(${moved(302, 'http://a b/')}, maxRedirects = 2)`, 'RedirectError', 'malformed'),
+    catching(`requests.get(${moved(302, 'http://user:pw@127.0.0.1/')}, maxRedirects = 2)`, 'RedirectError', 'credentials'),
+    `let m = try { requests.get(${moved(302, 'ftp://secret-host/x')}, maxRedirects = 2).text } catch (e: RedirectError) { e.getMessage() }`,
+    'print(m.contains("secret-host"))',
+    catching(`requests.get(${text(base + '/slow-redirect')}, maxRedirects = 2, timeout = 1)`, 'TimeoutError', 'deadline spans redirects'),
+    `print(requests.get(${text(base + '/loop')}).status)`,
+  ], ['end', 'too many', 'loop', 'is a RequestError', 'negative', 'bad scheme', 'malformed', 'credentials', 'false', 'deadline spans redirects', '302']);
+
+  const sensitive = '{"Authorization": "Bearer a", "Proxy-Authorization": "b", "Cookie": "c=1", "X-Api-Key": "d", "X-Auth-Token": "e", "X-Trace": "keep"}';
+  await scenario('redirects across origins', [
+    `let there = ${moved(302, other + '/landed')}`,
+    `let here = ${moved(302, '/landed')}`,
+    `requests.get(there, headers = ${sensitive}, maxRedirects = 1)`,
+    `requests.get(here, headers = ${sensitive}, maxRedirects = 1)`,
+    'requests.get(there, auth = Auth.bearer("per-request"), maxRedirects = 1)',
+    'let s = Session(auth = Auth.bearer("session"), maxRedirects = 1)', `s.setCookie(${text(base)}, "sid", "abc")`,
+    's.get(here)',
+    `s.get(${moved(302, otherHost + '/landed')})`,
+    's.get(there, maxRedirects = 0)',
+    catching(`requests.post(${moved(307, other + '/landed')}, text = "secret body", maxRedirects = 1)`, 'RedirectError', '307 body stays'),
+    catching(`requests.post(${moved(308, other + '/landed')}, json = {"a": 1}, maxRedirects = 1)`, 'RedirectError', '308 body stays'),
+    `requests.post(${moved(302, other + '/landed')}, text = "secret body", headers = {"Authorization": "x"}, maxRedirects = 1)`,
+    `let back = ${text(`${base}/r?code=302&to=${encodeURIComponent(`${other}/r?code=302&to=${encodeURIComponent(base + '/landed')}`)}`)}`,
+    'requests.get(back, auth = Auth.bearer("strip-stays"), maxRedirects = 3)',
+  ], ['307 body stays', '308 body stays'], seen => {
+    const landed = seen.filter(r => r.path === '/landed');
+    const [cross, same, perRequest, sessionSame, sessionCross, postCross, roundTrip] = landed;
+    assert.equal(cross.server, 'other');
+    for (const name of ['authorization', 'proxy-authorization', 'cookie', 'x-api-key', 'x-auth-token']) assert.equal(cross.headers[name], undefined, name);
+    assert.equal(cross.headers['x-trace'], 'keep');
+    assert.equal(same.server, 'main');
+    assert.equal(same.headers.authorization, 'Bearer a');
+    assert.equal(same.headers['x-api-key'], 'd');
+    assert.equal(perRequest.headers.authorization, undefined);
+    assert.equal(sessionSame.headers.authorization, 'Bearer session');
+    assert.equal(sessionSame.headers.cookie, 'sid=abc');
+    assert.equal(sessionCross.server, 'other');
+    assert.equal(sessionCross.headers.authorization, undefined);
+    assert.equal(sessionCross.headers.cookie, undefined);
+    assert.equal(postCross.method, 'GET');
+    assert.equal(postCross.body, '');
+    assert.equal(postCross.headers.authorization, undefined);
+    assert.equal(roundTrip.server, 'main');
+    assert.equal(roundTrip.headers.authorization, undefined);
+    assert.equal(landed.length, 7);
+    assert.equal(seen.filter(r => r.server === 'other' && r.method === 'POST').length, 0);
+  });
+
+  await scenario('no automatic retries', [
+    `let r = requests.post(${text(base + '/server-error')}, text = "once", maxRedirects = 3)`, 'print(r.status)',
+    catching(`requests.post(${text(base + '/reset')}, text = "once", maxRedirects = 3)`, 'TransportError', 'reset'),
+  ], ['503', 'reset'], seen => assert.deepEqual(seen.map(r => r.path), ['/server-error', '/reset']));
+
+  const uploads = path.join(folder, 'uploads');
+  fs.mkdirSync(uploads);
+  const upload = path.join(uploads, 'data.bin');
+  fs.writeFileSync(upload, fileBody);
+  await scenario('multipart uploads', [
+    `let u = ${text(base + '/up')}`,
+    'let fields: MutableMap<Text, Any> = mutableMapOf()', `fields["title"] = "h\u00e9"`, 'fields["n"] = listOf(1, 2)',
+    `requests.post(u, form = fields, files = {"doc": Upload.text("line", "a.txt"), "raw": Upload.bytes(java.util.Base64.getDecoder().decode("AP+A"), ${text('we"ird\r\nname.bin')}, "image/png")})`,
+    `requests.put(u, files = {"big": Upload.file(${text(upload)})})`,
+    `requests.post(u, files = {"named": Upload.file(${text(upload)}, filename = "other.bin", contentType = "application/zip")})`,
+    `requests.post(${moved(307, '/up')}, files = {"again": Upload.text("resent", "r.txt")}, maxRedirects = 1)`,
+    catching(`requests.post(u, json = {"a": 1}, files = {"f": Upload.text("x", "x")})`, 'InvalidRequestError', 'json and files'),
+    catching(`requests.post(u, text = "t", files = {"f": Upload.text("x", "x")})`, 'InvalidRequestError', 'text and files'),
+    catching(`Upload.file(${text(path.join(uploads, 'missing.bin'))})`, 'InvalidRequestError', 'missing file'),
+    catching(`Upload.file(${text(uploads)})`, 'InvalidRequestError', 'folder'),
+    catching(`requests.post(u, files = {"f": Upload.text("x", "x", "bad\\r\\nX: y")})`, 'InvalidRequestError', 'bad content type'),
+  ], ['json and files', 'text and files', 'missing file', 'folder', 'bad content type'], seen => {
+    assert.equal(seen.length, 5);
+    const first = multipart(seen[0]);
+    assert.equal(first.length, 5);
+    assert.equal(first[0].head, 'Content-Disposition: form-data; name="title"');
+    assert.equal(first[0].body.toString('utf8'), 'h\u00e9');
+    assert.deepEqual([first[1].body.toString(), first[2].body.toString()], ['1', '2']);
+    assert.ok(first[3].head.includes('name="doc"; filename="a.txt"') && first[3].head.includes('text/plain'));
+    assert.equal(first[3].body.toString(), 'line');
+    assert.ok(first[4].head.includes('filename="we%22ird%0D%0Aname.bin"') && first[4].head.includes('Content-Type: image/png'));
+    assert.deepEqual([...first[4].body], [0, 255, 128]);
+    assert.equal(seen[1].method, 'PUT');
+    const big = multipart(seen[1]);
+    assert.ok(big[0].head.includes('filename="data.bin"'));
+    assert.ok(big[0].body.equals(fileBody));
+    assert.ok(multipart(seen[2])[0].head.includes('filename="other.bin"'));
+    assert.ok(multipart(seen[2])[0].head.includes('application/zip'));
+    assert.equal(seen[4].method, 'POST');
+    assert.equal(multipart(seen[4])[0].body.toString(), 'resent');
+  });
+
+  const downloads = path.join(folder, 'downloads');
+  fs.mkdirSync(downloads);
+  const digest = require('crypto').createHash('sha256').update(fileBody).digest('hex');
+  await scenario('streamed downloads', [
+    'import java.nio.file.Files', 'import java.nio.file.Paths',
+    'fun sha(path: Text): Text { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(Paths.get(path)))) }',
+    'fun size(path: Text): Long { return Files.size(Paths.get(path)) }',
+    'fun exists(path: Text): Bool { return Files.exists(Paths.get(path)) }',
+    `let dir: Text = ${text(downloads)}`, `let u: Text = ${text(base)}`, 'let target = dir + "/out.bin"',
+    'let r = requests.download(u + "/file", target)',
+    'print(r.status)', 'print(r.bytes.size)', 'print(r.savedTo!!.endsWith("out.bin"))', 'print(sha(target))',
+    catching('requests.download(u + "/get", target)', 'InvalidRequestError', 'exists'),
+    'print(size(target))',
+    'requests.download(u + "/get", target, overwrite = true)', 'print(size(target))',
+    catching('requests.download(u + "/truncated", target, overwrite = true)', 'TransportError', 'truncated'),
+    'print(size(target))',
+    catching('requests.download(u + "/stall", target, overwrite = true, timeout = 1)', 'TimeoutError', 'stalled'),
+    'print(size(target))',
+    'let failed = requests.download(u + "/error", dir + "/err.bin")', 'print(failed.status)', 'print(failed.text)', 'print(failed.savedTo == null)', 'print(exists(dir + "/err.bin"))',
+    catching('requests.download(u + "/file", dir + "/none/x.bin")', 'InvalidRequestError', 'no folder'),
+    catching('requests.download(u + "/file", dir)', 'InvalidRequestError', 'is a folder'),
+    `requests.download(${moved(302, '/get')}, dir + "/moved.bin", maxRedirects = 1)`, 'print(size(dir + "/moved.bin"))',
+    'let s = Session(headers = {"X-S": "1"}, maxRedirects = 1)', 's.setCookie(u, "sid", "abc")',
+    `s.download(${moved(302, '/landed')}, dir + "/session.bin")`, 'print(size(dir + "/session.bin"))',
+    'for name in ["out.bin", "moved.bin", "session.bin"] { Files.delete(Paths.get(dir + "/" + name)) }',
+    'print(java.io.File(dir).list().size)',
+  ], ['200', '0', 'true', digest, 'exists', String(fileBody.length), '5', 'truncated', '5', 'stalled', '5', '422', 'rejected', 'true', 'false', 'no folder', 'is a folder', '5', '5', '0'], seen => {
+    const landed = seen.filter(r => r.path === '/landed');
+    assert.equal(landed.length, 1);
+    assert.equal(landed[0].headers['x-s'], '1');
+    assert.equal(landed[0].headers.cookie, 'sid=abc');
+  });
+
   await rejected('mixed dictionary stays a compile error', [`requests.post(${text(base + '/post')}, json = {"a": 1, "b": "x"})`], 'Expected');
 
   await scenario('library names stay out of the program', [
@@ -443,11 +620,12 @@ async function main(base) {
 (async () => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   try {
-    await main('http://127.0.0.1:' + server.address().port);
+    await new Promise(r => otherServer.listen(0, '127.0.0.1', r));
+    const otherPort = otherServer.address().port;
+    await main('http://127.0.0.1:' + server.address().port, 'http://127.0.0.1:' + otherPort, 'http://localhost:' + otherPort);
     console.log('All mammoth.requests integration scenarios passed.');
   } finally {
-    server.closeAllConnections();
-    server.close();
+    for (const s of [server, otherServer]) { s.closeAllConnections(); s.close(); }
     fs.rmSync(folder, { recursive: true, force: true });
   }
 })().catch(e => { console.error(e); process.exitCode = 1; });
