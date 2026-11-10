@@ -739,6 +739,22 @@ class Http {
         }
     }
 
+    /// Checks a session's settings and fixes them for its lifetime.
+    static fun sessionDefaults(
+        cookies: CookieManager, headers: JavaMap<Text, Text>?, auth: Auth?, timeout: Int, connectTimeout: Int, maxRedirects: Int
+    ): Defaults {
+        if timeout <= 0 or connectTimeout <= 0 { throw InvalidRequestError("Timeouts must be positive (seconds).") }
+        if maxRedirects < 0 { throw InvalidRequestError("maxRedirects cannot be negative.") }
+        let shared = TreeMap<Text, Text>(java.lang.String.CASE_INSENSITIVE_ORDER)
+        if headers != null { shared.putAll(headers) }
+        for entry in shared.entrySet() { checkHeader(entry.getKey(), entry.getValue()) }
+        let client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(connectTimeout.toLong()))
+            .cookieHandler(cookies)
+            .build()
+        return Defaults(client, shared, auth)
+    }
+
     private static fun origin(uri: URI): Text {
         let scheme = uri.getScheme().toLowerCase()
         var port = uri.getPort()
@@ -1081,20 +1097,7 @@ class Session(
 ) implements java.io.Closeable {
     private let cookieManager = CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER)
     private let closed = AtomicBoolean(false)
-    private let defaults: Defaults
-
-    init {
-        if timeout <= 0 or connectTimeout <= 0 { throw InvalidRequestError("Timeouts must be positive (seconds).") }
-        if maxRedirects < 0 { throw InvalidRequestError("maxRedirects cannot be negative.") }
-        let shared = TreeMap<Text, Text>(java.lang.String.CASE_INSENSITIVE_ORDER)
-        if headers != null { shared.putAll(headers) }
-        for entry in shared.entrySet() { Http.checkHeader(entry.getKey(), entry.getValue()) }
-        let client = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(connectTimeout.toLong()))
-            .cookieHandler(cookieManager)
-            .build()
-        defaults = Defaults(client, shared, auth)
-    }
+    private let defaults: Defaults = Http.sessionDefaults(cookieManager, headers, auth, timeout, connectTimeout, maxRedirects)
 
     private fun live() {
         if closed.get() { throw InvalidRequestError("This session is closed.") }
