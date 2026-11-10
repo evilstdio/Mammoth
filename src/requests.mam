@@ -1105,40 +1105,40 @@ class Session(
     }
 
     private fun run(
-        method: Text, url: Text, chosen: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
-        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?, files: JavaMap<Text, Upload>?, auth: Auth?, redirects: Int
+        method: Text, url: Text, chosen: Int?, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
+        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?, files: JavaMap<Text, Upload>?, auth: Auth?, redirects: Int?
     ): Response {
         live()
-        return Http.request(defaults, method, url, if chosen == 0 { timeout } else { chosen }, params, headers, json, text, bytes, form, files, auth, if redirects == -1 { maxRedirects } else { redirects })
+        return Http.request(defaults, method, url, chosen ?: timeout, params, headers, json, text, bytes, form, files, auth, redirects ?: maxRedirects)
     }
 
-    fun request(method: Text, url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+    fun request(method: Text, url: Text, timeout: Int? = null, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int? = null): Response {
         return run(method, url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun get(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+    fun get(url: Text, timeout: Int? = null, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int? = null): Response {
         return run("GET", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun head(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+    fun head(url: Text, timeout: Int? = null, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int? = null): Response {
         return run("HEAD", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun options(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+    fun options(url: Text, timeout: Int? = null, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int? = null): Response {
         return run("OPTIONS", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun delete(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+    fun delete(url: Text, timeout: Int? = null, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int? = null): Response {
         return run("DELETE", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun post(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+    fun post(url: Text, json: Any? = null, timeout: Int? = null, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int? = null): Response {
         return run("POST", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun put(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+    fun put(url: Text, json: Any? = null, timeout: Int? = null, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int? = null): Response {
         return run("PUT", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun patch(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int = -1): Response {
+    fun patch(url: Text, json: Any? = null, timeout: Int? = null, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, files: JavaMap<Text, Upload>? = null, auth: Auth? = null, maxRedirects: Int? = null): Response {
         return run("PATCH", url, timeout, params, headers, json, text, bytes, form, files, auth, maxRedirects)
     }
-    fun download(url: Text, path: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, auth: Auth? = null, maxRedirects: Int = -1, overwrite: Bool = false): Response {
+    fun download(url: Text, path: Text, timeout: Int? = null, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, auth: Auth? = null, maxRedirects: Int? = null, overwrite: Bool = false): Response {
         live()
-        return Http.download(defaults, url, path, if timeout == 0 { this.timeout } else { timeout }, params, headers, auth, if maxRedirects == -1 { this.maxRedirects } else { maxRedirects }, overwrite)
+        return Http.download(defaults, url, path, timeout ?: this.timeout, params, headers, auth, maxRedirects ?: this.maxRedirects, overwrite)
     }
 
     /// The value of the first stored cookie with this name, or null.

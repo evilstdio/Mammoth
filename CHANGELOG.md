@@ -4,6 +4,7 @@
 
 - A value now reaches a parameter of its own nullable type on an overloaded name, and that beats widening or a parent type.
 - `byte[]` as a Java type argument, as in `BodyHandler<byte[]>`, is a byte array rather than an `Int` list, which threw `ClassCastException` when used.
+- `mammoth.requests`: a `Session` call takes `timeout: Int?` and `maxRedirects: Int?`, where null means the session's value. Passing `timeout = 0` or `maxRedirects = -1` is now rejected instead of meaning "inherit".
 
 ## Module initialization, 2026-11-10
 

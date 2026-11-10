@@ -427,11 +427,13 @@ async function main(base, other, otherHost) {
     catching('Session(timeout = 0)', 'InvalidRequestError', 'bad timeout'),
     catching('Session(connectTimeout = 0)', 'InvalidRequestError', 'bad connect timeout'),
     catching('quick.get(u + "/get", timeout = -1)', 'InvalidRequestError', 'bad request timeout'),
+    catching('quick.get(u + "/get", timeout = 0)', 'InvalidRequestError', 'zero request timeout'),
+    catching('quick.get(u + "/get", maxRedirects = -1)', 'InvalidRequestError', 'bad redirect limit'),
     'let s = Session(connectTimeout = 3)', 's.setCookie(u, "a", "b")', 's.close()', 'print(s.cookies().size())',
     catching('s.get(u + "/get")', 'InvalidRequestError', 'closed'),
     's.close()',
     'let used = Session().use { it.get(u + "/get").status }', 'print(used)',
-  ], ['session timeout', 'late', 'bad timeout', 'bad connect timeout', 'bad request timeout', '0', 'closed', '200']);
+  ], ['session timeout', 'late', 'bad timeout', 'bad connect timeout', 'bad request timeout', 'zero request timeout', 'bad redirect limit', '0', 'closed', '200']);
 
   await scenario('one session across threads', [
     `let u: Text = ${text(base + '/other')}`,

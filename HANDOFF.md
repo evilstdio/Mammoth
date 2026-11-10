@@ -12,7 +12,9 @@ Checks on this tree: `cargo test --release --offline`, `cargo fmt --check`, clip
 
 Known limits found while reviewing: a dictionary literal lowers to `Pair` and `mapOf`, so a program that declares its own function or class with those names captures or breaks the literal. `tailrec` is not parsed on a function declared inside another.
 
-Next task: fix passing an `Int` to an `Int?` parameter on overloaded names, listed below, which lets the library drop its `timeout: Int = 0` convention. Then the `BodyHandler<byte[]>` cast.
+After the overload and byte-array fixes, the same checks passed again, with `difffuzz.py 1301 40` at 0 problems and `soundfuzz.py 1302 80 8` at 0 bad.
+
+Next task: `mapOf<Text, Any>("a" to 1)` is still rejected, listed below. Decide whether a `Pair<Text, Int>` may go to `Pair<Text, Any>` for an explicitly typed map, without allowing heterogeneous inferred literals. Separately, the https and real connection-timeout paths of `mammoth.requests` still have no test.
 
 # mammoth.requests library, 2026-11-10 (latest)
 
@@ -28,8 +30,8 @@ Compiler findings while writing the library:
 - Fixed, narrow: `a[i]` ignored overloaded `get`. Test `tests/programs/overloaded-index.mam`.
 - Fixed, narrow: Java `byte[]` had no type spelling, now `ByteArray`.
 - Fixed: top-level values in a linked library module were never initialized. See the section above. The library now uses them for its limits.
-- Open: `reply.body()` of a Java `BodyHandler<byte[]>` throws `ClassCastException` when used as a `byte[]`, even through `Any` and `as ByteArray`. Reproduce with `client.send(request, BodyHandlers.ofByteArray()).body()`. The library reads `ofInputStream` instead, which also lets one daemon timer enforce the body deadline.
-- Open: passing an `Int` to an `Int?` parameter fails when the method name is overloaded anywhere in the file ("No version of this function accepts these arguments"). Overloading is decided per name, so `Json.get` makes `Session.get` go through it. Session methods take `timeout: Int = 0`, with 0 meaning the session's timeout, instead of `Int?`.
+- Fixed: `byte[]` as a Java type argument became an `Int` list. Test `tests/programs/java-generic-byte-array.mam`. The library still reads `ofInputStream`, because one daemon timer can then enforce the body deadline.
+- Fixed: an `Int` can go to an `Int?` parameter on an overloaded name. Costs in `src/jvm/overloads.rs` are even, leaving 1 for a value going to its own nullable type. Test `tests/programs/overload-nullable-arguments.mam`. `Session` calls now take `timeout: Int?` and `maxRedirects: Int?`.
 - Open: `mapOf<Text, Any>("a" to 1)` is rejected because `to` makes a `Pair<Text, Int>`, and `Any?` is refused as a type argument of a Java collection. The library's documented route for mixed values is `Json.of` on each value, or a `MutableMap<Text, Any>`.
 
 # Dictionary literals, 2026-11-10 (latest)
