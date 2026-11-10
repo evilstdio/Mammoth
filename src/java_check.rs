@@ -27,14 +27,14 @@ fn run_checker(
     path: &str,
     source: &str,
 ) -> Result<(), String> {
-    let mut child = Command::new("java")
+    let mut child = Command::new(crate::classpath::java_tool("java"))
         .arg(helper)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|error| {
             if error.kind() == ErrorKind::NotFound {
-                "Could not find java. Add the Java 17 JDK or later to PATH.".into()
+                crate::MISSING_JAVA.replace("{tool}", "java")
             } else {
                 format!("Could not start the Java declaration checker: {error}")
             }

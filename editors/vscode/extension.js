@@ -19,6 +19,14 @@ function compilerFor(document, folder) {
             return local;
         }
     }
+    // The Windows setup's default folder, which a VS Code window opened before
+    // the install cannot find on its older PATH.
+    if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+        const installed = path.join(process.env.LOCALAPPDATA, "Programs", "Mammoth", "bin", executable);
+        if (fs.existsSync(installed)) {
+            return installed;
+        }
+    }
     return executable;
 }
 

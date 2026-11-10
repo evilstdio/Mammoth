@@ -14,20 +14,36 @@ for name in ["Maya", "Sam"] {
 }
 ```
 
-With Rust and Java 17 installed, run these commands once in the VS Code PowerShell terminal from the project folder.
+## Install
+
+On Windows, run `mammoth-0.1.0-setup.exe`. It installs Mammoth for your user account in `%LOCALAPPDATA%\Programs\Mammoth`, adds it to `PATH` and lists it under **Settings → Apps**, where you can uninstall it. It includes its own Java runtime, so you don't need Java or Rust, and it doesn't need administrator rights. If you'd rather not run a setup program, unzip `mammoth-0.1.0-windows-x64.zip` and run `install.cmd` inside it, or run `bin\mammoth.exe` straight from the folder.
+
+Open a new terminal after installing, then run a program:
+
+```powershell
+mammoth --version
+mammoth "$env:LOCALAPPDATA\Programs\Mammoth\examples\greet.mam"
+```
+
+This compiles and runs the program. The example prints `Hello, Maya!` and `Hello, Sam!` on separate lines.
+
+Mammoth uses the first Java it finds in this order: the folder in `MAMMOTH_JAVA_HOME`, the runtime installed with it, `JAVA_HOME`, then `java` on `PATH`. Set `MAMMOTH_JAVA_HOME` to a JDK to use a different Java, such as Java 21 for Minecraft mods. The bundled runtime has all of Java SE plus a few JDK modules, listed in `installer/windows/package.ps1`.
+
+The installer is for 64-bit Windows only. On other systems, build from source.
+
+### Build from source
+
+With Rust and a Java 17 or later JDK installed, run these commands once in the VS Code PowerShell terminal from the project folder.
 
 ```powershell
 cargo build --release
 $env:Path = "$(Join-Path $PWD 'target\release');$env:Path"
-```
-
-Then run any Mammoth source file with a single command.
-
-```powershell
 mammoth .\examples\greet.mam
 ```
 
-This compiles and runs the program. The example prints `Hello, Maya!` and `Hello, Sam!` on separate lines. Repeat the PATH line in a new terminal.
+Repeat the PATH line in a new terminal.
+
+To make the Windows installer, run `powershell -ExecutionPolicy Bypass -File installer\windows\package.ps1` with a JDK 17 or later that has `jmods`. It writes the installed folder, the zip and `mammoth-<version>-setup.exe` to `build\dist`. Before zipping, it checks that the packaged compiler can run a program and build a JAR with every other Java hidden.
 
 To keep the generated `Main.class` for later, run `mammoth .\examples\greet.mam .\build`.
 
@@ -37,7 +53,7 @@ Run `cargo test --release` to compile every program under `tests/` and `examples
 
 ## VS Code
 
-Install the Mammoth Language VSIX with **Extensions → Install from VSIX**. Build the compiler with `cargo build --release`, then open a saved `.mam` file and use the play button or **Mammoth: Run Mammoth File**. Java must be on `PATH`. The extension uses the workspace release compiler when present. Set `mammoth.compilerPath` when the compiler lives elsewhere.
+Install the Mammoth Language VSIX with **Extensions → Install from VSIX**. Install Mammoth or build the compiler, then open a saved `.mam` file and use the play button or **Mammoth: Run Mammoth File**. The extension uses, in order: `mammoth.compilerPath`, the workspace's `target\release` compiler, the Windows installer's folder, then `mammoth` on `PATH`.
 
 Compiler diagnostics appear in the Problems panel. **Mammoth: Check Java Bindings** runs the optional Java declaration check. The extension source is in `editors/vscode`.
 

@@ -14,6 +14,10 @@ use std::{
     process::{self, Command, ExitCode},
 };
 
+/// Shown when a Java tool cannot be started. The installer bundles Java, so
+/// this mostly reaches people who built the compiler themselves.
+pub const MISSING_JAVA: &str = "Could not find {tool}. Reinstall Mammoth with its setup, which includes Java, or add a Java 17 or later JDK to PATH or JAVA_HOME.";
+
 fn main() -> ExitCode {
     match run() {
         Ok(status) => status,
@@ -27,6 +31,21 @@ fn main() -> ExitCode {
 fn run() -> Result<ExitCode, String> {
     let mut args = env::args_os().skip(1);
     let first = args.next();
+    if let Some(flag) = first.as_deref().and_then(|arg| arg.to_str())
+        && args.len() == 0
+    {
+        match flag {
+            "--version" | "-V" => {
+                println!("mammoth {}", env!("CARGO_PKG_VERSION"));
+                return Ok(ExitCode::SUCCESS);
+            }
+            "--help" | "-h" => {
+                println!("{}", usage());
+                return Ok(ExitCode::SUCCESS);
+            }
+            _ => {}
+        }
+    }
     if first.as_deref().is_some_and(|arg| arg == "--project") {
         let (Some(directory), output, None) = (args.next(), args.next(), args.next()) else {
             return Err(usage());
@@ -100,7 +119,7 @@ fn run() -> Result<ExitCode, String> {
 }
 
 fn usage() -> String {
-    "Usage: mammoth <source.mam> [output-directory]\n       mammoth --jar <source.mam> <output.jar> [--resources <directory>]\n       mammoth --check-java <source.mam>\n       mammoth --project <directory> [output.jar]"
+    "Usage: mammoth <source.mam> [output-directory]\n       mammoth --jar <source.mam> <output.jar> [--resources <directory>]\n       mammoth --check-java <source.mam>\n       mammoth --project <directory> [output.jar]\n       mammoth --version"
         .into()
 }
 
@@ -124,14 +143,14 @@ fn run_classes(classes: &[jvm::ClassFile], entry: &str) -> Result<ExitCode, Stri
                 .chain(env::split_paths(&external).filter(|path| !path.as_os_str().is_empty())),
         )
         .map_err(|error| format!("Could not build the Java classpath: {error}"))?;
-        let status = Command::new("java")
+        let status = Command::new(classpath::java_tool("java"))
             .arg("-cp")
             .arg(classpath)
             .arg(entry)
             .status()
             .map_err(|error| {
                 if error.kind() == ErrorKind::NotFound {
-                    "Could not find java. Add Java 17 or later to PATH.".into()
+                    MISSING_JAVA.replace("{tool}", "java")
                 } else {
                     format!("Could not start Java: {error}")
                 }
@@ -160,7 +179,7 @@ fn package_jar(
     with_classes(classes, |temp, classes_dir| {
         let archive = temp.join("mammoth.jar");
         let result = (|| {
-            let mut jar = Command::new("jar");
+            let mut jar = Command::new(classpath::java_tool("jar"));
             jar.arg("--create")
                 .arg("--file")
                 .arg(&archive)
@@ -174,7 +193,7 @@ fn package_jar(
             }
             let status = jar.status().map_err(|error| {
                 if error.kind() == ErrorKind::NotFound {
-                    "Could not find jar. Add the Java 17 JDK or later to PATH.".into()
+                    MISSING_JAVA.replace("{tool}", "jar")
                 } else {
                     format!("Could not start jar: {error}")
                 }

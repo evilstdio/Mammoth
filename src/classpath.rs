@@ -28,7 +28,7 @@ enum Entry {
 impl ClassPath {
     /// Uses the JDK that runs Mammoth programs and the `CLASSPATH` entries.
     pub fn from_environment() -> Self {
-        let jdk = find_jdk().and_then(|home| JImage::open(&home.join("lib").join("modules")));
+        let jdk = java_home().and_then(|home| JImage::open(&home.join("lib").join("modules")));
         let mut entries = Vec::new();
         if let Some(classpath) = env::var_os("CLASSPATH") {
             for path in env::split_paths(&classpath) {
@@ -112,8 +112,48 @@ impl ClassPath {
     }
 }
 
+/// The Java installation Mammoth compiles against and runs programs with.
+/// `MAMMOTH_JAVA_HOME` wins, then the runtime an installer put beside the
+/// compiler (`runtime` next to `bin`, or next to the executable), then
+/// `JAVA_HOME`, then the `java` on `PATH`.
+pub fn java_home() -> Option<&'static Path> {
+    static HOME: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    HOME.get_or_init(find_jdk).as_deref()
+}
+
+/// A Java tool such as `java` or `jar` from [`java_home`], or the bare name
+/// for the system to look up when that installation does not have it.
+pub fn java_tool(name: &str) -> PathBuf {
+    let file = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_owned()
+    };
+    java_home()
+        .map(|home| home.join("bin").join(&file))
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| PathBuf::from(name))
+}
+
 fn find_jdk() -> Option<PathBuf> {
     let valid = |home: &Path| home.join("lib").join("modules").is_file();
+    if let Some(home) = env::var_os("MAMMOTH_JAVA_HOME").map(PathBuf::from)
+        && valid(&home)
+    {
+        return Some(home);
+    }
+    if let Ok(executable) = env::current_exe() {
+        let directory = executable.parent();
+        let bundled = [
+            directory
+                .and_then(Path::parent)
+                .map(|root| root.join("runtime")),
+            directory.map(|directory| directory.join("runtime")),
+        ];
+        if let Some(home) = bundled.into_iter().flatten().find(|home| valid(home)) {
+            return Some(home);
+        }
+    }
     if let Some(home) = env::var_os("JAVA_HOME").map(PathBuf::from)
         && valid(&home)
     {

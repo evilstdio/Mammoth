@@ -2,7 +2,11 @@
 
 This file moved from the repository root to `docs/development/HANDOFF.md`, and `PLAN.md` moved beside it. Update them here. The project is licensed `Apache-2.0 WITH LLVM-exception` and tagged `v0.1.0` locally. Git is still local only: there is no remote, and nothing has been pushed or published.
 
-Before a public release: run the suites on Linux and macOS, add a `repository` field to `Cargo.toml` once a remote exists, and decide how to ship binaries.
+Before a public release: run the suites on Linux and macOS, add a `repository` field to `Cargo.toml` once a remote exists, and sign the setup program if possible (unsigned, Windows SmartScreen warns about it).
+
+Windows installer. `installer/windows/package.ps1` builds `build\dist\mammoth-<version>-setup.exe` (IExpress, part of Windows), a zip and the unpacked folder: `bin\mammoth.exe`, `runtime` (jlink, Java 17), tracked `examples`, license files, `install.ps1`, `uninstall.ps1`. `src/classpath.rs` `java_home` picks Java: `MAMMOTH_JAVA_HOME`, then `runtime` beside the executable, then `JAVA_HOME`, then `PATH`. `java_tool` runs `java` and `jar` from it. Verified: the setup carries the same zip; installing into a temp folder with `-NoPath -NoRegister`, then with no other Java visible, running a file, building and running a JAR, `--check-java`, three project builds, and all 27 `tests/requests.cjs` scenarios; reinstalling over an install; refusing a folder with other files; uninstalling. Not run: the setup program's own prompts and the PATH and Settings > Apps registration on a real account.
+
+- Open: the jimage reader in `src/classpath.rs` cannot read compressed entries, so a runtime made with `jlink --compress` gives "Could not find this Java class" for JDK classes. The package uses `--compress=0`. The same happens with `MAMMOTH_JAVA_HOME` or `JAVA_HOME` set to such a runtime.
 
 # Module initialization and compiler commits, 2026-11-10 
 
