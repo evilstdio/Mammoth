@@ -2,3 +2,9 @@
 name = "mammoth"
 version = "0.1.0"
 edition = "2024"
+description = "Compiler for Mammoth, a beginner-friendly statically typed language for the JVM"
+license = "Apache-2.0 WITH LLVM-exception"
+readme = "README.md"
+keywords = ["compiler", "jvm", "language", "bytecode"]
+categories = ["compilers"]
+exclude = ["/docs/development/", "/benchmarks/", "/build/", "/target/"]

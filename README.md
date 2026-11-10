@@ -1,6 +1,8 @@
 # Mammoth
 
-Mammoth is a beginner-friendly language for the JVM. It compiles `.mam` files directly to JVM bytecode, and it can use any Java library: the JDK, Minecraft's Fabric API, or any JAR on your `CLASSPATH`.
+Mammoth is a beginner-friendly language for the JVM. It compiles `.mam` files directly to JVM bytecode, and it can call Java libraries: the JDK, Minecraft's Fabric API, or a JAR on your `CLASSPATH`.
+
+> **Status: experimental preview (0.1.0).** The language, its standard library and the compiler's error messages may change between releases without a migration path. The test suites run on Windows with Java 17. Linux and macOS have not been tested. Java interop covers the cases the tests exercise and is not complete; see [Java generic assignment safety and current limits](#java-generic-assignment-safety-and-current-limits). Known open issues are listed in [docs/development/HANDOFF.md](docs/development/HANDOFF.md).
 
 ```text
 fun greet(name: Text) {
@@ -1615,13 +1617,13 @@ Run `mammoth --project .\examples\project-classes` for a three-file example with
 
 The checksum benchmark compares Mammoth, Java, and Kotlin with the same integer workload on Java 17. See [the benchmark](benchmarks/checksum/README.md) for measurements and instructions to rerun it.
 
-See [PLAN.md](PLAN.md) for the language and performance milestones.
+See [docs/development/PLAN.md](docs/development/PLAN.md) for the language and performance milestones.
 
 ### Java generic assignment safety and current limits
 
 Java generic destinations are invariant: an ArrayList<Text> cannot be assigned to ArrayList<Int> or Collection<Int>. Compatible ancestor views such as ArrayList<Text> to Collection<Text> are allowed, including inherited Java types on Mammoth subclasses. Nested arguments must also match. An existing raw Java value cannot be assigned to a parameterized destination. A fresh constructor can use a same-class declared destination: `let ages: HashMap<Text, Int> = HashMap()`.
 
-This does not establish full Java generic safety. Original Java method parameter signatures are now checked, including upper/lower wildcard directions, nested invariance and spread generic varargs. Inferred method arguments are also checked against their declared bounds, with ancestor substitutions and method-variable shadowing respected. Full wildcard capture/read typing, constraint-based inference, Java class-application bounds, generic-aware overload selection, casts and remaining boxed primitive paths still require auditing. Raw Java APIs retain erased operations. See the production-readiness queue in PLAN.md.
+This does not establish full Java generic safety. Original Java method parameter signatures are now checked, including upper/lower wildcard directions, nested invariance and spread generic varargs. Inferred method arguments are also checked against their declared bounds, with ancestor substitutions and method-variable shadowing respected. Full wildcard capture/read typing, constraint-based inference, Java class-application bounds, generic-aware overload selection, casts and remaining boxed primitive paths still require auditing. Raw Java APIs retain erased operations. See the production-readiness queue in [docs/development/PLAN.md](docs/development/PLAN.md).
 
 Generic method argument examples: `ArrayList<Text>.addAll(ArrayList<Int>)` is rejected; copying a collection of a subtype into a collection of its parent is allowed by `? extends T`. Lower-bound Java parameters accept compatible parent-element destinations. These checks also apply to generic Java constructors.
 
@@ -1830,3 +1832,6 @@ These are not implemented: async requests, proxies, automatic retries, a streami
 
 See `examples/requests-api.mam` and `examples/requests-webhook.mam`. Run `node tests/requests.cjs` for the local-only integration tests (requires Node).
 
+## License
+
+Mammoth is licensed under the Apache License, Version 2.0, with LLVM Exceptions (`Apache-2.0 WITH LLVM-exception`). See [LICENSE](LICENSE). Under the exception, when compiling your program embeds parts of Mammoth in it, such as code from the bundled libraries, you can distribute the compiled program without meeting sections 4(a), 4(b) and 4(d) of the license for those parts.

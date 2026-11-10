@@ -1,4 +1,10 @@
-# Module initialization and compiler commits, 2026-11-10 (latest, read this first)
+# Release 0.1.0 preview, 2026-11-10 (latest, read this first)
+
+This file moved from the repository root to `docs/development/HANDOFF.md`, and `PLAN.md` moved beside it. Update them here. The project is licensed `Apache-2.0 WITH LLVM-exception` and tagged `v0.1.0` locally. Git is still local only: there is no remote, and nothing has been pushed or published.
+
+Before a public release: run the suites on Linux and macOS, add a `repository` field to `Cargo.toml` once a remote exists, and decide how to ship binaries.
+
+# Module initialization and compiler commits, 2026-11-10 
 
 The uncommitted compiler work is now seven verified local commits, `717689d` to `6b1709f`: dictionary literals, implicit collection names, init-assigned fields, operator methods, library folds, tailrec, probes. Each tree passed `cargo test --release --offline`, `cargo fmt --check` and clippy on its own. `node tests/requests.cjs` passes from the second commit on. The first cannot pass it, because the test needs both of the first two.
 

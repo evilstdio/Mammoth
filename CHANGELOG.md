@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0, experimental preview, 2026-11-10
+
+First tagged version. Everything below this entry is included. It is a preview: the language and libraries may change in later releases.
+
+- Licensed under `Apache-2.0 WITH LLVM-exception`. See `LICENSE`.
+- Package metadata in `Cargo.toml`.
+- Internal notes moved to `docs/development/` (`HANDOFF.md`, `PLAN.md`). The scratch `playground.mam` is removed.
+- Tested on Windows with Java 17 only.
+
 ## Overloads and Java byte arrays, 2026-11-10
 
 - A value now reaches a parameter of its own nullable type on an overloaded name, and that beats widening or a parent type.
