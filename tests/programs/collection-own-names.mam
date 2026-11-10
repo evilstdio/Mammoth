@@ -1,0 +1,8 @@
+// A program may still declare or import these names itself.
+import java.util.TreeMap as Map
+class Set(let n: Int)
+let m = Map<Text, Int>()
+m["b"] = 2
+m["a"] = 1
+print(m)
+print(Set(2).n)

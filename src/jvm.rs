@@ -2494,6 +2494,12 @@ impl<'a> Emitter<'a> {
             && method.binding(name).is_none()
             && let Some(chosen) = self.overloaded_function(method, name, args)?
         {
+            // A generic version learns its type arguments from the destination.
+            if expected.is_some()
+                && let Some(result) = self.generic_call(method, chosen, args, base, expected)?
+            {
+                return Ok(result);
+            }
             return self.call_expected(method, chosen, args, base, expected);
         }
         if let Some(class) = self.current_class
@@ -3626,6 +3632,37 @@ impl<'a> Emitter<'a> {
             && !matches!(args.as_slice(), [Expr::Lambda(_)])
         {
             return self.java_construct(method, expected.non_null(), *name, args, base);
+        }
+        // The same for a destination that is an ancestor, as in
+        // `let ages: Map<Text, Int> = HashMap()`: the new object takes the
+        // destination's arguments when that makes it fit.
+        if let (Expr::Call(name, args), Some(expected)) = (expr, expected)
+            && !name.text.contains('<')
+            && let Some(kind @ Kind::Java(index)) = self.type_scope.names.get(name.text).copied()
+            && !self.symbols.java_classes.contains_key(&index)
+            && !self.symbols.functions.contains_key(name.text)
+            && method.binding(*name).is_none()
+            && matches!(expected.non_null(), Kind::Java(_))
+            && !matches!(args.as_slice(), [Expr::Lambda(_)])
+            && let Some(class) = self.symbols.types.runtime_class_name(kind)
+            && self
+                .symbols
+                .types
+                .runtime_class_name(expected.non_null())
+                .as_deref()
+                != Some(class.as_str())
+        {
+            let arguments = self.symbols.types.type_arguments(expected.non_null());
+            if !arguments.is_empty()
+                && self.symbols.types.class_type_parameters(&class).len() == arguments.len()
+            {
+                let candidate = Kind::Java(self.symbols.types.java_generic(&class, arguments));
+                if self.symbols.java_type_arguments_fit(candidate, expected) {
+                    let made = self.java_construct(method, candidate, *name, args, base)?;
+                    self.symbols.require(expr, made, expected)?;
+                    return Ok(made);
+                }
+            }
         }
         if matches!(expr, Expr::TryValue(..)) {
             self.try_expected = expected;

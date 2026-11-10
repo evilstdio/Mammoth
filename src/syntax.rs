@@ -1241,9 +1241,88 @@ fn add_prelude<'a>(program: &mut Program<'a>, source: &str) {
     program.imports.extend(parsed.imports);
 }
 
+/// Collection types a program may name without importing them, and the
+/// `java.util` type each one is.
+const COLLECTION_NAMES: &[(&str, &str)] = &[
+    ("Map", "Map"),
+    ("MutableMap", "Map"),
+    ("Set", "Set"),
+    ("MutableSet", "Set"),
+    ("Collection", "Collection"),
+    ("MutableCollection", "Collection"),
+    ("Iterator", "Iterator"),
+    ("MutableIterator", "Iterator"),
+    ("HashMap", "HashMap"),
+    ("HashSet", "HashSet"),
+    ("LinkedHashMap", "LinkedHashMap"),
+    ("LinkedHashSet", "LinkedHashSet"),
+    ("ArrayList", "ArrayList"),
+    ("ArrayDeque", "ArrayDeque"),
+    ("Comparator", "Comparator"),
+];
+
+/// Whether `source` uses `name` as a whole word that is not a member.
+fn names_type(source: &str, name: &str) -> bool {
+    source.match_indices(name).any(|(at, _)| {
+        let before = source[..at].chars().next_back();
+        let after = source[at + name.len()..].chars().next();
+        !before.is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '.')
+            && !after.is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
+    })
+}
+
+/// Imports the collection types the program names but neither declares nor
+/// imports itself.
+fn add_collection_names<'a>(program: &mut Program<'a>, source: &str) {
+    for &(local, java) in COLLECTION_NAMES {
+        if !names_type(source, local) {
+            continue;
+        }
+        let declared = ["class", "interface", "object", "enum", "typealias", "as"]
+            .iter()
+            .any(|word| {
+                source.match_indices(word).any(|(at, _)| {
+                    let rest = source[at + word.len()..].trim_start();
+                    rest.strip_prefix(local).is_some_and(|after| {
+                        !after
+                            .chars()
+                            .next()
+                            .is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
+                    })
+                })
+            });
+        let taken = program
+            .imports
+            .iter()
+            .any(|import| import.local.text == local)
+            || program
+                .functions
+                .iter()
+                .any(|function| function.name.text == local)
+            || program.classes.iter().any(|class| class.name.text == local)
+            || program.aliases.iter().any(|(alias, _)| alias.text == local);
+        if declared || taken {
+            continue;
+        }
+        program.imports.push(Import {
+            module: "java/util".to_string(),
+            name: Name {
+                text: java,
+                offset: 0,
+            },
+            local: Name {
+                text: local,
+                offset: 0,
+            },
+            wildcard: false,
+        });
+    }
+}
+
 pub fn parse(source: &str) -> Result<Program<'_>, Error> {
     let mut program = parse_source(source)?;
     add_prelude(&mut program, source);
+    add_collection_names(&mut program, source);
     Ok(program)
 }
 

@@ -1,0 +1,2 @@
+// error: Give the types of an empty collection, such as setOf<Int>().
+let c = mutableMapOf()

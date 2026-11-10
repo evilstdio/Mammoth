@@ -1,0 +1,2 @@
+// error: Java generic type arguments must match the declared type.
+let c: Map<Text, Int> = ArrayList()

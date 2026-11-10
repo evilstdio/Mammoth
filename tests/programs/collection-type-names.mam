@@ -1,0 +1,46 @@
+// Map, Set and the usual java.util collections need no import, and an empty
+// collection takes its types from the declared destination.
+let m: MutableMap<Text, Int> = mutableMapOf()
+m["a"] = 1
+let s: MutableSet<Int> = mutableSetOf()
+s.add(3)
+let h: Map<Text, MutableList<Int>> = HashMap()
+h["x"] = mutableListOf(2)
+fun count(words: MutableList<Text>): Map<Text, Int> {
+    let out: MutableMap<Text, Int> = mutableMapOf()
+    for w in words { out[w] = (out[w] ?: 0) + 1 }
+    return out
+}
+print(count(mutableListOf("a", "b", "a")))
+print(m)
+print(s)
+print(h)
+let q = ArrayDeque<Int>()
+q.add(1)
+print(q.size)
+let ro: Set<Text> = setOf("z")
+print(ro.contains("z"))
+class Registry {
+    let items: MutableMap<Text, Int> = mutableMapOf()
+    let seen: MutableSet<Text> = HashSet()
+    let all: Collection<Int> = ArrayList()
+}
+let r = Registry()
+r.items["k"] = 4
+r.seen.add("q")
+print(r.items)
+print(r.seen)
+print(r.all.size)
+class Countdown(let n: Int) implements Iterator<Int> {
+    var i = 0
+    override fun hasNext(): Bool { return i < n }
+    override fun next(): Int {
+        i += 1
+        return n - i
+    }
+}
+class Down(let n: Int) implements Iterable<Int> {
+    override fun iterator(): Iterator<Int> { return Countdown(n) }
+}
+for x in Down(3) { print(x) }
+print(Down(2).map { it * 2 })

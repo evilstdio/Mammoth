@@ -1050,6 +1050,8 @@ Functions and methods can share a name when their parameter types differ. The ca
 
 `listOf(1, 2)` and `mutableListOf("a")` make a `MutableList`, `setOf(1, 2)` a set, and `mapOf("a" to 1)` a map. `a to b` inside call arguments makes a `Pair`.
 
+`Map`, `MutableMap`, `Set`, `MutableSet`, `Collection`, `MutableCollection`, `Iterator`, `MutableIterator`, `HashMap`, `HashSet`, `LinkedHashMap`, `LinkedHashSet`, `ArrayList`, `ArrayDeque` and `Comparator` can be named without an import unless the file declares or imports that name itself. A declared type fills in what a construction leaves out: `let ages: Map<Text, Int> = HashMap()` and `let totals: MutableMap<Text, Int> = mutableMapOf()`.
+
 ### Variable arguments, references and aliases
 
 - `fun total(vararg numbers: Int): Int` takes any number of values, as a list named `numbers`. `total(*existing)` passes a list.

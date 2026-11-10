@@ -133,10 +133,22 @@ impl<'a> Emitter<'a> {
                         .mutable_list(method, args, base, element, name.offset)
                         .map(Some);
                 }
-                return Err(at(
-                    name,
-                    "Give the types of an empty collection, such as setOf<Int>().",
-                ));
+                // A declared destination such as `MutableMap<Text, Int>`
+                // gives the types.
+                let typed = expected.is_some_and(|expected| {
+                    matches!(expected.non_null(), Kind::Java(_))
+                        && !self
+                            .symbols
+                            .types
+                            .type_arguments(expected.non_null())
+                            .is_empty()
+                });
+                if !typed {
+                    return Err(at(
+                        name,
+                        "Give the types of an empty collection, such as setOf<Int>().",
+                    ));
+                }
             }
             let class = match plain.text {
                 "listOf" | "mutableListOf" => "MutableList",
