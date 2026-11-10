@@ -1,0 +1,9 @@
+// error: A tailrec function must call itself as the last thing it does
+tailrec fun f(n: Int): Int {
+    try {
+        return f(n - 1)
+    } finally {
+        print(n)
+    }
+}
+print(f(3))

@@ -1,0 +1,10 @@
+// error: A subclass could replace this method
+class A {
+    tailrec fun f(n: Int): Int {
+        if n == 0 {
+            return 0
+        }
+        return f(n - 1)
+    }
+}
+print(A().f(1))

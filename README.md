@@ -1078,6 +1078,16 @@ Functions and methods can share a name when their parameter types differ. The ca
 
 A `fun` can be declared inside another. If it uses nothing from around it, it can call itself. If it uses outer variables it cannot, yet, and it cannot have default arguments.
 
+### Tail calls
+
+`tailrec` turns a function's calls to itself in tail position into a loop, so they use no stack:
+
+```text
+tailrec fun sum(n: Int, total: Long): Long = if n == 0 { total } else { sum(n - 1, total + n) }
+```
+
+A tail call is `return own(...)`, the expression body itself, a branch of a value `if` or `when` with an `else`, or in a function with no result the last statement. It must give one value per parameter, without names. Other calls in the function stay ordinary calls, but at least one call must qualify. These are compile errors, so a `tailrec` that compiles really does loop: no qualifying call, as in `1 + f(n - 1)` or a call inside `try`; a vararg, extension or overloaded function; a method a subclass could replace. Use a top-level function, a `static` or `private` method, or a method of an `object`.
+
 ### Class members
 
 A field declared with a type and no value, such as `let name: Text`, gets its value from a statement at the top of an `init` block. It must be assigned exactly once there, before anything reads it. Assignment inside `if`, a loop or a method does not count.

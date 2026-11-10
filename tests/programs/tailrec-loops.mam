@@ -1,0 +1,155 @@
+// Every function here would exhaust the stack if its tail call were a call.
+
+// Expression body choosing between a value and the call.
+tailrec fun sum(n: Int, total: Long): Long = if n == 0 { total } else { sum(n - 1, total + n) }
+print(sum(1000000, 0L))
+
+// A value `when` without a subject.
+tailrec fun evenCount(n: Int, count: Int): Int = when {
+    n == 0 -> count
+    n % 2 == 0 -> evenCount(n - 1, count + 1)
+    else -> evenCount(n - 1, count)
+}
+print(evenCount(1000000, 0))
+
+// Block body with an early return, on the line after the modifier.
+tailrec
+fun down(n: Int): Int {
+    if n == 0 {
+        return 7
+    }
+    return down(n - 1)
+}
+print(down(1000000))
+
+// Arguments are worked out before any parameter changes.
+tailrec fun swap(a: Int, b: Int, n: Int): Text {
+    if n == 0 {
+        return "{a} {b}"
+    }
+    return swap(b, a, n - 1)
+}
+print(swap(1, 2, 3))
+print(swap(1, 2, 4))
+
+// Each round has its own parameters, so a lambda keeps the round's value.
+let seen = mutableListOf<() -> Int>()
+tailrec fun capture(n: Int): Int {
+    seen.add({ n })
+    if n == 0 {
+        return 0
+    }
+    return capture(n - 1)
+}
+capture(2)
+for get in seen {
+    print(get())
+}
+
+// No result: the call is the last statement, through an `if`.
+var visits = 0
+tailrec fun walk(n: Int) {
+    visits += 1
+    if n > 0 {
+        walk(n - 1)
+    } else {
+        print("walked")
+    }
+}
+walk(1000000)
+print(visits)
+
+// No parameters.
+var polls = 0
+tailrec fun poll(): Int {
+    polls += 1
+    if polls > 1000000 {
+        return polls
+    }
+    return poll()
+}
+print(poll())
+
+// Inside loops of the function, leaving them.
+tailrec fun scan(n: Int): Int {
+    var index = 0
+    while index < 3 {
+        for item in listOf(1, 2) {
+            if n > 0 and item == 2 {
+                return scan(n - 1)
+            }
+        }
+        index += 1
+    }
+    return n + index
+}
+print(scan(1000000))
+
+// Null checks hold for each round, and a parameter can become null.
+tailrec fun untilNull(value: Int?, rounds: Int): Int {
+    if value == null {
+        return rounds
+    }
+    return untilNull(if value > 2 { null } else { value + 1 }, rounds + 1)
+}
+print(untilNull(0, 0))
+
+// A generic function.
+tailrec fun lastOf<T>(items: MutableList<T>, index: Int): T {
+    if index == items.size - 1 {
+        return items[index]
+    }
+    return lastOf(items, index + 1)
+}
+print(lastOf(mutableListOf("a", "b", "c"), 0))
+
+// Other calls may stay ordinary calls.
+tailrec fun mixed(n: Int, total: Int): Int {
+    if n == 0 {
+        return total
+    }
+    if n % 100000 == 0 {
+        return mixed(n - 1, total + plain(n))
+    }
+    return mixed(n - 1, total)
+}
+// A comment that ends with the word tailrec
+fun plain(n: Int): Int = if n == 0 { 0 } else { 1 }
+print(mixed(1000000, 0))
+
+class Walker(let step: Int) {
+    private tailrec fun count(left: Int, steps: Int): Int {
+        if left <= 0 {
+            return steps
+        }
+        return count(left - step, steps + 1)
+    }
+    // The call goes to another object, so it is not a jump.
+    private tailrec fun relay(other: Walker?, n: Int): Int {
+        if n == 0 {
+            return step
+        }
+        return if other == null { relay(Walker(9), n - 1) } else { other.relay(null, n - 1) }
+    }
+    fun run(): Int = count(1000000, 0)
+    fun relayed(): Int = relay(null, 2)
+    static tailrec fun fixed(n: Int): Int {
+        if n == 0 {
+            return 11
+        }
+        return fixed(n - 1)
+    }
+}
+print(Walker(2).run())
+print(Walker(1).relayed())
+print(Walker.fixed(1000000))
+
+object Loops {
+    tailrec fun spin(n: Int): Text {
+        if n == 0 {
+            return "spun"
+        }
+        return spin(n - 1)
+    }
+}
+print(Loops.spin(1000000))

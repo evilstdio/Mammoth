@@ -1,0 +1,9 @@
+// error: A vararg, extension or overloaded function cannot be tailrec
+fun f(t: Text): Int = 1
+tailrec fun f(n: Int): Int {
+    if n == 0 {
+        return 0
+    }
+    return f(n - 1)
+}
+print(f(1))

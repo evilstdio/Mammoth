@@ -2482,6 +2482,10 @@ impl<'a> Emitter<'a> {
                 }
                 Statement::While(name, condition, body) => {
                     Self::forget_in_loop(method, body);
+                    // The loop a `tailrec` function became: reaching the end
+                    // of its body is reaching the end of the function.
+                    let tail = method.loop_labels.last()
+                        == Some(&(method.loops.len(), crate::syntax::TAIL_LOOP));
                     let header = method.code.len();
                     method.frame(method.locals.len());
                     let endless = matches!(condition, Expr::Bool(_, true));
@@ -2499,8 +2503,17 @@ impl<'a> Emitter<'a> {
                     method.type_facts.truncate(type_count);
                     let frame = method.loops.pop().unwrap();
                     if continues? {
-                        let back = method.jump();
-                        method.patch_branch(back, header, name.offset)?;
+                        if !tail {
+                            let back = method.jump();
+                            method.patch_branch(back, header, name.offset)?;
+                        } else if method.result.is_none() {
+                            method.code.push(0xb1); // return
+                        } else {
+                            return Err(Error {
+                                offset: name.offset,
+                                message: "This function must return a value on every path.",
+                            });
+                        }
                     }
                     if endless && frame.breaks.is_empty() {
                         // Nothing leaves the loop, so nothing can follow it.

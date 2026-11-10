@@ -1,0 +1,6 @@
+// error: A tailrec function must call itself as the last thing it does
+tailrec fun f(n: Int): Int {
+    let f = { x: Int -> x + 100 }
+    return f(n)
+}
+print(f(3))

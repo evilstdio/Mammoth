@@ -1324,9 +1324,288 @@ fn add_collection_names<'a>(program: &mut Program<'a>, source: &str) {
 
 pub fn parse(source: &str) -> Result<Program<'_>, Error> {
     let mut program = parse_source(source)?;
+    make_tail_loops(&mut program, source)?;
     add_prelude(&mut program, source);
     add_collection_names(&mut program, source);
     Ok(program)
+}
+
+/// The label of the loop a `tailrec` function's body becomes.
+pub const TAIL_LOOP: &str = "tail$";
+
+/// Whether the function named at `offset` is written with `tailrec`.
+fn is_tailrec(source: &str, offset: usize) -> bool {
+    const MODIFIERS: &[&str] = &[
+        "export",
+        "private",
+        "public",
+        "protected",
+        "static",
+        "override",
+        "open",
+        "infix",
+        "inline",
+        "operator",
+    ];
+    let before = &source[..offset.min(source.len())];
+    let Some(at) = before.rfind("fun") else {
+        return false;
+    };
+    let mut rest = before[..at].trim_end();
+    loop {
+        let start = rest
+            .rfind(|ch: char| !ch.is_alphanumeric() && ch != '_')
+            .map_or(0, |index| index + 1);
+        let word = &rest[start..];
+        let line = rest.rfind('\n').map_or(0, |index| index + 1);
+        if rest[line..].contains("//") {
+            return false;
+        }
+        if word == "tailrec" {
+            return true;
+        }
+        if !MODIFIERS.contains(&word) {
+            return false;
+        }
+        rest = rest[..start].trim_end();
+    }
+}
+
+/// Turns the tail calls of each `tailrec` function into a loop, so deep
+/// recursion does not exhaust the stack. A function that cannot get that
+/// treatment is an error rather than ordinary recursion in disguise.
+fn make_tail_loops<'a>(program: &mut Program<'a>, source: &'a str) -> Result<(), Error> {
+    let plain = program
+        .functions
+        .iter_mut()
+        .map(|function| (function, true));
+    let members = program.classes.iter_mut().flat_map(|class| {
+        let single = class.is_object;
+        class
+            .methods
+            .iter_mut()
+            .map(move |method| {
+                let fixed = single || method.private;
+                (method, fixed)
+            })
+            .chain(class.static_methods.iter_mut().map(|method| (method, true)))
+    });
+    for (function, fixed) in plain.chain(members) {
+        if !is_tailrec(source, function.name.offset) {
+            continue;
+        }
+        let offset = function.name.offset;
+        let refuse = |message| Error { offset, message };
+        if function.vararg || function.extension_of.is_some() || function.overload_of.is_some() {
+            return Err(refuse(
+                "A vararg, extension or overloaded function cannot be tailrec.",
+            ));
+        }
+        if !fixed {
+            return Err(refuse(
+                "A subclass could replace this method, so it cannot be tailrec. Make it private, static or part of an object.",
+            ));
+        }
+        if !tail_loop(function) {
+            return Err(refuse(
+                "A tailrec function must call itself as the last thing it does, with one value for each parameter.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn tail_loop<'a>(function: &mut Function<'a>) -> bool {
+    let own = function.name.text;
+    if function.parameters.iter().any(|(name, _)| name.text == own) {
+        return false;
+    }
+    let hidden: Vec<Name<'a>> = function
+        .parameters
+        .iter()
+        .map(|(name, _)| Name {
+            text: Box::leak(format!("{}$tail", name.text).into_boxed_str()),
+            offset: name.offset,
+        })
+        .collect();
+    let mut body = std::mem::take(&mut function.body);
+    let call = TailCall {
+        own,
+        hidden: &hidden,
+        unit: function.result.is_none(),
+    };
+    if !call.rewrite(&mut body, true) {
+        function.body = body;
+        return false;
+    }
+    let at = function.name.offset;
+    let mut outer = Vec::new();
+    let mut inner = Vec::new();
+    for ((name, _), hidden) in function.parameters.iter().zip(&hidden) {
+        outer.push(Statement::Binding(
+            *hidden,
+            Expr::Variable(*name),
+            true,
+            None,
+        ));
+        inner.push(Statement::Binding(
+            *name,
+            Expr::Variable(*hidden),
+            false,
+            None,
+        ));
+    }
+    inner.append(&mut body);
+    let keyword = Name {
+        text: "while",
+        offset: at,
+    };
+    let label = Name {
+        text: TAIL_LOOP,
+        offset: at,
+    };
+    outer.push(Statement::Labeled(
+        label,
+        Box::new(Statement::While(keyword, Expr::Bool(at, true), inner)),
+    ));
+    function.body = outer;
+    true
+}
+
+struct TailCall<'b, 'a> {
+    own: &'a str,
+    hidden: &'b [Name<'a>],
+    /// The function has no result, so a tail call is a plain last statement.
+    unit: bool,
+}
+
+impl<'a> TailCall<'_, 'a> {
+    fn matches(&self, callee: &Name<'a>, arguments: &[Expr<'a>]) -> bool {
+        callee.text == self.own
+            && arguments.len() == self.hidden.len()
+            && !arguments
+                .iter()
+                .any(|argument| matches!(argument, Expr::Named(..)))
+    }
+
+    /// Assignments to the hidden variables, then a jump to the top of the loop.
+    fn jump(&self, arguments: Vec<Expr<'a>>, offset: usize) -> Vec<Statement<'a>> {
+        let mut replacement: Vec<Statement<'a>> = arguments
+            .into_iter()
+            .zip(self.hidden)
+            .map(|(argument, hidden)| {
+                Statement::Assign(
+                    Name {
+                        text: hidden.text,
+                        offset: argument.offset(),
+                    },
+                    argument,
+                )
+            })
+            .collect();
+        replacement.push(Statement::Continue(Name {
+            text: "continue@tail$",
+            offset,
+        }));
+        replacement
+    }
+
+    /// Whether a value is, or chooses among, a call of the function itself.
+    fn in_value(&self, value: &Expr<'a>) -> bool {
+        match value {
+            Expr::Call(callee, arguments) => self.matches(callee, arguments),
+            Expr::When(_, _, branches) => branches.iter().any(|branch| {
+                branch
+                    .value
+                    .as_ref()
+                    .is_some_and(|value| self.in_value(value))
+            }),
+            _ => false,
+        }
+    }
+
+    /// Rewrites the tail calls in `body`. `last` says that finishing `body`
+    /// finishes the function. Calls inside `try` and lambdas stay calls.
+    fn rewrite(&self, body: &mut Vec<Statement<'a>>, last: bool) -> bool {
+        let mut found = false;
+        let mut index = 0;
+        while index < body.len() {
+            let at_end = last && index + 1 == body.len();
+            // A value `if` or `when` that may be the call becomes a statement
+            // that returns from each branch. Without an `else` it has to stay
+            // a value for its completeness check.
+            if let Statement::Return(name, Some(value @ Expr::When(..))) = &mut body[index]
+                && !self.unit
+                && self.in_value(value)
+                && matches!(value, Expr::When(_, _, branches)
+                    if branches.iter().any(|branch| branch.conditions.is_empty()))
+            {
+                let name = *name;
+                let Some(Expr::When(_, subject, mut branches)) =
+                    Some(std::mem::replace(value, Expr::Bool(name.offset, false)))
+                else {
+                    unreachable!()
+                };
+                for branch in &mut branches {
+                    if let Some(value) = branch.value.take() {
+                        branch.body.push(Statement::Return(name, Some(*value)));
+                    }
+                }
+                body[index] = Statement::When(name, subject.map(|subject| *subject), branches);
+            }
+            match &mut body[index] {
+                // A local with the function's name hides it from here on.
+                Statement::Binding(name, ..) if name.text == self.own => return found,
+                Statement::Return(name, Some(Expr::Call(callee, arguments)))
+                    if !self.unit && self.matches(callee, arguments) =>
+                {
+                    let offset = name.offset;
+                    let replacement = self.jump(std::mem::take(arguments), offset);
+                    let count = replacement.len();
+                    body.splice(index..=index, replacement);
+                    index += count;
+                    found = true;
+                    continue;
+                }
+                Statement::Call(callee, arguments)
+                    if self.unit && at_end && self.matches(callee, arguments) =>
+                {
+                    let offset = callee.offset;
+                    let replacement = self.jump(std::mem::take(arguments), offset);
+                    let count = replacement.len();
+                    body.splice(index..=index, replacement);
+                    index += count;
+                    found = true;
+                    continue;
+                }
+                Statement::If(_, _, then, otherwise) => {
+                    found |= self.rewrite(then, at_end);
+                    if let Some(otherwise) = otherwise {
+                        found |= self.rewrite(otherwise, at_end);
+                    }
+                }
+                Statement::When(_, _, branches) => {
+                    for branch in branches {
+                        found |= self.rewrite(&mut branch.body, at_end);
+                    }
+                }
+                Statement::While(_, _, inner)
+                | Statement::DoWhile(_, inner, _)
+                | Statement::For(_, _, inner) => found |= self.rewrite(inner, false),
+                Statement::Labeled(_, inner) => {
+                    if let Statement::While(_, _, inner)
+                    | Statement::DoWhile(_, inner, _)
+                    | Statement::For(_, _, inner) = &mut **inner
+                    {
+                        found |= self.rewrite(inner, false);
+                    }
+                }
+                _ => {}
+            }
+            index += 1;
+        }
+        found
+    }
 }
 
 fn parse_source(source: &str) -> Result<Program<'_>, Error> {

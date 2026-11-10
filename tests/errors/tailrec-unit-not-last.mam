@@ -1,0 +1,9 @@
+// error: A tailrec function must call itself as the last thing it does
+var count = 0
+tailrec fun f(n: Int) {
+    if n > 0 {
+        f(n - 1)
+    }
+    count += 1
+}
+f(3)
