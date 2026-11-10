@@ -412,7 +412,7 @@ impl<'a> Emitter<'a> {
             .member_for(9, self.this_class, field.name, &descriptor)
     }
 
-    fn text_constant_owned(&mut self, text: &str) -> u16 {
+    pub(super) fn text_constant_owned(&mut self, text: &str) -> u16 {
         let utf8 = self.pool.utf8(&super::modified_utf8(text));
         self.pool.reference(8, &[utf8])
     }

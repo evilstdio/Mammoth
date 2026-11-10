@@ -1,12 +1,33 @@
 //! Top-level variables that functions and classes use. They become public static
 //! fields of the entry class so every function and method can reach them.
+//!
+//! A module made only of declarations starts in its class's `<clinit>`, so the
+//! JVM runs it once, on first use, whichever thread or export gets there first.
+//! A field counts the values that have been assigned, in declaration order. A
+//! use checks the count, so a read that no compile-time check can follow, such
+//! as across a startup cycle, fails with a message and never sees zero or null.
 
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    Emitter, Error, Expr, Kind, Lambda, Method, Name, Part, Program, Statement, Symbols, at,
-    instruction, resolve_type,
+    Emitter, Error, Expr, Kind, Lambda, Local, Method, Name, Part, Program, Statement, Symbols, at,
+    instruction, load_constant, resolve_type,
 };
+
+const PROGRESS: &str = "$progress";
+const READY: &str = "$ready";
+const READY_TYPE: &str = "(Ljava/lang/String;I)V";
+
+/// Whether a program's top-level code runs when its class starts, rather than
+/// in `main`: it can be reached by name, and it only declares values.
+pub(super) fn starts_with_class(program: &Program<'_>) -> bool {
+    program.module.is_some()
+        && !program.body.is_empty()
+        && program
+            .body
+            .iter()
+            .all(|statement| matches!(statement, Statement::Binding(..)))
+}
 
 #[derive(Clone)]
 pub(super) struct Global<'a> {
@@ -89,15 +110,15 @@ fn collect_program<'a>(program: &'a Program<'a>, mut used: HashSet<&'a str>) -> 
     for class in &program.classes {
         // A class's own fields and constructor parameters hide top-level names.
         let outer: HashSet<&'a str> = used.clone();
-        for method in &class.methods {
+        for method in class.methods.iter().chain(&class.static_methods) {
             free_names(method, &mut used);
         }
-        for field in &class.fields {
+        for field in class.fields.iter().chain(&class.static_fields) {
             if let Some(value) = &field.value {
                 collect_expr(value, &mut used);
             }
         }
-        for initializer in &class.initializers {
+        for initializer in class.initializers.iter().chain(&class.static_initializers) {
             if let super::Initializer::Block(statements) = initializer {
                 collect_statements(statements, &mut used);
             }
@@ -115,7 +136,11 @@ fn collect_program<'a>(program: &'a Program<'a>, mut used: HashSet<&'a str>) -> 
         }
         used.retain(|name| {
             outer.contains(name)
-                || !(class.fields.iter().any(|field| field.name.text == *name)
+                || !(class
+                    .fields
+                    .iter()
+                    .chain(&class.static_fields)
+                    .any(|field| field.name.text == *name)
                     || class
                         .parameters
                         .iter()
@@ -157,13 +182,19 @@ pub(super) fn check_global_order<'a>(
     for class in &program.classes {
         let mut used = HashSet::from([SKIP_LAMBDAS]);
         let mut local: HashSet<&str> = class.parameters.iter().map(|(name, _)| name.text).collect();
-        local.extend(class.fields.iter().map(|field| field.name.text));
-        for field in &class.fields {
+        local.extend(
+            class
+                .fields
+                .iter()
+                .chain(&class.static_fields)
+                .map(|field| field.name.text),
+        );
+        for field in class.fields.iter().chain(&class.static_fields) {
             if let Some(value) = &field.value {
                 collect_expr(value, &mut used);
             }
         }
-        for initializer in &class.initializers {
+        for initializer in class.initializers.iter().chain(&class.static_initializers) {
             if let super::Initializer::Block(statements) = initializer {
                 collect_statements(statements, &mut used);
                 collect_bound(statements, &mut local);
@@ -180,7 +211,7 @@ pub(super) fn check_global_order<'a>(
         used.retain(|name| !local.contains(name));
         reads.entry(class.name.text).or_default().extend(used);
         // A method call is followed by name, into every method so named.
-        for method in &class.methods {
+        for method in class.methods.iter().chain(&class.static_methods) {
             let mut used = HashSet::from([SKIP_LAMBDAS]);
             collect_statements(&method.body, &mut used);
             let mut bound = local.clone();
@@ -731,6 +762,91 @@ impl<'a> Emitter<'a> {
         index
     }
 
+    fn progress_member(&mut self) -> u16 {
+        let class = *self
+            .main_class
+            .get_or_insert_with(|| self.pool.class(self.symbols.types.entry_class()));
+        self.pool.member(9, class, PROGRESS, "I")
+    }
+
+    /// Calls the check that the top-level value has been assigned.
+    fn check_ready(&mut self, method: &mut Method<'a>, global: &Global<'a>, base: u16) {
+        let symbols = self.symbols;
+        let position = symbols
+            .globals
+            .iter()
+            .position(|other| other.offset == global.offset)
+            .expect("the global is in the table");
+        let text = self.text_constant_owned(global.name);
+        load_constant(&mut method.code, text);
+        self.push_int32(method, position as i32);
+        let class = *self
+            .main_class
+            .get_or_insert_with(|| self.pool.class(symbols.types.entry_class()));
+        let ready = self.pool.member(10, class, READY, READY_TYPE);
+        instruction(&mut method.code, 0xb8, ready); // invokestatic
+        method.max_stack = method.max_stack.max(base + 2);
+    }
+
+    /// The method that top-level value uses call: it throws unless the value
+    /// at that position has been assigned.
+    pub(super) fn ready_method(
+        &mut self,
+        methods: &mut Vec<u8>,
+        code_name: u16,
+        stack_map_name: u16,
+    ) -> Result<(), Error> {
+        let module = self.symbols.types.entry_class().replace('/', ".");
+        let string = self.runtime_class("java/lang/String");
+        let mut method = Method::new(vec![Local::Object(string), Local::Int]);
+        let progress = self.progress_member();
+        instruction(&mut method.code, 0xb2, progress); // getstatic
+        method.code.push(0x1b); // iload_1
+        let branch = method.code.len();
+        instruction(&mut method.code, 0xa3, 0); // if_icmpgt
+        let class = self.runtime_class("java/lang/IllegalStateException");
+        let init = self.runtime_member(
+            "java/lang/IllegalStateException",
+            "<init>",
+            "(Ljava/lang/String;)V",
+            10,
+        );
+        let concat = self.runtime_member(
+            "java/lang/String",
+            "concat",
+            "(Ljava/lang/String;)Ljava/lang/String;",
+            10,
+        );
+        let before = self.text_constant_owned("The top-level value ");
+        let after = self.text_constant_owned(&format!(
+            " in module {module} was used before it was initialized. Look for modules that need each other while starting, or a function value run too early."
+        ));
+        instruction(&mut method.code, 0xbb, class); // new
+        method.code.push(0x59); // dup
+        load_constant(&mut method.code, before);
+        method.code.push(0x2a); // aload_0
+        instruction(&mut method.code, 0xb6, concat); // invokevirtual
+        load_constant(&mut method.code, after);
+        instruction(&mut method.code, 0xb6, concat);
+        instruction(&mut method.code, 0xb7, init); // invokespecial
+        method.code.push(0xbf); // athrow
+        method.max_stack = method.max_stack.max(4);
+        let target = method.code.len();
+        method.patch_branch(branch, target, 0)?;
+        method.frame(2);
+        method.code.push(0xb1); // return
+        let name = self.pool.ascii(READY);
+        let descriptor = self.pool.ascii(READY_TYPE);
+        method.write(methods, 0x1009, name, descriptor, code_name, stack_map_name) // public static synthetic
+    }
+
+    /// Adds the count of assigned values to the class's fields.
+    pub(super) fn progress_field(&mut self, fields: &mut Vec<u8>) {
+        let name = self.pool.ascii(PROGRESS);
+        let descriptor = self.pool.ascii("I");
+        super::shorts(fields, &[0x1009, name, descriptor, 0]); // public static synthetic
+    }
+
     /// Loads a top-level variable. Returns `None` when `name` is not one.
     pub(super) fn load_global(
         &mut self,
@@ -740,6 +856,7 @@ impl<'a> Emitter<'a> {
     ) -> Option<Kind> {
         let symbols = self.symbols;
         let global = symbols.global(name.text)?;
+        self.check_ready(method, global, base);
         let reference = self.global_member(global);
         instruction(&mut method.code, 0xb2, reference); // getstatic
         method.max_stack = method.max_stack.max(base + global.kind.slots());
@@ -750,6 +867,7 @@ impl<'a> Emitter<'a> {
     pub(super) fn store_global(&mut self, method: &mut Method<'a>, name: &str) {
         let symbols = self.symbols;
         let global = symbols.global(name).expect("checked by the caller");
+        self.check_ready(method, global, global.kind.slots());
         let reference = self.global_member(global);
         instruction(&mut method.code, 0xb3, reference); // putstatic
     }
@@ -765,13 +883,14 @@ impl<'a> Emitter<'a> {
         kind: Kind,
     ) -> bool {
         let symbols = self.symbols;
-        let Some(global) = symbols
+        let Some(position) = symbols
             .globals
             .iter()
-            .find(|global| global.offset == name.offset)
+            .position(|global| global.offset == name.offset)
         else {
             return false;
         };
+        let global = &symbols.globals[position];
         if !global.mutable {
             method
                 .code
@@ -780,6 +899,10 @@ impl<'a> Emitter<'a> {
         }
         let reference = self.global_member(global);
         instruction(&mut method.code, 0xb3, reference); // putstatic
+        self.push_int32(method, position as i32 + 1);
+        method.max_stack = method.max_stack.max(kind.slots() + 1);
+        let progress = self.progress_member();
+        instruction(&mut method.code, 0xb3, progress); // putstatic
         global.mutable
     }
 }

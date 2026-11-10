@@ -1,0 +1,10 @@
+module values.Order
+
+let log: MutableList<Text> = mutableListOf<Text>()
+
+export fun record(name: Text, value: Int): Int {
+    log.add(name)
+    return value
+}
+
+export fun events(): Text = log.joinToString(",")

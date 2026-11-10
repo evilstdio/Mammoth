@@ -1,0 +1,25 @@
+module values.Config
+import values.Order.record
+
+// Each value can use the ones above it, and any kind of value can be stored.
+let base = record("base", 40)
+let offset = record("offset", 2)
+let total = base + offset
+var port: Int = total * 100
+let large: Long = 5000000000L
+let ratio: Double = 1.5
+let enabled: Bool = total > 1
+let letter: Char = 'x'
+let missing: Text? = null
+let doubled = twice(total)
+// Run for its effect, though no function reads it.
+let noted = record("noted", 1)
+
+fun twice(value: Int): Int = value * 2
+
+export fun getPort(): Int = port
+export fun setPort(value: Int) {
+    port = value
+}
+export fun summary(): Text = "{base}+{offset}={total} {doubled} {missing ?: "none"}"
+export fun widths(): Text = "{large} {ratio} {enabled} {letter}"

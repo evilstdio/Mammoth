@@ -1,0 +1,15 @@
+// Static methods and static fields can use top-level values.
+let base = 2
+
+class Scale {
+    static let factor: Int = base * 10
+    static fun apply(value: Int): Int = value * factor + base
+    // A field of the class hides a top-level value of the same name.
+    static let label: Text = "class"
+    static fun name(): Text = label
+}
+
+let label = "top"
+print(Scale.apply(3))
+print(Scale.name())
+print(label)

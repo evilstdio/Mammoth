@@ -1,0 +1,4 @@
+The top-level value later in module Main was used before it was initialized. Look for modules that need each other while starting, or a function value run too early.
+write refused
+7
+8

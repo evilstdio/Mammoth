@@ -1,0 +1,2 @@
+import app.Logic.value
+print(value())

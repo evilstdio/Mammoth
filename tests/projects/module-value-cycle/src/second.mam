@@ -1,0 +1,6 @@
+module cycle.Second
+import cycle.First.peekAfter
+
+let seen = peekAfter()
+
+export fun secondValue(): Int = seen

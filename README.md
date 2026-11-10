@@ -159,6 +159,17 @@ print(score)
 
 If the starting value's type cannot be worked out from the declaration alone, add a type, such as `var log: MutableList<Text> = mutableList()`.
 
+Modules in `src` and bundled libraries can declare top-level `let` and `var` values too, and so can a file with a `module` line and nothing but declarations. Other statements still belong in `main.mam`. These rules decide when values get set:
+
+- **Order.** A module's values are set in declaration order.
+- **Once, on first use.** A module starts the first time something needs it: an exported function, or code in one of its classes that reads a value. The JVM runs this exactly once, and other threads wait until it finishes. A module that another one needs starts at that moment.
+- **Reading too early, found while compiling.** A top-level statement that reaches a value declared further down in the same file, through the functions, constructors and methods it calls, is a compile error.
+- **Reading too early, found while running.** What the compiler cannot follow, such as a lambda or two modules that need each other while starting, throws `IllegalStateException` naming the value. It never reads as zero or null. Assigning a `var` too early is refused the same way.
+- **A module that fails to start.** An exception while a module starts reaches the caller as `ExceptionInInitializerError`, with the original exception as its cause. Later uses of that module throw `NoClassDefFoundError`, and it is not retried.
+- **Called from Java.** A module of declarations starts on its own. A module whose top-level code includes other statements only runs that code in `main`, so a value read without it throws the same error.
+
+Two threads that start modules needing each other can deadlock, as with any JVM class startup cycle. Avoid startup cycles.
+
 ### Lists
 
 Use square brackets to create a list of values with the same type. Store it in a variable, pass it to a function, or loop over it. Indices start at zero. Use `size()` for the number of items, and `list[index] = value` to replace an item.
@@ -1564,7 +1575,7 @@ The smoke test has been run successfully in the actual Minecraft development cli
 
 ## Multi-file projects
 
-Put top-level code in `main.mam`. Put named supporting modules in `src`, including nested folders. Mark a function `export fun` and use `import` to call it from another file. Classes and interfaces are available for import without an `export` keyword. You can give an import a local name with `as`.
+Put top-level code in `main.mam`. Put named supporting modules in `src`, which can declare top-level values (see [Top-level variables](#top-level-variables)) but not run other statements, including nested folders. Mark a function `export fun` and use `import` to call it from another file. Classes and interfaces are available for import without an `export` keyword. You can give an import a local name with `as`.
 
 ```text
 import demo.mammoth.Statistics.average
@@ -1644,7 +1655,7 @@ Lambdas can be passed where a Java generic parameter is erased to `Object`, and 
 
 - Reading a non-null reference from a list, such as `items[i]` or a `for` loop, checks for null, since a Java array can contain null. Use `let value: Text? = items[i]` to allow it. A list passed through a generic function is not checked element by element.
 - `value as Text` throws if `value` is null. Use `as Text?` to keep null.
-- A top-level statement cannot reach a variable declared later through the functions, constructors and methods it calls. Methods are matched by name, and lambdas are not followed.
+- A top-level statement cannot reach a variable declared later through the functions, constructors and methods it calls. Methods are matched by name, and lambdas are not followed, so a read through one is checked when it runs. See [Top-level variables](#top-level-variables).
 - Mammoth has no `Byte` or `Short` type, so an `Int` can be passed to Java `byte` and `short` parameters after any `int` overload. The value is truncated as a Java cast would.
 - A Java `byte[]` is a list whose items read and write as `Int`: bytes are signed, and writing a larger number truncates it. It is a separate type from `List<Int>`.
 - Call a generic Java method with explicit type arguments like `Collections.emptyList<Text>()`. Arguments must fit them.

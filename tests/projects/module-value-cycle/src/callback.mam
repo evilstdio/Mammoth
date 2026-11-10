@@ -1,0 +1,4 @@
+module cycle.Callback
+import cycle.Main.lateValue
+
+export fun startCallback(): Int = lateValue()

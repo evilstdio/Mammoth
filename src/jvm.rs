@@ -1442,8 +1442,33 @@ fn emit_class<'a>(
             shorts(&mut fields, &[0x0009, name_index, type_index, 0]); // public static
         }
         let mut main = Method::new(vec![Local::Object(array)]);
-        if emitter.block(&mut main, &program.body)? {
+        let at_class_start = globals::starts_with_class(program);
+        if at_class_start {
+            let mut start = Method::new(Vec::new());
+            if emitter.block(&mut start, &program.body)? {
+                start.code.push(0xb1);
+            }
+            let name = emitter.pool.ascii("<clinit>");
+            let descriptor = emitter.pool.ascii("()V");
+            start.write(
+                &mut methods,
+                0x0008,
+                name,
+                descriptor,
+                code_name,
+                stack_map_name,
+            )?;
+            generated_methods += 1;
             main.code.push(0xb1);
+        } else if emitter.block(&mut main, &program.body)? {
+            main.code.push(0xb1);
+        }
+        let mut global_fields = symbols.globals.len();
+        if global_fields > 0 {
+            emitter.progress_field(&mut fields);
+            emitter.ready_method(&mut methods, code_name, stack_map_name)?;
+            generated_methods += 1;
+            global_fields += 1;
         }
         let main_name = emitter.pool.ascii("main");
         let main_type = emitter.pool.ascii("([Ljava/lang/String;)V");
@@ -1455,7 +1480,7 @@ fn emit_class<'a>(
             code_name,
             stack_map_name,
         )?;
-        (symbols.globals.len(), program.functions.as_slice(), 0x0008) // package-private static
+        (global_fields, program.functions.as_slice(), 0x0008) // package-private static
     };
     let mut bridge_count = 0;
     let program_lines = emitter.line_starts;

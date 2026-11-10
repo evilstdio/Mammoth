@@ -1,0 +1,5 @@
+module app.Logic
+let first = readSecond()
+let second = 2
+fun readSecond(): Int = second
+export fun value(): Int = first

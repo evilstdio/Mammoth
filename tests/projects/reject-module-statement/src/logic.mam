@@ -1,0 +1,4 @@
+module app.Logic
+let ready = 1
+print("modules cannot run statements")
+export fun value(): Int = ready

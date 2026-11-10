@@ -1,0 +1,8 @@
+module values.Late
+
+let greeting = "hello"
+let punctuation = greeting + "!"
+
+class Greeter {
+    fun greet(): Text = punctuation
+}

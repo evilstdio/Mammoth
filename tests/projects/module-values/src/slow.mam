@@ -1,0 +1,15 @@
+module values.Slow
+import java.util.concurrent.atomic.AtomicInteger
+import java.lang.Thread
+
+let loads = AtomicInteger(0)
+let value = load()
+
+fun load(): Int {
+    loads.incrementAndGet()
+    Thread.sleep(50L)
+    return 5
+}
+
+export fun slowValue(): Int = value
+export fun slowLoads(): Int = loads.get()

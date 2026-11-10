@@ -1,0 +1,16 @@
+module single.Values
+
+// A file with a module and only declarations starts when it is first used,
+// so it works the same run directly or called from Java.
+let first = 2
+let second = first * 3
+var counter: Int = second + 1
+
+export fun bump(): Int {
+    counter += 1
+    return counter
+}
+
+object Probe {
+    fun read(): Int = second
+}

@@ -1,0 +1,45 @@
+module values.Main
+import values.Order.record
+import values.Order.events
+import values.Config.getPort
+import values.Config.setPort
+import values.Config.summary
+import values.Config.widths
+import values.Late.Greeter
+import values.Slow.slowValue
+import values.Slow.slowLoads
+import java.util.concurrent.atomic.AtomicInteger
+
+// Nothing has started yet: a module starts when something first needs it.
+print("start: {events()}")
+
+// The first call starts Config, which needs Order, in declaration order.
+print(getPort())
+print("after config: {events()}")
+
+// Later calls see the same values and run nothing again.
+print(getPort())
+print(summary())
+print(widths())
+print("again: {events()}")
+
+// A `var` keeps what is assigned to it.
+setPort(8080)
+print(getPort())
+
+// Reaching a module only through a class also starts it.
+print(Greeter().greet())
+
+// Many threads asking at once run the initializer one time.
+let sum = AtomicInteger(0)
+let threads = mutableListOf<Thread>()
+for index in 0..7 {
+    let thread = Thread({ sum.addAndGet(slowValue()) })
+    threads.add(thread)
+    thread.start()
+}
+for thread in threads {
+    thread.join()
+}
+print(sum.get())
+print(slowLoads())

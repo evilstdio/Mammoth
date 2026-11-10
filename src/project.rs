@@ -34,11 +34,16 @@ pub fn run(directory: &Path, output: Option<&Path>) -> Result<ExitCode, String> 
         .collect::<Result<_, _>>()?;
     let mut filenames = HashSet::new();
     for (index, (path, program)) in paths.iter().zip(&programs).enumerate() {
-        if index != 0 && !program.body.is_empty() {
+        // Other modules may declare values, which start with the module.
+        let statement = program
+            .body
+            .iter()
+            .find(|statement| !matches!(statement, syntax::Statement::Binding(..)));
+        if let (true, Some(statement)) = (index != 0, statement) {
             return Err(syntax::diagnostic(
                 &path.to_string_lossy(),
                 &sources[index],
-                program.body[0].offset(),
+                statement.offset(),
                 "Put top-level executable code in main.mam.",
             ));
         }

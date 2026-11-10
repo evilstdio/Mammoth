@@ -1,0 +1,8 @@
+module cycle.First
+import cycle.Second.secondValue
+
+let start = secondValue()
+let after = 5
+
+export fun firstValue(): Int = start + after
+export fun peekAfter(): Int = after

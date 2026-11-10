@@ -97,6 +97,147 @@ fn projects_link_and_verify() {
     fs::remove_dir_all(&temporary).unwrap();
 }
 
+/// Compiles a Java caller against `jar` and returns what it prints.
+fn run_java_caller(temporary: &Path, jar: &Path, source: &str) -> String {
+    let path = temporary.join("Caller.java");
+    fs::write(&path, source).unwrap();
+    let compiled = Command::new("javac")
+        .arg("-cp")
+        .arg(jar)
+        .arg("-d")
+        .arg(temporary)
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(
+        compiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    let classpath = std::env::join_paths([temporary, jar]).unwrap();
+    let ran = Command::new("java")
+        .args(["-Xverify:all", "-cp"])
+        .arg(classpath)
+        .arg("Caller")
+        .output()
+        .unwrap();
+    assert!(
+        ran.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    normalize(&String::from_utf8_lossy(&ran.stdout))
+}
+
+#[test]
+fn java_entering_through_exports_finds_module_values_started() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let temporary = std::env::temp_dir().join(format!(
+        "mammoth-module-values-{}-{stamp}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&temporary).unwrap();
+
+    // A project module, without the project's main ever running.
+    let jar = temporary.join("values.jar");
+    let built = Command::new(env!("CARGO_BIN_EXE_mammoth"))
+        .arg("--project")
+        .arg(root.join("tests/projects/module-values"))
+        .arg(&jar)
+        .output()
+        .unwrap();
+    assert!(built.status.success());
+    let printed = run_java_caller(
+        &temporary,
+        &jar,
+        r#"
+public class Caller {
+    public static void main(String[] args) {
+        System.out.println(values.Config.getPort());
+        System.out.println(values.Order.events());
+        System.out.println(values.Config.getPort());
+        System.out.println(values.Order.events());
+    }
+}
+"#,
+    );
+    assert_eq!(
+        printed,
+        "4200
+base,offset,noted
+4200
+base,offset,noted"
+    );
+
+    // A single file with a module and only declarations.
+    let single = temporary.join("single.jar");
+    let built = Command::new(env!("CARGO_BIN_EXE_mammoth"))
+        .arg("--jar")
+        .arg(root.join("tests/programs/module-values-single-file.mam"))
+        .arg(&single)
+        .output()
+        .unwrap();
+    assert!(built.status.success());
+    let printed = run_java_caller(
+        &temporary,
+        &single,
+        r#"
+public class Caller {
+    public static void main(String[] args) {
+        System.out.println(single.Values.bump());
+        System.out.println(single.Values.bump());
+    }
+}
+"#,
+    );
+    assert_eq!(
+        printed,
+        "8
+9"
+    );
+
+    // A module with statements needs its main; without it a read fails clearly.
+    let source = temporary.join("statements.mam");
+    fs::write(
+        &source,
+        "module with.Statements
+let value = 3
+print(value)
+export fun read(): Int = value
+",
+    )
+    .unwrap();
+    let statements = temporary.join("statements.jar");
+    let built = Command::new(env!("CARGO_BIN_EXE_mammoth"))
+        .arg("--jar")
+        .arg(&source)
+        .arg(&statements)
+        .output()
+        .unwrap();
+    assert!(built.status.success());
+    let printed = run_java_caller(
+        &temporary,
+        &statements,
+        r#"
+public class Caller {
+    public static void main(String[] args) {
+        try {
+            System.out.println(with.Statements.read());
+        } catch (IllegalStateException error) {
+            System.out.println(error.getMessage().contains("value value in module with.Statements"));
+        }
+    }
+}
+"#,
+    );
+    assert_eq!(printed, "true");
+    fs::remove_dir_all(&temporary).unwrap();
+}
+
 #[test]
 fn java_calls_exported_instance_methods() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));

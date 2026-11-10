@@ -1,0 +1,9 @@
+// error: declared further down
+class Scale {
+    static let factor: Int = later * 10
+}
+fun read(): Int = Scale.factor
+print(read())
+let later = 2
+fun touch(): Int = later
+print(touch())

@@ -1,5 +1,11 @@
 # Changelog
 
+## Module initialization, 2026-11-10
+
+- Top-level `let` and `var` values in project modules, bundled libraries and declaration-only files with a `module` line start when the module is first used: in declaration order, once, safely across threads, including when Java enters through an exported method. Previously those in a linked library stayed zero or null.
+- Reading or assigning a top-level value before it has its value now throws an `IllegalStateException` naming it, everywhere, instead of seeing zero or null.
+- Static methods, static fields and static init blocks can use top-level values, and the read-order check follows them.
+
 ## mammoth.requests library, 2026-11-10
 
 - Bundle and link an official Mammoth HTTP facade on import in single-file, project and application JAR builds, with GET, POST, status/text/headers/ok, raiseForStatus, positive request timeouts and sanitized RequestError handling. The Java HTTP client is reused; redirects and retries stay off.

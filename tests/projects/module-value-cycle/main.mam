@@ -1,0 +1,34 @@
+module cycle.Main
+import cycle.First.firstValue
+import cycle.Second.secondValue
+import cycle.Callback.startCallback
+import java.lang.Throwable
+
+// Two modules need each other while starting: the read fails, it never
+// sees an empty value.
+try {
+    print(firstValue())
+} catch (error: Throwable) {
+    print(error.getClass().getSimpleName())
+    print(error.getCause()?.getMessage() ?: "no cause")
+}
+// A module that failed to start stays failed.
+try {
+    print(firstValue())
+} catch (error: Throwable) {
+    print(error.getClass().getSimpleName())
+}
+try {
+    print(secondValue())
+} catch (error: Throwable) {
+    print(error.getClass().getSimpleName())
+}
+
+// The entry module runs its code in order, and a module calling back into it
+// too early is stopped the same way.
+export fun lateValue(): Int = later
+let early = try { startCallback() } catch (error: IllegalStateException) { print(error.getMessage())
+    -1 }
+print(early)
+let later = 9
+print(lateValue())

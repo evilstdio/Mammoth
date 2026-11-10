@@ -1,0 +1,20 @@
+// Reads a compile-time check cannot follow fail at run time.
+let early = { later + 1 }
+try {
+    print(early())
+} catch (error: IllegalStateException) {
+    print(error.getMessage())
+}
+let write = { setLater() }
+try {
+    write()
+} catch (error: IllegalStateException) {
+    print("write refused")
+}
+var later: Int = 7
+fun readLater(): Int = later
+fun setLater() {
+    later = 1
+}
+print(readLater())
+print(early())
