@@ -7,6 +7,7 @@ Compiler findings while writing the library:
 - Fixed, narrow: Java `byte[]` had no type spelling, now `ByteArray`.
 - Open: top-level `let`/`const` in a linked library module is never initialized, so it reads as zero or null. Reproduce with a `const val N = 5` at the top of `src/requests.mam` read from a method. The library uses `static let` in a class instead.
 - Open: `reply.body()` of a Java `BodyHandler<byte[]>` throws `ClassCastException` when used as a `byte[]`, even through `Any` and `as ByteArray`. Reproduce with `client.send(request, BodyHandlers.ofByteArray()).body()`. The library reads `ofInputStream` instead, which also lets one daemon timer enforce the body deadline.
+- Open: passing an `Int` to an `Int?` parameter fails when the method name is overloaded anywhere in the file ("No version of this function accepts these arguments"). Overloading is decided per name, so `Json.get` makes `Session.get` go through it. Session methods take `timeout: Int = 0`, with 0 meaning the session's timeout, instead of `Int?`.
 - Open: `mapOf<Text, Any>("a" to 1)` is rejected because `to` makes a `Pair<Text, Int>`, and `Any?` is refused as a type argument of a Java collection. The library's documented route for mixed values is `Json.of` on each value, or a `MutableMap<Text, Any>`.
 
 # Session 5: classes and everyday syntax (2026-11-09, read this first)

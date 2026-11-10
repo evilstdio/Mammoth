@@ -1675,6 +1675,7 @@ Works in single-file runs, project builds and packaged application JARs with Jav
 | `text` | A UTF-8 text body, `text/plain` by default |
 | `bytes` | A `ByteArray` body, `application/octet-stream` by default |
 | `form` | A map sent as `application/x-www-form-urlencoded` |
+| `auth` | `Auth.bearer(token)` or `Auth.basic(user, password)`. Printing an `Auth` hides it |
 
 ```text
 requests.get(url, params = {"q": "two words", "page": "2"}, headers = {"Accept": "application/json"})
@@ -1728,8 +1729,26 @@ Every error extends `RequestError`, a `RuntimeException`. Import the ones you ca
 
 HTTP error statuses are normal responses, so `requests.get` on a 404 returns one with `ok` false. Default messages name the failure and never hold a URL, header or body. `error.original` is the Java exception for debugging. It is not the JVM cause, so a printed stack trace does not include it, and it can contain the URL, so treat it as sensitive. An interrupted request throws `RequestError` and leaves the thread's interrupt flag set.
 
+### Sessions
+
+A `Session` keeps shared headers, credentials, timeouts, cookies and one connection pool. It has the same request methods as `requests`.
+
+```text
+import mammoth.Session
+import mammoth.Auth
+let api = Session(headers = {"Accept": "application/json"}, auth = Auth.bearer(token), timeout = 20, connectTimeout = 5)
+let me = api.get(url).json()
+api.close()
+```
+
+For a header, the later of these wins: library defaults such as `Content-Type`, session headers, session `auth`, request `headers`, request `auth`. A session call's `timeout` replaces the session's for that call. Left out or 0, it uses the session's.
+
+Calls on `requests` keep no cookies. A session stores cookies from responses and sends them back under the usual domain, path and secure rules, using Java's `CookieManager` with its original-server policy, so a server cannot set a cookie for another domain. Cookies live in memory only. Read them with `cookie(name)` and `cookies()`, add one with `setCookie(url, name, value)`, and empty the store with `clearCookies()`.
+
+A session's settings are fixed when it is made, and the HTTP client and cookie store are thread-safe, so one session can be used from many threads. `close()` empties the cookie store and makes later requests throw `InvalidRequestError`. A `Session` is `Closeable`, so `session.use { ... }` works. Java 17's HTTP client has no close of its own, so its idle connections and selector thread end when the JVM collects the session. Sessions are worth reusing, and short-lived ones in a tight loop are wasteful.
+
 ### Current limits
 
-Connection timeout is 10 seconds. Redirects are not followed and requests are not retried.
+Connection timeout for calls on `requests` is 10 seconds. Redirects are not followed and requests are not retried.
 
 Run `node tests/requests.cjs` for the local-only integration tests (requires Node).

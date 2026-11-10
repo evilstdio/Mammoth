@@ -26,6 +26,8 @@ const routes = {
   '/badcharset': (req, res) => { res.writeHead(200, { 'Content-Type': 'text/plain; charset=nonsense-charset' }); res.end('caf\u00e9'); },
   '/utf8': (req, res) => { res.writeHead(200); res.end('caf\u00e9'); },
   '/server-error': (req, res) => { res.writeHead(503); res.end('{"retry":true}'); },
+  '/set-cookie': (req, res) => { res.writeHead(200, { 'Set-Cookie': ['sid=abc; Path=/', 'theme=dark; Path=/get'] }); res.end(''); },
+  '/foreign-cookie': (req, res) => { res.writeHead(200, { 'Set-Cookie': 'evil=1; Domain=other.example; Path=/' }); res.end(''); },
   '/badjson': (req, res) => { res.writeHead(200); res.end('{"a": '); },
   '/deepjson': (req, res) => { res.writeHead(200); res.end('['.repeat(200000)); },
 };
@@ -59,7 +61,7 @@ function text(value) {
     .replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"';
 }
 
-const IMPORTS = ['requests', 'Response', 'Headers', 'RequestError', 'InvalidRequestError', 'TimeoutError', 'TransportError', 'HttpStatusError', 'Json', 'JsonError'].map(name => 'import mammoth.' + name);
+const IMPORTS = ['requests', 'Session', 'Auth', 'Response', 'Headers', 'RequestError', 'InvalidRequestError', 'TimeoutError', 'TransportError', 'HttpStatusError', 'Json', 'JsonError'].map(name => 'import mammoth.' + name);
 
 let count = 0;
 const modes = {
@@ -322,6 +324,107 @@ async function main(base) {
     catching(`requests.get(${text(base + '/get')})`, 'RequestError', 'interrupted'),
     'print(Thread.interrupted())',
   ], ['TransportError', 'false', 'false', 'true', 'true', 'transport is a RequestError', 'slow headers', 'HTTP request timed out after 1 seconds.', 'timeout is a RequestError', 'malformed json', '503', 'false', 'true', '503', '{"retry":true}', 'HTTP status 503', 'HttpStatusError: HTTP status 503', 'status is a RequestError', 'no error for 200', 'interrupted', 'true']);
+
+  await scenario('authentication', [
+    `let u = ${text(base + '/get')}`,
+    'requests.get(u, auth = Auth.bearer("tok-1"))',
+    `requests.get(u, auth = Auth.basic("ann", ${text('p\u00e4ss:1')}))`,
+    'requests.post(u, json = {"a": 1}, auth = Auth.bearer("tok-2"), headers = {"Authorization": "ignored"})',
+    catching('Auth.basic("a:b", "c")', 'InvalidRequestError', 'colon'),
+    catching('requests.get(u, auth = Auth.bearer("x\\ny"))', 'InvalidRequestError', 'line break'),
+    'print(Auth.bearer("tok-3"))',
+  ], ['colon', 'line break', 'Auth(hidden)'], seen => {
+    assert.equal(seen.length, 3);
+    assert.equal(seen[0].headers.authorization, 'Bearer tok-1');
+    assert.equal(seen[1].headers.authorization, 'Basic ' + Buffer.from('ann:p\u00e4ss:1', 'utf8').toString('base64'));
+    assert.equal(seen[2].headers.authorization, 'Bearer tok-2');
+  });
+
+  await scenario('session headers and auth', [
+    `let u = ${text(base + '/get')}`,
+    'let s = Session(headers = {"X-Shared": "1", "X-Over": "session", "Accept": "text/x"}, auth = Auth.bearer("shared"))',
+    's.get(u)',
+    's.get(u, headers = {"x-over": "request"})',
+    's.get(u, headers = {"Authorization": "Custom one"})',
+    's.get(u, auth = Auth.basic("a", "b"))',
+    's.post(u, json = {"a": 1})',
+    'let typed = Session(headers = {"Content-Type": "application/x-custom"})',
+    'typed.post(u, json = {"a": 1})',
+    'typed.post(u, json = {"a": 1}, headers = {"Content-Type": "application/y"})',
+    'requests.get(u)',
+    catching('Session(headers = {"Bad Name": "x"})', 'InvalidRequestError', 'bad header'),
+    catching('Session(headers = {"Host": "x"})', 'InvalidRequestError', 'managed header'),
+  ], ['bad header', 'managed header'], seen => {
+    assert.equal(seen[0].headers['x-shared'], '1');
+    assert.equal(seen[0].headers['x-over'], 'session');
+    assert.equal(seen[0].headers.accept, 'text/x');
+    assert.equal(seen[0].headers.authorization, 'Bearer shared');
+    assert.equal(seen[1].headers['x-over'], 'request');
+    assert.equal(seen[2].headers.authorization, 'Custom one');
+    assert.equal(seen[3].headers.authorization, 'Basic ' + Buffer.from('a:b').toString('base64'));
+    assert.equal(seen[4].headers['x-shared'], '1');
+    assert.match(seen[4].type, /application\/json/);
+    assert.equal(seen[5].type, 'application/x-custom');
+    assert.equal(seen[6].type, 'application/y');
+    assert.equal(seen[7].headers['x-shared'], undefined);
+    assert.equal(seen[7].headers.authorization, undefined);
+  });
+
+  await scenario('session cookies', [
+    `let base = ${text(base)}`,
+    'let s = Session()',
+    'print(s.cookie("sid") == null)',
+    's.get(base + "/set-cookie")',
+    'print(s.cookie("sid"))', 'print(s.cookies()["theme"])', 'print(s.cookies().size())',
+    's.get(base + "/other")',
+    's.get(base + "/get")',
+    'let t = Session()', 't.get(base + "/other")',
+    'requests.get(base + "/set-cookie")', 'requests.get(base + "/other")',
+    's.get(base + "/foreign-cookie")', 'print(s.cookie("evil") == null)',
+    's.setCookie(base, "manual", "m1")', 's.get(base + "/other")', 'print(s.cookie("manual"))',
+    's.clearCookies()', 'print(s.cookies().size())', 's.get(base + "/other")',
+  ], ['true', 'abc', 'dark', '2', 'true', 'm1', '0'], seen => {
+    const cookies = seen.map(r => r.headers.cookie);
+    assert.equal(cookies[0], undefined);
+    assert.equal(cookies[1], 'sid=abc');
+    assert.ok(cookies[2].includes('sid=abc') && cookies[2].includes('theme=dark'), cookies[2]);
+    assert.equal(cookies[3], undefined);
+    assert.equal(cookies[4], undefined);
+    assert.equal(cookies[5], undefined);
+    assert.ok(!(cookies[6] || '').includes('evil'));
+    assert.ok(cookies[7].includes('manual=m1') && cookies[7].includes('sid=abc'), cookies[7]);
+    assert.equal(cookies[8], undefined);
+  });
+
+  await scenario('session timeouts and closing', [
+    `let u = ${text(base)}`,
+    'let quick = Session(timeout = 1)',
+    catching('quick.get(u + "/slow")', 'TimeoutError', 'session timeout'),
+    'print(quick.get(u + "/slow", timeout = 5).text)',
+    catching('Session(timeout = 0)', 'InvalidRequestError', 'bad timeout'),
+    catching('Session(connectTimeout = 0)', 'InvalidRequestError', 'bad connect timeout'),
+    catching('quick.get(u + "/get", timeout = -1)', 'InvalidRequestError', 'bad request timeout'),
+    'let s = Session(connectTimeout = 3)', 's.setCookie(u, "a", "b")', 's.close()', 'print(s.cookies().size())',
+    catching('s.get(u + "/get")', 'InvalidRequestError', 'closed'),
+    's.close()',
+    'let used = Session().use { it.get(u + "/get").status }', 'print(used)',
+  ], ['session timeout', 'late', 'bad timeout', 'bad connect timeout', 'bad request timeout', '0', 'closed', '200']);
+
+  await scenario('one session across threads', [
+    `let u: Text = ${text(base + '/other')}`,
+    'let s: Session = Session(headers = {"X-T": "1"})', `s.setCookie(u, "c", "1")`,
+    'let good: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(0)',
+    'let threads = MutableList<Thread>()',
+    'for i in 0 until 8 {',
+    '    let t = Thread(Runnable { for j in 0 until 25 { if s.get(u, params = {"i": i, "j": j}).ok { good.incrementAndGet() } } })',
+    '    threads.add(t)', '    t.start()',
+    '}',
+    'for t in threads { t.join() }', 'print(good.get())',
+  ], ['200'], seen => {
+    assert.equal(seen.length, 200);
+    assert.equal(new Set(seen.map(r => r.query)).size, 200);
+    assert.ok(seen.every(r => r.headers['x-t'] === '1' && r.headers.cookie === 'c=1'));
+  });
 
   await rejected('mixed dictionary stays a compile error', [`requests.post(${text(base + '/post')}, json = {"a": 1, "b": "x"})`], 'Expected');
 

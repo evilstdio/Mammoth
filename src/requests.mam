@@ -1,5 +1,8 @@
 module mammoth.Requests
 import java.math.BigDecimal
+import java.net.CookieManager
+import java.net.CookiePolicy
+import java.net.HttpCookie
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URLEncoder
@@ -18,6 +21,7 @@ import java.io.InputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.Base64
 import java.util.List as JavaList
 import java.time.Duration
 import java.util.Collection as JavaCollection
@@ -527,8 +531,24 @@ class Response(let status: Int, let bytes: ByteArray, let headers: Headers, let 
     override fun toString(): Text { return "Response({status})" }
 }
 
+/// Credentials for the Authorization header. Printing one never shows them.
+class Auth(let header: Text) {
+    override fun toString(): Text { return "Auth(hidden)" }
+    static fun bearer(token: Text): Auth { return Auth("Bearer " + token) }
+    /// HTTP basic authentication, encoded as UTF-8.
+    static fun basic(user: Text, password: Text): Auth {
+        if user.contains(":") { throw InvalidRequestError("A basic auth user name cannot contain ':'.") }
+        let joined = user + ":" + password
+        return Auth("Basic " + Base64.getEncoder().encodeToString(joined.getBytes(StandardCharsets.UTF_8)))
+    }
+}
+
+/// What a request inherits from the place it was made.
+class Defaults(let client: HttpClient, let headers: TreeMap<Text, Text>, let auth: Auth?)
+
 class Http {
     private static let client: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10L)).build()
+    static let plain: Defaults = Defaults(client, TreeMap<Text, Text>(java.lang.String.CASE_INSENSITIVE_ORDER), null)
     // One daemon thread enforces body deadlines for every request.
     private static let timer: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { task ->
         let thread = Thread(task, "mammoth-requests-timer")
@@ -613,7 +633,7 @@ class Http {
         return true
     }
 
-    private static fun checkHeader(name: Text, value: Text) {
+    static fun checkHeader(name: Text, value: Text) {
         if not isToken(name) { throw InvalidRequestError("A header name contains a character that is not allowed.") }
         for ch in value.toCharArray() {
             let code = ch.toInt()
@@ -626,8 +646,8 @@ class Http {
     }
 
     static fun request(
-        method: Text, url: Text, timeout: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
-        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?
+        defaults: Defaults, method: Text, url: Text, timeout: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
+        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?, auth: Auth?
     ): Response {
         if timeout <= 0 { throw InvalidRequestError("Timeout must be positive (seconds).") }
         let verb = method.toUpperCase()
@@ -655,12 +675,14 @@ class Http {
             names.put("Content-Type", "application/x-www-form-urlencoded")
             publisher = BodyPublishers.ofString(encodePairs(form, true), StandardCharsets.UTF_8)
         }
-        if headers != null {
-            for entry in headers.entrySet() {
-                checkHeader(entry.getKey(), entry.getValue())
-                names.put(entry.getKey(), entry.getValue())
-            }
-        }
+        // Later sources win: library defaults, session headers, session auth,
+        // request headers, then request auth.
+        names.putAll(defaults.headers)
+        let sharedAuth = defaults.auth
+        if sharedAuth != null { names.put("Authorization", sharedAuth.header) }
+        if headers != null { names.putAll(headers) }
+        if auth != null { names.put("Authorization", auth.header) }
+        for entry in names.entrySet() { checkHeader(entry.getKey(), entry.getValue()) }
         // Adding the query can't make a checked URL invalid, but parse the result.
         let target = checkUrl(withQuery(url, params))
         let finalUrl = target.toString()
@@ -670,7 +692,7 @@ class Http {
             builder.method(verb, publisher)
             let started = System.nanoTime()
             let limit = TimeUnit.SECONDS.toNanos(timeout.toLong())
-            let sent = client.sendAsync(builder.build(), BodyHandlers.ofInputStream())
+            let sent = defaults.client.sendAsync(builder.build(), BodyHandlers.ofInputStream())
             try {
                 let reply = sent.get(limit, TimeUnit.NANOSECONDS)
                 // Java's own timeout stops at the headers. The body gets what is left.
@@ -733,29 +755,120 @@ class Http {
 
 /// Simple calls: `requests.get(url)`, `requests.post(url, json = value)`.
 /// Everything after the URL can be given by name. A method takes any body.
+/// Each call stands alone: nothing is shared between them, and no cookies are kept.
 class requests {
-    static fun request(method: Text, url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
-        return Http.request(method, url, timeout, params, headers, json, text, bytes, form)
+    static fun request(method: Text, url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return Http.request(Http.plain, method, url, timeout, params, headers, json, text, bytes, form, auth)
     }
-    static fun get(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
-        return Http.request("GET", url, timeout, params, headers, json, text, bytes, form)
+    static fun get(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return Http.request(Http.plain, "GET", url, timeout, params, headers, json, text, bytes, form, auth)
     }
-    static fun head(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
-        return Http.request("HEAD", url, timeout, params, headers, json, text, bytes, form)
+    static fun head(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return Http.request(Http.plain, "HEAD", url, timeout, params, headers, json, text, bytes, form, auth)
     }
-    static fun options(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
-        return Http.request("OPTIONS", url, timeout, params, headers, json, text, bytes, form)
+    static fun options(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return Http.request(Http.plain, "OPTIONS", url, timeout, params, headers, json, text, bytes, form, auth)
     }
-    static fun delete(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
-        return Http.request("DELETE", url, timeout, params, headers, json, text, bytes, form)
+    static fun delete(url: Text, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return Http.request(Http.plain, "DELETE", url, timeout, params, headers, json, text, bytes, form, auth)
     }
-    static fun post(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
-        return Http.request("POST", url, timeout, params, headers, json, text, bytes, form)
+    static fun post(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return Http.request(Http.plain, "POST", url, timeout, params, headers, json, text, bytes, form, auth)
     }
-    static fun put(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
-        return Http.request("PUT", url, timeout, params, headers, json, text, bytes, form)
+    static fun put(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return Http.request(Http.plain, "PUT", url, timeout, params, headers, json, text, bytes, form, auth)
     }
-    static fun patch(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null): Response {
-        return Http.request("PATCH", url, timeout, params, headers, json, text, bytes, form)
+    static fun patch(url: Text, json: Any? = null, timeout: Int = 30, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return Http.request(Http.plain, "PATCH", url, timeout, params, headers, json, text, bytes, form, auth)
+    }
+}
+
+/// Shared headers, credentials, timeouts, a cookie store and one connection pool.
+/// Its settings are fixed when it is made, so one session can be used from many
+/// threads at once. Cookies follow the usual domain and path rules.
+class Session(
+    headers: JavaMap<Text, Text>? = null, auth: Auth? = null, let timeout: Int = 30, connectTimeout: Int = 10
+) implements java.io.Closeable {
+    private let cookieManager = CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER)
+    private let closed = AtomicBoolean(false)
+    private let defaults: Defaults
+
+    init {
+        if timeout <= 0 or connectTimeout <= 0 { throw InvalidRequestError("Timeouts must be positive (seconds).") }
+        let shared = TreeMap<Text, Text>(java.lang.String.CASE_INSENSITIVE_ORDER)
+        if headers != null { shared.putAll(headers) }
+        for entry in shared.entrySet() { Http.checkHeader(entry.getKey(), entry.getValue()) }
+        let client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(connectTimeout.toLong()))
+            .cookieHandler(cookieManager)
+            .build()
+        defaults = Defaults(client, shared, auth)
+    }
+
+    private fun run(
+        method: Text, url: Text, chosen: Int, params: JavaMap<Text, *>?, headers: JavaMap<Text, Text>?,
+        json: Any?, text: Text?, bytes: ByteArray?, form: JavaMap<Text, *>?, auth: Auth?
+    ): Response {
+        if closed.get() { throw InvalidRequestError("This session is closed.") }
+        return Http.request(defaults, method, url, if chosen == 0 { timeout } else { chosen }, params, headers, json, text, bytes, form, auth)
+    }
+
+    fun request(method: Text, url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return run(method, url, timeout, params, headers, json, text, bytes, form, auth)
+    }
+    fun get(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return run("GET", url, timeout, params, headers, json, text, bytes, form, auth)
+    }
+    fun head(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return run("HEAD", url, timeout, params, headers, json, text, bytes, form, auth)
+    }
+    fun options(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return run("OPTIONS", url, timeout, params, headers, json, text, bytes, form, auth)
+    }
+    fun delete(url: Text, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, json: Any? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return run("DELETE", url, timeout, params, headers, json, text, bytes, form, auth)
+    }
+    fun post(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return run("POST", url, timeout, params, headers, json, text, bytes, form, auth)
+    }
+    fun put(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return run("PUT", url, timeout, params, headers, json, text, bytes, form, auth)
+    }
+    fun patch(url: Text, json: Any? = null, timeout: Int = 0, params: JavaMap<Text, *>? = null, headers: JavaMap<Text, Text>? = null, text: Text? = null, bytes: ByteArray? = null, form: JavaMap<Text, *>? = null, auth: Auth? = null): Response {
+        return run("PATCH", url, timeout, params, headers, json, text, bytes, form, auth)
+    }
+
+    /// The value of the first stored cookie with this name, or null.
+    fun cookie(name: Text): Text? {
+        for stored in cookieManager.getCookieStore().getCookies() {
+            if stored.getName() == name { return stored.getValue() }
+        }
+        return null
+    }
+    /// Every stored cookie as name and value. A repeated name keeps its last value.
+    fun cookies(): LinkedHashMap<Text, Text> {
+        let result = LinkedHashMap<Text, Text>()
+        for stored in cookieManager.getCookieStore().getCookies() { result.put(stored.getName(), stored.getValue()) }
+        return result
+    }
+    /// Stores a cookie to send to `url`'s host for every path.
+    fun setCookie(url: Text, name: Text, value: Text) {
+        let uri = Http.checkUrl(url)
+        try {
+            let stored = HttpCookie(name, value)
+            stored.setPath("/")
+            stored.setVersion(0)
+            stored.setDomain(uri.getHost())
+            cookieManager.getCookieStore().add(uri, stored)
+        } catch (error: IllegalArgumentException) {
+            throw InvalidRequestError("This is not a valid cookie name.")
+        }
+    }
+    fun clearCookies() { cookieManager.getCookieStore().removeAll() }
+    /// Forgets the cookies and refuses further requests. Connections close when
+    /// idle, because Java 17's HTTP client has no way to close them sooner.
+    override fun close() {
+        closed.set(true)
+        clearCookies()
     }
 }

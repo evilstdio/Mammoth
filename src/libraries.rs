@@ -17,6 +17,8 @@ pub fn emit<'a>(
                         | "TransportError"
                         | "HttpStatusError"
                         | "Headers"
+                        | "Session"
+                        | "Auth"
                         | "JsonError"
                         | "Json"
                         | "JsonNull"

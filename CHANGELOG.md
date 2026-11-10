@@ -6,6 +6,7 @@
 - General JSON: `Json` values, strict RFC 8259 `Json.parse`, `Json.of`/`Json.stringify`, `response.json()`, and `json =` for text, booleans, finite numbers, maps with text keys, lists, arrays and `Json`. Numbers keep their exact text. Malformed text, nesting past 512 levels, non-finite numbers, non-text keys, self-containing values and unsupported types throw `JsonError`.
 - Request configuration: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS and `requests.request`; custom headers; correctly encoded query parameters; `text`, `bytes` and `form` bodies. Conflicting body options, invalid URLs, credentials in URLs and unsafe headers throw `InvalidRequestError` before sending.
 - Responses: case-insensitive `Headers`, `bytes`, charset-aware `text`, final `url`. Errors: `TimeoutError`, `TransportError`, `HttpStatusError` (with the response) and `JsonError` under `RequestError`, and `error.original` for debugging outside the cause chain. `timeout` now covers the response body as well as the headers.
+- Sessions: `Session` with shared headers, `Auth.basic`/`Auth.bearer`, configurable request and connection timeouts, an in-memory cookie store with `cookie`, `cookies`, `setCookie`, `clearCookies`, thread-safe fixed settings, and `close`.
 - Compiler: `a[i]` picks the right overload when a class overloads `get`, and `ByteArray` names a Java `byte[]`.
 - Add a small webhook example, import and project regressions, and local HTTP integration tests.
 
