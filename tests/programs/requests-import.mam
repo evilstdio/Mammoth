@@ -1,2 +1,11 @@
 import mammoth.requests
+import mammoth.Json
+import mammoth.JsonError
 print("requests available")
+// The JSON depth limit is a top-level value of the bundled library.
+print(Json.parse("[[1]]")[0][0].asInt())
+try {
+    Json.parse("[".repeat(600))
+} catch (error: JsonError) {
+    print(error.getMessage())
+}

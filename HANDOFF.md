@@ -1,19 +1,33 @@
+# Module initialization and compiler commits, 2026-11-10 (latest, read this first)
+
+The uncommitted compiler work is now seven verified local commits, `717689d` to `6b1709f`: dictionary literals, implicit collection names, init-assigned fields, operator methods, library folds, tailrec, probes. Each tree passed `cargo test --release --offline`, `cargo fmt --check` and clippy on its own. `node tests/requests.cjs` passes from the second commit on. The first cannot pass it, because the test needs both of the first two.
+
+Reviewing that work found these bugs, fixed before committing, each with a regression test: `tailrec` with an expression body overflowed the stack; a local shadowing the function looped forever; a public method could be replaced by a subclass, so converting it changed dispatch; `collection -= 6` on a Java list removed by position. `tailrec` is now a promise: what cannot loop is a compile error. Tests: `tests/programs/tailrec-loops.mam`, `tests/errors/tailrec-*.mam`, `tests/programs/collection-minus-values.mam`.
+
+Module values. Design in the header of `src/jvm/globals.rs`, user rules in the README under Top-level variables. `starts_with_class` picks `<clinit>` for a program with a `module` line whose top level is only declarations. Everything else runs in `main`. Each use of a value calls `$ready(name, position)`, which compares against `$progress`, so too-early reads throw instead of seeing zero. There is no cross-module static check: a startup cycle across modules is caught when it runs, and two threads starting such a cycle can deadlock as with any JVM class cycle.
+
+Tests: `tests/projects/module-values` (order, dependencies, once, threads, class entry, all value kinds), `tests/projects/module-value-cycle` (cycles, failed start, callback into the entry module), `tests/projects/reject-module-*`, `tests/programs/global-*`, `tests/projects.rs` `java_entering_through_exports_finds_module_values_started`, and the bundled library's own limits through `requests-import`, `bundled-requests` and `node tests/requests.cjs`.
+
+Checks on this tree: `cargo test --release --offline`, `cargo fmt --check`, clippy, `node tests/requests.cjs` with 27 scenarios, `difffuzz.py 1201 40` with 0 problems, `soundfuzz.py 1202 80 8` with 0 bad. `target\release\mammoth.exe` is rebuilt from this tree. Git is local only.
+
+Known limits found while reviewing: a dictionary literal lowers to `Pair` and `mapOf`, so a program that declares its own function or class with those names captures or breaks the literal. `tailrec` is not parsed on a function declared inside another.
+
+Next task: fix passing an `Int` to an `Int?` parameter on overloaded names, listed below, which lets the library drop its `timeout: Int = 0` convention. Then the `BodyHandler<byte[]>` cast.
+
 # mammoth.requests library, 2026-11-10 (latest)
 
 Source: `src/requests.mam` (Mammoth), linked by `src/libraries.rs` on an import of a public name, which is listed there. A new public class must be added to that list. Tests: `node tests/requests.cjs`, with `ONLY=<part of a scenario name>` to narrow and `MAMMOTH=<exe>` to choose the compiler.
 
 Status: the five planned areas are done and documented in the README section `mammoth.requests`: general JSON; request configuration; response and error API; sessions; redirects, uploads and downloads. Engine: `Http.open` sends and follows redirects and returns an `Exchange` with an unread stream, then `Http.request` or `Http.download` consumes it. `requests` and `Session` hold generated-looking forwarding methods, so a new option has to be added to all of them.
 
-Not verified by a test: an actual connection timeout, because a local server cannot make connecting hang reliably, so only `connectTimeout` validation and wiring are exercised; any https request, including an https-to-http redirect, because the suite has no trusted local certificate. Origin comparison includes the scheme in the code. The integration tests use `{...}` dictionary literals, so they need the working tree: dictionary literals live in the still-uncommitted `src/syntax.rs` work, which also holds operator, init-field, implicit-collection and tailrec changes. Commits on this branch contain only library files and three narrow hunks of `src/jvm.rs`. The branch tip builds on its own and links the library. Earlier library commits need the working tree to compile `import mammoth.requests`.
+Not verified by a test: an actual connection timeout, because a local server cannot make connecting hang reliably, so only `connectTimeout` validation and wiring are exercised; any https request, including an https-to-http redirect, because the suite has no trusted local certificate. Origin comparison includes the scheme in the code.
 
-Checks run on the full working tree for each milestone: `cargo test --release --offline`, `cargo fmt --check`, `cargo clippy --offline --all-targets -- -D warnings` and `node tests/requests.cjs`, all passing. Most scenarios run as a single file, a project JAR and a packaged JAR under `-Xverify:all`. Only the local servers on 127.0.0.1 were contacted. The compiler fuzzers were not rerun for the library commits. `target\\release\\mammoth.exe` was rebuilt from the working tree, so it also holds the uncommitted compiler work. In that work, `tailrec` as a loop has had one probe and no regression test.
-
-Next task: decide whether to commit the separate uncommitted compiler work, then fix the open compiler items below, starting with top-level values in linked modules.
+The library is a usable first release of its agreed scope, not a finished HTTP client. Deferred on purpose: async, proxies, retries, a streaming response API other than `download`, compressed responses, persistent cookies, client certificates and custom trust, a size limit on in-memory bodies. `tests/requests.cjs` needs dictionary literals and implicit collection names, so it passes from commit `bd4a03a` onward and not on the earlier library commits.
 
 Compiler findings while writing the library:
 - Fixed, narrow: `a[i]` ignored overloaded `get`. Test `tests/programs/overloaded-index.mam`.
 - Fixed, narrow: Java `byte[]` had no type spelling, now `ByteArray`.
-- Open: top-level `let`/`const` in a linked library module is never initialized, so it reads as zero or null. Reproduce with a `const val N = 5` at the top of `src/requests.mam` read from a method. The library uses `static let` in a class instead.
+- Fixed: top-level values in a linked library module were never initialized. See the section above. The library now uses them for its limits.
 - Open: `reply.body()` of a Java `BodyHandler<byte[]>` throws `ClassCastException` when used as a `byte[]`, even through `Any` and `as ByteArray`. Reproduce with `client.send(request, BodyHandlers.ofByteArray()).body()`. The library reads `ofInputStream` instead, which also lets one daemon timer enforce the body deadline.
 - Open: passing an `Int` to an `Int?` parameter fails when the method name is overloaded anywhere in the file ("No version of this function accepts these arguments"). Overloading is decided per name, so `Json.get` makes `Session.get` go through it. Session methods take `timeout: Int = 0`, with 0 meaning the session's timeout, instead of `Int?`.
 - Open: `mapOf<Text, Any>("a" to 1)` is rejected because `to` makes a `Pair<Text, Int>`, and `Any?` is refused as a type argument of a Java collection. The library's documented route for mixed values is `Json.of` on each value, or a `MutableMap<Text, Any>`.

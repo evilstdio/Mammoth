@@ -1,3 +1,10 @@
 import mammoth.requests
 import mammoth.RequestError
+import mammoth.Json
+import mammoth.JsonError
 print("bundled requests available")
+try {
+    Json.parse("[".repeat(600))
+} catch (error: JsonError) {
+    print(error.getMessage())
+}

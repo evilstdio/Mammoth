@@ -40,6 +40,11 @@ import java.util.LinkedHashMap
 import java.util.Map as JavaMap
 import java.util.TreeMap
 
+let KIBIBYTE: Int = 1024
+// How much of a non-2xx download body is kept.
+let STATUS_BODY_LIMIT: Int = KIBIBYTE * KIBIBYTE
+let JSON_MAX_DEPTH: Int = 512
+
 /// Every failure from this library. Messages never hold a URL, header or body.
 /// `original` is the Java exception, kept off the cause chain so that a printed
 /// stack trace cannot reveal what it says. Treat it as sensitive.
@@ -245,10 +250,6 @@ fun writeJsonText(out: StringBuilder, text: Text) {
     out.append("\"")
 }
 
-class JsonLimits {
-    static let MAX_DEPTH: Int = 512
-}
-
 class JsonBuilder {
     // The containers being converted, to find one that contains itself.
     let open = IdentityHashMap<Any, Bool>()
@@ -269,7 +270,7 @@ class JsonBuilder {
         if not isMap and not isList {
             throw JsonError("A value of type {value.getClass().getSimpleName()} has no JSON form.")
         }
-        if depth >= JsonLimits.MAX_DEPTH { throw JsonError("This value is nested too deeply for JSON.") }
+        if depth >= JSON_MAX_DEPTH { throw JsonError("This value is nested too deeply for JSON.") }
         if open.containsKey(value) { throw JsonError("This value contains itself, so it has no JSON form.") }
         open.put(value, true)
         let result = if value is JavaMap<*, *> { fromMap(value, depth) } else { fromList(value, depth) }
@@ -342,7 +343,7 @@ class JsonReader(let source: Text) {
     }
 
     fun read(depth: Int): Json {
-        if depth > JsonLimits.MAX_DEPTH { throw fail("nested too deeply") }
+        if depth > JSON_MAX_DEPTH { throw fail("nested too deeply") }
         skipSpace()
         let code = here()
         if code == 123 { return objectValue(depth) }
@@ -1005,7 +1006,7 @@ class Http {
             closeQuietly(stream)
         }, if nanos > 0L { nanos } else { 0L }, TimeUnit.NANOSECONDS)
         try {
-            let data = stream.readNBytes(1048576)
+            let data = stream.readNBytes(STATUS_BODY_LIMIT)
             if expired.get() { throw TimeoutError("HTTP request timed out after {timeout} seconds.") }
             return data
         } catch (error: IOException) {
