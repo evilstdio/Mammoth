@@ -2,8 +2,31 @@
   "name": "mammoth-language",
   "displayName": "Mammoth Language",
   "version": "0.1.0",
-  "publisher": "mammoth-lang-local",
-  "description": "Syntax highlighting and local compiler commands for the Mammoth language.",
+  "publisher": "evilstdio",
+  "preview": true,
+  "description": "Syntax highlighting, a run button and compiler errors in the Problems panel for Mammoth, a beginner-friendly language for the JVM.",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#3B2A20",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/evilstdio/Mammoth.git",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/evilstdio/Mammoth/issues"
+  },
+  "homepage": "https://github.com/evilstdio/Mammoth#readme",
+  "keywords": [
+    "mammoth",
+    "jvm",
+    "java",
+    "language",
+    "syntax"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -14,7 +37,11 @@
   "files": [
     "extension.js",
     "language-configuration.json",
-    "syntaxes"
+    "syntaxes",
+    "images/icon.png",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -74,7 +101,7 @@
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Path to the Mammoth compiler. When empty, use the workspace release compiler if present, then look for mammoth on PATH."
+          "description": "Path to the Mammoth compiler. When empty, the extension uses the workspace's target/release compiler, then the Windows setup's install folder, then mammoth on PATH."
         }
       }
     },

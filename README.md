@@ -53,7 +53,7 @@ Run `cargo test --release` to compile every program under `tests/` and `examples
 
 ## VS Code
 
-Install the Mammoth Language VSIX with **Extensions → Install from VSIX**. Install Mammoth or build the compiler, then open a saved `.mam` file and use the play button or **Mammoth: Run Mammoth File**. The extension uses, in order: `mammoth.compilerPath`, the workspace's `target\release` compiler, the Windows installer's folder, then `mammoth` on `PATH`.
+Install the **Mammoth Language** extension (publisher `evilstdio`), or install a `.vsix` with **Extensions → Install from VSIX**. Build one with `npx @vscode/vsce package` in `editors/vscode`. Install Mammoth or build the compiler, then open a saved `.mam` file and use the play button or **Mammoth: Run Mammoth File**. The extension uses, in order: `mammoth.compilerPath`, the workspace's `target\release` compiler, the Windows installer's folder, then `mammoth` on `PATH`.
 
 Compiler diagnostics appear in the Problems panel. **Mammoth: Check Java Bindings** runs the optional Java declaration check. The extension source is in `editors/vscode`.
 

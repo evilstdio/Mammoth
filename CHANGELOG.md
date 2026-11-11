@@ -13,6 +13,7 @@ First tagged version. Everything below this entry is included. It is a preview: 
 - The setup program opens an installer window: install folder, an Add to PATH choice, a progress bar and a finish page with commands to try. It refuses a folder that holds other files and offers to reinstall over an earlier install. Uninstalling from Settings > Apps asks first and reports in a dialog.
 - `mammoth --version` and `mammoth --help`.
 - The VS Code extension also looks for the compiler in the Windows setup's install folder.
+- The VS Code extension is ready for the Marketplace as `evilstdio.mammoth-language`, marked as a preview, with an icon, license, changelog and its own README. `npx @vscode/vsce package` in `editors/vscode` builds the `.vsix`.
 
 ## Overloads and Java byte arrays, 2026-11-10
 
